@@ -14,19 +14,19 @@
 // ⚠️  "import React" is not needed with React 17+ JSX transform.
 //      You can also remove it from AuthRequired, LoginPage,
 //      Navbar, RegisterPage, and ProfilePage.
-import { createContext, useState, useContext, useEffect } from 'react';
+import { createContext, useState, useContext, useEffect } from "react";
 import {
   loginUser,
   registerUser,
   fetchCurrentUser,
   updateUserProfile,
   saveAssessmentResults,
-} from '../services/api';
+} from "../services/api";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser]       = useState(null);
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // ── Restore session on mount ────────────────────────────────
@@ -39,8 +39,8 @@ export function AuthProvider({ children }) {
         if (restored) setUser(restored);
       } catch (_) {
         // Token expired or invalid — stay logged out
-        localStorage.removeItem('polylingo_auth_user');
-        localStorage.removeItem('polylingo_token');
+        localStorage.removeItem("polylingo_auth_user");
+        localStorage.removeItem("polylingo_token");
       } finally {
         setLoading(false);
       }
@@ -50,29 +50,59 @@ export function AuthProvider({ children }) {
 
   // ── Login ────────────────────────────────────────────────────
   const login = async (email, password) => {
-    const userData = await loginUser({ email, password });
-    localStorage.setItem('polylingo_auth_user', JSON.stringify(userData));
-    setUser(userData);
-    return userData;
+    try {
+      const userData = await loginUser({ email, password });
+      localStorage.setItem("polylingo_auth_user", JSON.stringify(userData));
+      setUser(userData);
+      return userData;
+    } catch (err) {
+      // Re-throw with better error message
+      if (err instanceof Error) {
+        throw err;
+      }
+      throw new Error(String(err) || "Login failed");
+    }
   };
 
   // ── Register ─────────────────────────────────────────────────
-  const register = async ({ name, email, age, password, preferredLanguage }) => {
-    const userData = await registerUser({ name, email, age, password, preferredLanguage });
-    // Keep accounts map for mock duplicate-check (remove when real backend exists)
-    const accounts = JSON.parse(localStorage.getItem('polylingo_accounts') || '{}');
-    accounts[email.toLowerCase()] = userData;
-    localStorage.setItem('polylingo_accounts', JSON.stringify(accounts));
-    localStorage.setItem('polylingo_auth_user', JSON.stringify(userData));
-    setUser(userData);
-    return userData;
+  const register = async ({
+    name,
+    email,
+    age,
+    password,
+    preferredLanguage,
+  }) => {
+    try {
+      const userData = await registerUser({
+        name,
+        email,
+        age,
+        password,
+        preferredLanguage,
+      });
+      // Keep accounts map for mock duplicate-check (remove when real backend exists)
+      const accounts = JSON.parse(
+        localStorage.getItem("polylingo_accounts") || "{}",
+      );
+      accounts[email.toLowerCase()] = userData;
+      localStorage.setItem("polylingo_accounts", JSON.stringify(accounts));
+      localStorage.setItem("polylingo_auth_user", JSON.stringify(userData));
+      setUser(userData);
+      return userData;
+    } catch (err) {
+      // Re-throw with better error message
+      if (err instanceof Error) {
+        throw err;
+      }
+      throw new Error(String(err) || "Registration failed");
+    }
   };
 
   // ── Logout ───────────────────────────────────────────────────
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('polylingo_auth_user');
-    localStorage.removeItem('polylingo_token');
+    localStorage.removeItem("polylingo_auth_user");
+    localStorage.removeItem("polylingo_token");
   };
 
   // ── Complete Assessment ──────────────────────────────────────
@@ -89,20 +119,25 @@ export function AuthProvider({ children }) {
     };
 
     setUser(updated);
-    localStorage.setItem('polylingo_auth_user', JSON.stringify(updated));
+    localStorage.setItem("polylingo_auth_user", JSON.stringify(updated));
 
     // Keep mock accounts store in sync
-    const storedAccounts = JSON.parse(localStorage.getItem('polylingo_accounts') || '{}');
+    const storedAccounts = JSON.parse(
+      localStorage.getItem("polylingo_accounts") || "{}",
+    );
     if (user?.email && storedAccounts[user.email.toLowerCase()]) {
       storedAccounts[user.email.toLowerCase()] = updated;
-      localStorage.setItem('polylingo_accounts', JSON.stringify(storedAccounts));
+      localStorage.setItem(
+        "polylingo_accounts",
+        JSON.stringify(storedAccounts),
+      );
     }
 
     // 👉 BACKEND: persist results to DB — fire-and-forget, non-blocking
     try {
       await saveAssessmentResults(results);
     } catch (err) {
-      console.warn('Could not persist assessment to server:', err.message);
+      console.warn("Could not persist assessment to server:", err.message);
     }
   };
 
@@ -110,18 +145,28 @@ export function AuthProvider({ children }) {
   const updateUser = async (updates) => {
     const updated = { ...user, ...updates };
     setUser(updated);
-    localStorage.setItem('polylingo_auth_user', JSON.stringify(updated));
+    localStorage.setItem("polylingo_auth_user", JSON.stringify(updated));
 
     // 👉 BACKEND: sync changes to server when real API is ready
     try {
       await updateUserProfile(updates);
     } catch (err) {
-      console.warn('Could not sync profile update to server:', err.message);
+      console.warn("Could not sync profile update to server:", err.message);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, loading, completeAssessment, updateUser }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        login,
+        register,
+        logout,
+        loading,
+        completeAssessment,
+        updateUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -129,7 +174,7 @@ export function AuthProvider({ children }) {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within AuthProvider');
+  if (!context) throw new Error("useAuth must be used within AuthProvider");
   return context;
 };
 

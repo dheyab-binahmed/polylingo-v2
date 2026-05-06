@@ -1,35 +1,73 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-
+import { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import { formatErrorForDisplay, logError } from "../utils/errorHandler";
 const LANGUAGES = [
-  'English', 'Spanish', 'French', 'German', 'Italian', 'Portuguese',
-  'Mandarin', 'Japanese', 'Korean', 'Arabic', 'Russian',
-  'Hindi', 'Dutch', 'Swedish', 'Polish', 'Turkish',
+  "English",
+  "Spanish",
+  "French",
+  "German",
+  "Italian",
+  "Portuguese",
+  "Mandarin",
+  "Japanese",
+  "Korean",
+  "Arabic",
+  "Russian",
+  "Hindi",
+  "Dutch",
+  "Swedish",
+  "Polish",
+  "Turkish",
 ];
 
 export default function RegisterPage() {
-  const [form, setForm] = useState({ name: '', email: '', age: '', password: '', confirmPassword: '', preferredLanguage: '' });
-  const [error, setError] = useState('');
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    age: "",
+    password: "",
+    confirmPassword: "",
+    preferredLanguage: "",
+  });
+  const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
 
   const handleChange = (e) => {
-    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    setError('');
+    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    setError("");
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    if (!form.name.trim()) { setError('Full name is required'); return; }
-    if (!form.email.trim() || !form.email.includes('@')) { setError('Valid email is required'); return; }
-    if (!form.age || parseInt(form.age) < 6 || parseInt(form.age) > 120) { setError('Please enter a valid age'); return; }
-    if (!form.password || form.password.length < 6) { setError('Password must be at least 6 characters'); return; }
-    if (form.password !== form.confirmPassword) { setError('Passwords do not match'); return; }
-    if (!form.preferredLanguage) { setError('Please select a language to learn'); return; }
+    setError("");
+    if (!form.name.trim()) {
+      setError("Full name is required");
+      return;
+    }
+    if (!form.email.trim() || !form.email.includes("@")) {
+      setError("Valid email is required");
+      return;
+    }
+    if (!form.age || parseInt(form.age) < 6 || parseInt(form.age) > 120) {
+      setError("Please enter a valid age");
+      return;
+    }
+    if (!form.password || form.password.length < 6) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
+    if (form.password !== form.confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+    if (!form.preferredLanguage) {
+      setError("Please select a language to learn");
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -40,9 +78,12 @@ export default function RegisterPage() {
         password: form.password,
         preferredLanguage: form.preferredLanguage,
       });
-      navigate('/assessment/language', { replace: true });
+      navigate("/assessment/language", { replace: true });
     } catch (err) {
-      setError(err.message);
+      // Use utility function to format error message
+      const errorMessage = formatErrorForDisplay(err, err.status);
+      setError(errorMessage);
+      logError(err, "RegisterPage.handleSubmit");
     } finally {
       setIsLoading(false);
     }
@@ -60,7 +101,9 @@ export default function RegisterPage() {
             <i className="fas fa-user-plus" />
           </div>
           <h2 className="auth-card__title">Create Account</h2>
-          <p className="auth-card__subtitle">Join thousands of language learners worldwide</p>
+          <p className="auth-card__subtitle">
+            Join thousands of language learners worldwide
+          </p>
         </div>
 
         {error && (
@@ -126,7 +169,9 @@ export default function RegisterPage() {
           </div>
 
           <div className="auth-field">
-            <label className="auth-field__label">Language You Want to Learn</label>
+            <label className="auth-field__label">
+              Language You Want to Learn
+            </label>
             <div className="auth-field__input-wrap">
               <i className="fas fa-language auth-field__icon" />
               <select
@@ -137,8 +182,10 @@ export default function RegisterPage() {
                 className="auth-field__input auth-field__select"
               >
                 <option value="">Select a language…</option>
-                {LANGUAGES.map(lang => (
-                  <option key={lang} value={lang}>{lang}</option>
+                {LANGUAGES.map((lang) => (
+                  <option key={lang} value={lang}>
+                    {lang}
+                  </option>
                 ))}
               </select>
             </div>
@@ -150,7 +197,7 @@ export default function RegisterPage() {
               <div className="auth-field__input-wrap">
                 <i className="fas fa-lock auth-field__icon" />
                 <input
-                  type={showPassword ? 'text' : 'password'}
+                  type={showPassword ? "text" : "password"}
                   name="password"
                   placeholder="Min 6 characters"
                   value={form.password}
@@ -161,11 +208,13 @@ export default function RegisterPage() {
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(p => !p)}
+                  onClick={() => setShowPassword((p) => !p)}
                   className="auth-field__eye"
                   tabIndex="-1"
                 >
-                  <i className={showPassword ? 'fas fa-eye-slash' : 'fas fa-eye'} />
+                  <i
+                    className={showPassword ? "fas fa-eye-slash" : "fas fa-eye"}
+                  />
                 </button>
               </div>
             </div>
@@ -175,7 +224,7 @@ export default function RegisterPage() {
               <div className="auth-field__input-wrap">
                 <i className="fas fa-lock auth-field__icon" />
                 <input
-                  type={showPassword ? 'text' : 'password'}
+                  type={showPassword ? "text" : "password"}
                   name="confirmPassword"
                   placeholder="Repeat password"
                   value={form.confirmPassword}
@@ -189,13 +238,21 @@ export default function RegisterPage() {
           </div>
 
           <button type="submit" className="auth-submit" disabled={isLoading}>
-            {isLoading ? <span className="auth-spinner" /> : (<><i className="fas fa-rocket" /> Create Account & Start</>)}
+            {isLoading ? (
+              <span className="auth-spinner" />
+            ) : (
+              <>
+                <i className="fas fa-rocket" /> Create Account & Start
+              </>
+            )}
           </button>
         </form>
 
         <p className="auth-card__footer">
-          Already have an account?{' '}
-          <Link to="/login" className="auth-link">Sign in</Link>
+          Already have an account?{" "}
+          <Link to="/login" className="auth-link">
+            Sign in
+          </Link>
         </p>
       </div>
     </div>

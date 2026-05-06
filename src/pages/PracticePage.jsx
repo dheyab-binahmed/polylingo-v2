@@ -6,6 +6,7 @@ import {
   uploadAudio,
   getJobStatus,
 } from "../services/api";
+import { formatErrorForDisplay, logError } from "../utils/errorHandler";
 import { getContent } from "../data/practiceContent";
 
 // ─────────────────────────────────────────────────────────────────
@@ -494,7 +495,10 @@ export default function PracticePage() {
         setShowPronFeedback(true);
       }
     } catch (err) {
-      setUploadError(err.message || "Failed to upload recording");
+      // Use utility function to format error message
+      const errorMessage = formatErrorForDisplay(err, err.status);
+      setUploadError(errorMessage);
+      logError(err, "PracticePage.analyzeRecording");
       setShowPronFeedback(true);
     } finally {
       setUploading(false);

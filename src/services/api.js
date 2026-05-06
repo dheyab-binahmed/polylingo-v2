@@ -10,6 +10,43 @@
 const BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api/v1";
 
+// ─── Error extraction helper ───────────────────────────────────
+/**
+ * Safely extract error message from various error response formats
+ * Handles both simple errors and nested backend error format
+ */
+function extractErrorMessage(errorResponse) {
+  // Handle string errors
+  if (typeof errorResponse === "string") return errorResponse;
+
+  // Handle object errors - try multiple fields and nested formats
+  if (typeof errorResponse === "object" && errorResponse !== null) {
+    // Check for backend nested error format: { error: { message: "...", code: "..." } }
+    if (errorResponse.error && typeof errorResponse.error === "object") {
+      return (
+        errorResponse.error.message ||
+        errorResponse.error.error ||
+        errorResponse.error.detail ||
+        errorResponse.error.msg ||
+        JSON.stringify(errorResponse.error)
+      );
+    }
+
+    // Check for direct fields
+    return (
+      errorResponse.message ||
+      errorResponse.error ||
+      errorResponse.detail ||
+      errorResponse.msg ||
+      (Array.isArray(errorResponse.errors) && errorResponse.errors[0]) ||
+      JSON.stringify(errorResponse)
+    );
+  }
+
+  // Fallback
+  return "An unknown error occurred";
+}
+
 // ─── Shared fetch helper ──────────────────────────────────────
 /**
  * Wraps every API call:
@@ -35,11 +72,15 @@ async function apiFetch(path, options = {}) {
     let message = `Request failed: ${response.status} ${response.statusText}`;
     try {
       const body = await response.json();
-      message = body.message || body.error || message;
+      message = extractErrorMessage(body);
     } catch (_) {
-      /* ignore */
+      // Failed to parse JSON response, use status text
+      message = response.statusText || message;
     }
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    error.response = response;
+    throw error;
   }
 
   if (response.status === 204) return null;
@@ -258,22 +299,23 @@ export async function scorePronunciation(audioBlob, languageCode) {
   formData.append("audio", audioBlob, "recording.webm");
   formData.append("language", languageCode);
 
-  // ─── MOCK (delete when backend is ready) ───────────────────
-  await delay(1200); // simulate network round-trip
-  return {
-    score: Math.min(10, Math.max(6, Math.floor(Math.random() * 3) + 7)),
-  };
-  // ─── END MOCK ──────────────────────────────────────────────
+  // ─── REAL IMPLEMENTATION ──────────────────────────────────────
+  const response = await fetch(`${BASE_URL}/assessment/pronunciation/score`, {
+    method: "POST",
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: formData, // Don't set Content-Type — browser sets multipart boundary automatically
+  });
 
-  // ─── REAL IMPLEMENTATION (uncomment when backend is ready) ──
-  // 👉 INSERT API URL HERE
-  // const response = await fetch(`${BASE_URL}/api/assessment/pronunciation`, {
-  //   method: 'POST',
-  //   headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-  //   body: formData, // Don't set Content-Type — browser sets multipart boundary automatically
-  // });
-  // if (!response.ok) throw new Error('Pronunciation scoring failed');
-  // return response.json(); // { score: number, feedback: string }
+  if (!response.ok) {
+    const error = await response
+      .json()
+      .catch(() => ({ error: "Pronunciation scoring failed" }));
+    throw new Error(
+      error.error || error.message || "Pronunciation scoring failed",
+    );
+  }
+
+  return response.json(); // { score: number, feedback: string }
 }
 
 /**
