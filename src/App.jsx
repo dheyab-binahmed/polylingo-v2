@@ -14,6 +14,7 @@ import SpeakingStep from "./pages/Assessment/SpeakingStep";
 import GrammarStep from "./pages/Assessment/GrammarStep";
 import ReadingStep from "./pages/Assessment/ReadingStep";
 import ResultsStep from "./pages/Assessment/ResultsStep";
+import PronunciationDetailsPage from "./pages/Assessment/PronunciationDetailsPage";
 import AuthRequired from "./components/AuthRequired";
 import LoginPage from "./components/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
@@ -83,6 +84,10 @@ export default function App() {
               <Route path="grammar" element={<GrammarStep />} />
               <Route path="reading" element={<ReadingStep />} />
               <Route path="results" element={<ResultsStep />} />
+              <Route
+                path="pronunciation-details"
+                element={<PronunciationDetailsPage />}
+              />
             </Route>
 
             {/* Catch all */}

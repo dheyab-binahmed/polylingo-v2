@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useAssessment } from "./assessmentContext";
 import {
@@ -48,8 +48,75 @@ function ScoreBar({ label, value, max = 10, color }) {
 
 export default function ResultsStep() {
   const { data } = useAssessment();
+  console.log("[ResultsStep] assessment data:", data);
   const navigate = useNavigate();
   const { completeAssessment } = useAuth();
+
+  // Debug: show what data we have
+  if (!data || !data.language) {
+    return (
+      <div
+        style={{
+          maxWidth: "860px",
+          margin: "0 auto",
+          padding: "2rem 1.25rem",
+          textAlign: "center",
+        }}
+      >
+        <div
+          style={{
+            background: "#fef3c7",
+            border: "1px solid #fbbf24",
+            borderRadius: "12px",
+            padding: "2rem",
+            marginBottom: "2rem",
+          }}
+        >
+          <i
+            className="fas fa-info-circle"
+            style={{
+              fontSize: "2rem",
+              color: "#92400e",
+              marginBottom: "1rem",
+              display: "block",
+            }}
+          />
+          <h2 style={{ color: "#92400e", margin: "0.5rem 0" }}>
+            No Assessment Data
+          </h2>
+          <p style={{ color: "#92400e", margin: "0.5rem 0 1rem 0" }}>
+            Please complete all assessment sections first.
+          </p>
+          <p
+            style={{
+              color: "#b45309",
+              fontSize: "0.9rem",
+              margin: "1rem 0 0 0",
+            }}
+          >
+            Debug info: data={JSON.stringify(data).substring(0, 100)}...
+          </p>
+        </div>
+        <button
+          onClick={() => navigate("/assessment/language")}
+          style={{
+            background: "#6366f1",
+            color: "white",
+            border: "none",
+            padding: "0.75rem 1.5rem",
+            borderRadius: "8px",
+            cursor: "pointer",
+            fontWeight: 600,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.6rem",
+          }}
+        >
+          <i className="fas fa-arrow-left" /> Start Assessment
+        </button>
+      </div>
+    );
+  }
 
   // Get the language-specific content for recommendations
   const langContent = getAssessmentContent(data.language);
@@ -69,19 +136,22 @@ export default function ResultsStep() {
     ),
   );
 
-  const ps =
-    data.pronunciationScore ||
-    Math.max(1, Math.round(pronunciationScore100 / 10));
-  const fs = data.fluencyScore || 6;
-  const gs = +(
-    ((data.grammarScore || 0) / (data.grammarTotal || 5)) *
-    10
-  ).toFixed(1);
-  const rs = +(
-    ((data.readingScore || 0) / (data.readingTotal || 3)) *
-    10
-  ).toFixed(1);
-  const overall = Math.round((ps + fs + gs + rs) / 4);
+  const ps = Math.max(1, Math.round(pronunciationScore100 / 10));
+
+  // Temporary placeholders until other assessments are connected
+  const fs = data.fluencyScore || 0;
+  const gs = data.grammarScore
+    ? +(((data.grammarScore || 0) / (data.grammarTotal || 5)) * 10).toFixed(1)
+    : 0;
+
+  const rs = data.readingScore
+    ? +(((data.readingScore || 0) / (data.readingTotal || 3)) * 10).toFixed(1)
+    : 0;
+
+  // For now overall comes ONLY from pronunciation backend result
+  const overall = ps;
+
+  // Calculate proficiency level based on overall score
   const level =
     overall >= 9
       ? "Advanced"
