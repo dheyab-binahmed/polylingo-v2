@@ -284,6 +284,19 @@ export async function getJobStatus(jobId) {
 }
 
 /**
+ * Get pronunciation assessment job status and result.
+ * GET /api/v1/assessment/pronunciation/status/:jobId
+ */
+export async function getPronunciationJobStatus(jobId) {
+  try {
+    return await apiFetch(`/assessment/pronunciation/status/${jobId}`);
+  } catch (err) {
+    console.error("Failed to get pronunciation job status:", err);
+    throw err;
+  }
+}
+
+/**
  * Submit pronunciation audio for AI scoring.
  * 👉 INSERT API URL HERE: POST /api/assessment/pronunciation
  *

@@ -1,7 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { useAssessment } from "./assessmentContext";
 import { getAssessmentContent } from "../../data/assessmentContent";
-import { scorePronunciation } from "../../services/api";
+import {
+  scorePronunciation,
+  getPronunciationJobStatus,
+} from "../../services/api";
 
 export default function PronunciationStep() {
   const { data, update, goNext, goPrev } = useAssessment();
@@ -135,12 +138,59 @@ export default function PronunciationStep() {
     setMicError("");
 
     try {
-      const response = await scorePronunciation(audioBlob, data.language);
-      const recScore = response.score || 5;
-      setScore(recScore);
+      const submission = await scorePronunciation(audioBlob, data.language);
+      const jobId = submission.job_id || submission.id;
+
+      if (!jobId) {
+        throw new Error("Pronunciation analysis job was not created.");
+      }
+
+      let statusData = null;
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        statusData = await getPronunciationJobStatus(jobId);
+
+        if (statusData?.status === "completed") {
+          break;
+        }
+
+        if (statusData?.status === "failed") {
+          throw new Error(
+            statusData.error || statusData.error_message || "Analysis failed.",
+          );
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+
+      if (
+        !statusData ||
+        statusData.status !== "completed" ||
+        !statusData.result
+      ) {
+        throw new Error(
+          "Analysis is still processing. Please try again in a moment.",
+        );
+      }
+
+      const backendResult = statusData.result;
+      const recScore = Math.round(
+        Number(
+          backendResult.overall_score ??
+            backendResult.pronunciation_accuracy ??
+            61,
+        ),
+      );
+
+      setScore(Math.round(recScore / 10));
       update({
-        pronunciationScore: recScore,
-        pronunciationFeedback: response.feedback,
+        pronunciationScore: Math.round(recScore / 10),
+        pronunciationScore100: recScore,
+        pronunciationResult: backendResult,
+        pronunciationWordEvaluations: backendResult.word_evaluations || [],
+        pronunciationReasonLines: backendResult.summary
+          ? [backendResult.summary]
+          : [],
+        pronunciationFeedback: backendResult.summary,
       });
       // ✅ Analysis complete - proceed to next step
       goNext("pronunciation");
