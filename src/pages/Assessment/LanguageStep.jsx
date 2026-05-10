@@ -16,31 +16,129 @@ const LANGS = [
   {code:'tr',name:'Turkish',    flag:'🇹🇷',learners:'150K learners'},
 ]
 
+const LEVELS = [
+  { code: 'A1', label: 'Beginner',          desc: 'Little or no experience',            color: '#10b981' },
+  { code: 'A2', label: 'Elementary',         desc: 'Basic everyday expressions',         color: '#3b82f6' },
+  { code: 'B1', label: 'Intermediate',       desc: 'Handle familiar situations',         color: '#6366f1' },
+  { code: 'B2', label: 'Upper Intermediate', desc: 'Complex texts and conversations',    color: '#8b5cf6' },
+  { code: 'C1', label: 'Advanced',           desc: 'Fluent, flexible language use',      color: '#f59e0b' },
+  { code: 'C2', label: 'Mastery',            desc: 'Near-native proficiency',            color: '#ef4444' },
+]
+
 export default function LanguageStep() {
   const { data, update, goNext } = useAssessment()
-  const [sel, setSel] = useState(data.language)
+  const [selLang,  setSelLang]  = useState(data.language || null)
+  const [selLevel, setSelLevel] = useState(data.level    || null)
+
   function confirm() {
-    if (!sel) { alert('Please select a language first!'); return }
-    update({ language: sel }); goNext('language')
+    if (!selLang)  { alert('Please select a language first!'); return }
+    if (!selLevel) { alert('Please select your current level!'); return }
+    update({ language: selLang, level: selLevel })
+    goNext('language')
   }
+
   return (
-    <div className="test-container fade-in" style={{margin:'2rem auto'}}>
+    <div className="test-container fade-in" style={{ margin: '2rem auto' }}>
+      {/* ── Language section ──────────────────────────────────────────────── */}
       <div className="test-header">
         <h2>Choose Your Learning Language</h2>
-        <p>Select the language you want to master. We'll assess your current level and create a personalized learning plan.</p>
+        <p>Select the language you want to master. We'll create a personalised assessment at your level.</p>
       </div>
       <div className="language-grid">
         {LANGS.map(l => (
-          <div key={l.code} className={`language-card${sel===l.code?' selected':''}`} onClick={() => setSel(l.code)}>
+          <div
+            key={l.code}
+            className={`language-card${selLang === l.code ? ' selected' : ''}`}
+            onClick={() => setSelLang(l.code)}
+          >
             <div className="language-flag">{l.flag}</div>
             <div className="language-name">{l.name}</div>
             <div className="language-learners">{l.learners}</div>
           </div>
         ))}
       </div>
-      <div style={{textAlign:'center',marginTop:'2rem'}}>
-        <button className="btn btn-primary" style={{padding:'1rem 3rem',fontSize:'1.1rem'}} onClick={confirm}>
-          Start Assessment <i className="fas fa-arrow-right"/>
+
+      {/* ── Level section ─────────────────────────────────────────────────── */}
+      <div style={{ marginTop: '2.5rem' }}>
+        <div className="test-header" style={{ marginBottom: '1.25rem' }}>
+          <h2 style={{ fontSize: '1.4rem' }}>What's your current level?</h2>
+          <p>Your grammar and reading questions will be tailored to this level.</p>
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+          gap: '0.875rem',
+        }}>
+          {LEVELS.map(lv => {
+            const isSelected = selLevel === lv.code
+            return (
+              <div
+                key={lv.code}
+                onClick={() => setSelLevel(lv.code)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  padding: '1rem 1.25rem',
+                  borderRadius: '14px',
+                  border: `2px solid ${isSelected ? lv.color : 'var(--border)'}`,
+                  background: isSelected ? lv.color + '12' : 'var(--bg-card)',
+                  cursor: 'pointer',
+                  transition: 'border-color 0.15s, background 0.15s, transform 0.1s',
+                  transform: isSelected ? 'translateY(-2px)' : 'none',
+                  boxShadow: isSelected ? `0 4px 16px ${lv.color}30` : 'none',
+                }}
+              >
+                {/* CEFR badge */}
+                <div style={{
+                  minWidth: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  background: isSelected ? lv.color : lv.color + '20',
+                  color: isSelected ? '#fff' : lv.color,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 800,
+                  fontSize: '0.9rem',
+                  transition: 'background 0.15s, color 0.15s',
+                }}>
+                  {lv.code}
+                </div>
+
+                <div>
+                  <div style={{
+                    fontWeight: 700,
+                    color: isSelected ? lv.color : 'var(--text-base)',
+                    fontSize: '0.95rem',
+                  }}>
+                    {lv.label}
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    {lv.desc}
+                  </div>
+                </div>
+
+                {isSelected && (
+                  <div style={{ marginLeft: 'auto', color: lv.color }}>
+                    <i className="fas fa-check-circle" />
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <div style={{ textAlign: 'center', marginTop: '2rem' }}>
+        <button
+          className="btn btn-primary"
+          style={{ padding: '1rem 3rem', fontSize: '1.1rem' }}
+          onClick={confirm}
+          disabled={!selLang || !selLevel}
+        >
+          Start Assessment <i className="fas fa-arrow-right" />
         </button>
       </div>
     </div>

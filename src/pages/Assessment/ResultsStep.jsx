@@ -138,18 +138,28 @@ export default function ResultsStep() {
 
   const ps = Math.max(1, Math.round(pronunciationScore100 / 10));
 
-  // Temporary placeholders until other assessments are connected
   const fs = data.fluencyScore || 0;
-  const gs = data.grammarScore
-    ? +(((data.grammarScore || 0) / (data.grammarTotal || 5)) * 10).toFixed(1)
-    : 0;
 
-  const rs = data.readingScore
-    ? +(((data.readingScore || 0) / (data.readingTotal || 3)) * 10).toFixed(1)
-    : 0;
+  // grammar: backend returns correct_count / total → convert to /10
+  const gs =
+    data.grammarTotal > 0
+      ? +((data.grammarScore / data.grammarTotal) * 10).toFixed(1)
+      : 0;
 
-  // For now overall comes ONLY from pronunciation backend result
-  const overall = ps;
+  // reading: same conversion
+  const rs =
+    data.readingTotal > 0
+      ? +((data.readingScore / data.readingTotal) * 10).toFixed(1)
+      : 0;
+
+  // Overall = weighted average of all completed sections
+  const completedScores = [ps, fs, gs, rs].filter((s) => s > 0);
+  const overall =
+    completedScores.length > 0
+      ? Math.round(
+          completedScores.reduce((a, b) => a + b, 0) / completedScores.length,
+        )
+      : ps;
 
   // Calculate proficiency level based on overall score
   const level =
