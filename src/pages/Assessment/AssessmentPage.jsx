@@ -17,7 +17,7 @@ const DEFAULT_DATA = {
   pronunciationScore: 0,
   fluencyScore: 0,
   grammarScore: 0,
-  grammarTotal: 5,
+  grammarTotal: 6,
   readingScore: 0,
   readingTotal: 3,
 };
