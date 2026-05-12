@@ -1,6 +1,12 @@
 import { useNavigate } from "react-router-dom";
 import { useAssessment } from "./assessmentContext";
 
+function toPercentScore(value, fallback = 0) {
+  const numeric = Number(value ?? fallback);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.round(numeric <= 1 ? numeric * 100 : numeric);
+}
+
 export default function PronunciationDetailsPage() {
   const { data } = useAssessment();
   const navigate = useNavigate();
@@ -168,26 +174,35 @@ export default function PronunciationDetailsPage() {
       >
         {[
           {
+            label: "Intelligibility",
+            value: toPercentScore(result.intelligibility_score, overallScore),
+            icon: "fa-comment-dots",
+            color: "#6366f1",
+          },
+          {
             label: "Accuracy",
-            value: Math.round(result.pronunciation_accuracy ?? 61),
+            value: toPercentScore(result.pronunciation_accuracy, 61),
             icon: "fa-bullseye",
             color: "#8b5cf6",
           },
           {
             label: "Fluency",
-            value: Math.round(result.fluency_score ?? 60),
+            value: toPercentScore(result.fluency_score, 60),
             icon: "fa-water",
             color: "#10b981",
           },
           {
             label: "Clarity",
-            value: Math.round(result.clarity_score ?? 65),
+            value: toPercentScore(result.clarity_score, 65),
             icon: "fa-volume-up",
             color: "#3b82f6",
           },
           {
-            label: "Noise Level",
-            value: Math.round(result.noise_level ?? 40),
+            label: "Audio Quality",
+            value: toPercentScore(
+              result.audio_quality_score ?? result.noise_quality_score,
+              80,
+            ),
             icon: "fa-volume-mute",
             color: "#f59e0b",
           },
@@ -311,8 +326,9 @@ export default function PronunciationDetailsPage() {
                   </li>
                   <li>
                     Natural Pacing:{" "}
-                    {Math.round(
-                      result.pause_analysis.natural_pacing_score * 100,
+                    {toPercentScore(
+                      result.pause_analysis.natural_pacing_score,
+                      0,
                     )}
                     %
                   </li>
