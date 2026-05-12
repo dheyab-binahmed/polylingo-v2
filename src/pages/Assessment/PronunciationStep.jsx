@@ -119,7 +119,13 @@ export default function PronunciationStep() {
   function handleContinue() {
     if (!hasRecorded) {
       // User skipped recording - no analysis needed
-      update({ pronunciationScore: 7 });
+      update({
+        pronunciationScore: null,
+        pronunciationScore100: null,
+        pronunciationResult: null,
+        pronunciationCompleted: false,
+        pronunciationSkipped: true,
+      });
       goNext("pronunciation");
       return;
     }
@@ -175,8 +181,8 @@ export default function PronunciationStep() {
       const backendResult = statusData.result;
       const recScore = Math.round(
         Number(
-          backendResult.overall_score ??
-            backendResult.pronunciation_accuracy ??
+          backendResult.pronunciation_accuracy ??
+            backendResult.overall_score ??
             61,
         ),
       );
@@ -186,6 +192,8 @@ export default function PronunciationStep() {
         pronunciationScore: Math.round(recScore / 10),
         pronunciationScore100: recScore,
         pronunciationResult: backendResult,
+        pronunciationCompleted: true,
+        pronunciationSkipped: false,
         pronunciationWordEvaluations: backendResult.word_evaluations || [],
         pronunciationReasonLines: backendResult.summary
           ? [backendResult.summary]
@@ -211,9 +219,15 @@ export default function PronunciationStep() {
       });
 
       setMicError(errorMsg);
-      setScore(5);
-      // Allow user to continue anyway
-      update({ pronunciationScore: 5 });
+      setScore(null);
+      update({
+        pronunciationScore: null,
+        pronunciationScore100: null,
+        pronunciationResult: null,
+        pronunciationCompleted: false,
+        pronunciationSkipped: false,
+        pronunciationError: errorMsg,
+      });
     } finally {
       setIsAnalyzing(false);
     }

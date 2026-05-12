@@ -127,18 +127,27 @@ export default function ResultsStep() {
     data.pronunciationDetailedResult ||
     data.pronunciationAnalysis ||
     null;
-  const pronunciationScore100 = Math.round(
-    Number(
-      pronunciationResult?.overall_score ??
-        pronunciationResult?.pronunciation_accuracy ??
-        data.pronunciationScore100 ??
-        61,
-    ),
-  );
+  const hasPronunciationResult =
+    Boolean(data.pronunciationCompleted) ||
+    data.pronunciationScore100 != null ||
+    Boolean(pronunciationResult);
 
-  const ps = Math.max(1, Math.round(pronunciationScore100 / 10));
+  const pronunciationScore100 = hasPronunciationResult
+    ? Math.round(
+        Number(
+          pronunciationResult?.pronunciation_accuracy ??
+            pronunciationResult?.overall_score ??
+            data.pronunciationScore100 ??
+            0,
+        ),
+      )
+    : 0;
 
-  const fs = data.fluencyScore || 0;
+  const ps = hasPronunciationResult
+    ? Math.round(pronunciationScore100 / 10)
+    : 0;
+
+  const fs = data.speakingScore ?? data.fluencyScore ?? 0;
 
   // grammar: backend returns correct_count / total → convert to /10
   const gs =
@@ -153,13 +162,15 @@ export default function ResultsStep() {
       : 0;
 
   // Overall = weighted average of all completed sections
-  const completedScores = [ps, fs, gs, rs].filter((s) => s > 0);
+  const completedScores = [hasPronunciationResult ? ps : 0, fs, gs, rs].filter(
+    (s) => s > 0,
+  );
   const overall =
     completedScores.length > 0
       ? Math.round(
           completedScores.reduce((a, b) => a + b, 0) / completedScores.length,
         )
-      : ps;
+      : 0;
 
   // Calculate proficiency level based on overall score
   const level =
@@ -183,13 +194,15 @@ export default function ResultsStep() {
           : "#ef4444";
 
   const breakdown = [
-    {
-      label: "Pronunciation",
-      value: ps,
-      icon: "fa-volume-up",
-      color: "#8b5cf6",
-      displayValue: `${pronunciationScore100}/100`,
-    },
+    hasPronunciationResult
+      ? {
+          label: "Pronunciation",
+          value: ps,
+          icon: "fa-volume-up",
+          color: "#8b5cf6",
+          displayValue: `${pronunciationScore100}/100`,
+        }
+      : null,
     {
       label: "Speaking Fluency",
       value: fs,
@@ -198,24 +211,33 @@ export default function ResultsStep() {
     },
     { label: "Grammar", value: gs, icon: "fa-book", color: "#f59e0b" },
     { label: "Reading", value: rs, icon: "fa-book-reader", color: "#3b82f6" },
-  ];
+  ].filter(Boolean);
 
   // Language-specific recommendations from assessmentContent.js
   const recommendations = langContent.recommendations(data.language);
 
   const handleStart = () => {
     // Save assessment results AND update preferredLanguage to the language chosen in assessment
-    completeAssessment({
+    const assessmentResults = {
       level,
       overall,
-      pronunciationScore: ps,
-      pronunciationScore100,
-      pronunciationResult,
       fluencyScore: fs,
       grammarScore: gs,
       readingScore: rs,
       preferredLanguage: languageFullName, // ← fixes issue #9: persists chosen language to user profile
-    });
+    };
+
+    if (hasPronunciationResult) {
+      assessmentResults.pronunciationScore = ps;
+      assessmentResults.pronunciationScore100 = pronunciationScore100;
+      assessmentResults.pronunciationResult = pronunciationResult;
+    }
+
+    if (data.speakingResult) {
+      assessmentResults.speakingResult = data.speakingResult;
+    }
+
+    completeAssessment(assessmentResults);
     navigate("/dashboard");
   };
 
@@ -266,6 +288,17 @@ export default function ResultsStep() {
         >
           Based on your performance across all 4 assessment areas
         </p>
+        {!hasPronunciationResult && (
+          <p
+            style={{
+              color: "var(--text-muted)",
+              fontSize: "0.9rem",
+              marginTop: "0.75rem",
+            }}
+          >
+            Pronunciation was skipped, so it is not included in this result.
+          </p>
+        )}
       </div>
 
       {/* Overall Score Card */}

@@ -13,9 +13,16 @@ const STEPS = [
 
 const DEFAULT_DATA = {
   language: null,
-  level: null,           // CEFR level chosen on the language step (e.g. "B1")
+  level: null, // CEFR level chosen on the language step (e.g. "B1")
   pronunciationScore: 0,
+  pronunciationScore100: null,
+  pronunciationResult: null,
+  pronunciationCompleted: false,
+  pronunciationSkipped: false,
   fluencyScore: 0,
+  speakingScore: null,
+  speakingResult: null,
+  speakingSessionId: null,
   grammarScore: 0,
   grammarTotal: 6,
   readingScore: 0,

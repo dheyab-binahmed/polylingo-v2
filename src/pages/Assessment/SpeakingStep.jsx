@@ -1,165 +1,269 @@
-import { useState, useEffect, useRef } from 'react'
-import { useAssessment } from './assessmentContext'
-import { getSpeakingReply } from '../../services/api'
+import { useState, useEffect, useRef } from "react";
+import { useAssessment } from "./assessmentContext";
+import {
+  getSpeakingReply,
+  startSpeakingAssessment,
+  sendSpeakingAssessmentMessage,
+  completeSpeakingAssessment,
+} from "../../services/api";
 
 const TOPICS = [
-  'your favorite travel memory',
-  'why daily practice helps fluency',
-  'a challenge you solved recently',
-  'your favorite book and why',
-  'how you plan to use language in future work',
-]
+  "your favorite travel memory",
+  "why daily practice helps fluency",
+  "a challenge you solved recently",
+  "your favorite book and why",
+  "how you plan to use language in future work",
+];
 
 export default function SpeakingStep() {
-  const { data, update, goNext, goPrev } = useAssessment()
+  const { data, update, goNext, goPrev } = useAssessment();
 
   // Map language code → display name and BCP-47 TTS tag
   const LANG_MAP = {
-    en: { name: 'English',    tts: 'en-US' },
-    fr: { name: 'French',     tts: 'fr-FR' },
-    es: { name: 'Spanish',    tts: 'es-ES' },
-    de: { name: 'German',     tts: 'de-DE' },
-    it: { name: 'Italian',    tts: 'it-IT' },
-    pt: { name: 'Portuguese', tts: 'pt-PT' },
-    ja: { name: 'Japanese',   tts: 'ja-JP' },
-    ko: { name: 'Korean',     tts: 'ko-KR' },
-    zh: { name: 'Chinese',    tts: 'zh-CN' },
-    ar: { name: 'Arabic',     tts: 'ar-SA' },
-    ru: { name: 'Russian',    tts: 'ru-RU' },
-    tr: { name: 'Turkish',    tts: 'tr-TR' },
-  }
-  const langInfo    = LANG_MAP[data.language] || { name: 'English', tts: 'en-US' }
-  const languageName = langInfo.name
-  const ttsLang      = langInfo.tts
+    en: { name: "English", tts: "en-US" },
+    fr: { name: "French", tts: "fr-FR" },
+    es: { name: "Spanish", tts: "es-ES" },
+    de: { name: "German", tts: "de-DE" },
+    it: { name: "Italian", tts: "it-IT" },
+    pt: { name: "Portuguese", tts: "pt-PT" },
+    ja: { name: "Japanese", tts: "ja-JP" },
+    ko: { name: "Korean", tts: "ko-KR" },
+    zh: { name: "Chinese", tts: "zh-CN" },
+    ar: { name: "Arabic", tts: "ar-SA" },
+    ru: { name: "Russian", tts: "ru-RU" },
+    tr: { name: "Turkish", tts: "tr-TR" },
+  };
+  const langInfo = LANG_MAP[data.language] || { name: "English", tts: "en-US" };
+  const languageName = langInfo.name;
+  const ttsLang = langInfo.tts;
 
-  const [topic]       = useState(() => TOPICS[Math.floor(Math.random() * TOPICS.length)])
-  const [messages,    setMessages]    = useState([])
-  const [input,       setInput]       = useState('')
-  const [recording,   setRecording]   = useState(false)
-  const [aiSpeaking,  setAiSpeaking]  = useState(false)
-  const [transcripts, setTranscripts] = useState([])
-  const [score,       setScore]       = useState(null)
-  const [sessionStarted, setSessionStarted] = useState(false) // gates TTS behind user gesture
+  const [topic] = useState(
+    () => TOPICS[Math.floor(Math.random() * TOPICS.length)],
+  );
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [recording, setRecording] = useState(false);
+  const [aiSpeaking, setAiSpeaking] = useState(false);
+  const [transcripts, setTranscripts] = useState([]);
+  const [score, setScore] = useState(null);
+  const [sessionStarted, setSessionStarted] = useState(false); // gates TTS behind user gesture
+  const [sessionId, setSessionId] = useState(null);
 
-  const bottomRef = useRef(null)
-  const inputRef  = useRef(null)
+  const bottomRef = useRef(null);
+  const inputRef = useRef(null);
 
   // useRef keeps the initial prompt stable so the useEffect below has a proper dependency
-  const initialPromptRef = useRef(`Hi! Let's practice speaking in ${languageName}. Please talk about ${topic}.`)
-  const initialPromptText = initialPromptRef.current
+  const initialPromptRef = useRef(
+    `Hi! Let's practice speaking in ${languageName}. Please talk about ${topic}.`,
+  );
+  const initialPromptText = initialPromptRef.current;
 
   // Scroll to bottom whenever messages change
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   // Show initial AI message on mount — initialPromptRef.current is stable (no re-renders)
   useEffect(() => {
-    const prompt = initialPromptRef.current
+    if (sessionStarted) return undefined;
+
+    const prompt = initialPromptRef.current;
     const timer = setTimeout(() => {
-      setMessages([{ role: 'ai', text: prompt, id: Date.now() }])
-    }, 400)
-    return () => clearTimeout(timer)
-  }, []) // Safe: initialPromptRef.current never changes after mount
+      setMessages([{ role: "ai", text: prompt, id: Date.now() }]);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [sessionStarted]); // Safe: initialPromptRef.current never changes after mount
 
   // Called when user clicks "Start Session" — counts as a user gesture so TTS is allowed
-  const handleStartSession = () => {
-    setSessionStarted(true)
-    speakText(initialPromptText)
-  }
+  const handleStartSession = async () => {
+    setSessionStarted(true);
+
+    try {
+      const session = await startSpeakingAssessment({
+        level: data.level || "B1",
+        language: data.language || "en",
+        mode: "voice",
+      });
+
+      const nextSessionId = session.session_id || session.id || null;
+      const introMessage = session.initial_message || initialPromptText;
+
+      setSessionId(nextSessionId);
+      setMessages([{ role: "ai", text: introMessage, id: Date.now() }]);
+      speakText(introMessage);
+    } catch (_) {
+      setSessionId(null);
+      setMessages([{ role: "ai", text: initialPromptText, id: Date.now() }]);
+      speakText(initialPromptText);
+    }
+  };
 
   // TTS: AI speaks back to the user — waits for voices to load first, uses correct language
   const speakText = (text) => {
-    if (!('speechSynthesis' in window)) return
-    window.speechSynthesis.cancel()
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
 
     const doSpeak = () => {
-      const utterance  = new SpeechSynthesisUtterance(text)
-      utterance.lang   = ttsLang
-      utterance.rate   = 0.92
-      utterance.pitch  = 1
-      utterance.volume = 0.85
-      const voices     = window.speechSynthesis.getVoices()
-      const preferred  = voices.find(v => v.lang === ttsLang)
-                      || voices.find(v => v.lang.startsWith(ttsLang.split('-')[0]))
-                      || voices[0]
-      if (preferred) utterance.voice = preferred
-      utterance.onstart = () => setAiSpeaking(true)
-      utterance.onend   = () => setAiSpeaking(false)
-      utterance.onerror = () => setAiSpeaking(false)
-      window.speechSynthesis.speak(utterance)
-    }
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = ttsLang;
+      utterance.rate = 0.92;
+      utterance.pitch = 1;
+      utterance.volume = 0.85;
+      const voices = window.speechSynthesis.getVoices();
+      const preferred =
+        voices.find((v) => v.lang === ttsLang) ||
+        voices.find((v) => v.lang.startsWith(ttsLang.split("-")[0])) ||
+        voices[0];
+      if (preferred) utterance.voice = preferred;
+      utterance.onstart = () => setAiSpeaking(true);
+      utterance.onend = () => setAiSpeaking(false);
+      utterance.onerror = () => setAiSpeaking(false);
+      window.speechSynthesis.speak(utterance);
+    };
 
-    const voices = window.speechSynthesis.getVoices()
+    const voices = window.speechSynthesis.getVoices();
     if (voices.length > 0) {
       // Voices already loaded — speak immediately, no listener needed
-      doSpeak()
+      doSpeak();
     } else {
       // Voices not ready — attach listener but use a flag so it only fires once
-      let fired = false
+      let fired = false;
       const handler = () => {
-        if (fired) return
-        fired = true
-        window.speechSynthesis.removeEventListener('voiceschanged', handler)
-        doSpeak()
-      }
-      window.speechSynthesis.addEventListener('voiceschanged', handler)
+        if (fired) return;
+        fired = true;
+        window.speechSynthesis.removeEventListener("voiceschanged", handler);
+        doSpeak();
+      };
+      window.speechSynthesis.addEventListener("voiceschanged", handler);
       // Safety fallback: if voiceschanged never fires within 2s, try anyway
       setTimeout(() => {
-        if (!fired) { fired = true; window.speechSynthesis.removeEventListener('voiceschanged', handler); doSpeak() }
-      }, 2000)
+        if (!fired) {
+          fired = true;
+          window.speechSynthesis.removeEventListener("voiceschanged", handler);
+          doSpeak();
+        }
+      }, 2000);
     }
-  }
+  };
 
   // Handle user message — typed or spoken
   // 👉 BACKEND: getSpeakingReply() calls /api/assessment/speaking/reply
   // In mock mode it returns a random placeholder; swap for real call in api.js when ready
-  const handleUserMessage = async (text) => {
-    const trimmed = text.trim()
-    if (!trimmed) return
-    setTranscripts(prev => [...prev, trimmed])
-    setMessages(prev => [...prev, { role: 'user', text: trimmed, id: Date.now() }])
-    setInput('')
+  const handleUserMessage = async (text, mode = "text") => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setTranscripts((prev) => [...prev, trimmed]);
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", text: trimmed, id: Date.now() },
+    ]);
+    setInput("");
     try {
+      if (sessionId) {
+        const result = await sendSpeakingAssessmentMessage({
+          sessionId,
+          text: trimmed,
+          mode,
+        });
+
+        const reply = result.ai_response || result.reply || "";
+        if (result.user_scores) {
+          update({ speakingTurnScores: result.user_scores });
+        }
+        if (reply) {
+          setMessages((prev) => [
+            ...prev,
+            { role: "ai", text: reply, id: Date.now() + 1 },
+          ]);
+          speakText(reply);
+        }
+        return;
+      }
+
       const { reply } = await getSpeakingReply({
         message: trimmed,
         history: messages,
         language: data.language,
-      })
-      setMessages(prev => [...prev, { role: 'ai', text: reply, id: Date.now() + 1 }])
-      speakText(reply)
+      });
+      setMessages((prev) => [
+        ...prev,
+        { role: "ai", text: reply, id: Date.now() + 1 },
+      ]);
+      speakText(reply);
     } catch (_) {
       // Silently fail — don't block the conversation if the API is unreachable
     }
-  }
+  };
 
   // Speech recognition — captures and stores the user's voice
   const startSpeechRecognition = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SpeechRecognition) { inputRef.current?.focus(); return }
-    const recognition           = new SpeechRecognition()
-    recognition.lang            = ttsLang   // match the user's chosen language
-    recognition.interimResults  = false
-    recognition.maxAlternatives = 1
-    recognition.onstart  = () => setRecording(true)
-    recognition.onresult = (e) => handleUserMessage(e.results[0][0].transcript)
-    recognition.onerror  = () => setRecording(false)
-    recognition.onend    = () => setRecording(false)
-    recognition.start()
-  }
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      inputRef.current?.focus();
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = ttsLang; // match the user's chosen language
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onstart = () => setRecording(true);
+    recognition.onresult = (e) =>
+      handleUserMessage(e.results[0][0].transcript, "voice");
+    recognition.onerror = () => setRecording(false);
+    recognition.onend = () => setRecording(false);
+    recognition.start();
+  };
 
   // Grade and move to next step
-  const handleContinue = () => {
-    const userCount    = messages.filter(m => m.role === 'user').length
-    if (userCount === 0) return
-    const generatedScore = Math.min(10, Math.max(4, 5 + userCount))
-    update({ fluencyScore: generatedScore, speakingTranscripts: transcripts })
-    setScore(generatedScore)
-    setTimeout(() => goNext('speaking'), 400)
-  }
+  const handleContinue = async () => {
+    const userCount = messages.filter((m) => m.role === "user").length;
+    if (userCount === 0) return;
 
-  const userCount   = messages.filter(m => m.role === 'user').length
-  const canContinue = userCount > 0 && sessionStarted
+    try {
+      if (sessionId) {
+        const completion = await completeSpeakingAssessment(sessionId);
+        const result = completion.results || completion;
+        const speakingRaw =
+          result?.scores?.fluency ??
+          result?.scores?.overall_score ??
+          result?.overall_score ??
+          0;
+        const speakingScore = Math.max(
+          0,
+          Math.min(10, Math.round(Number(speakingRaw) / 10)),
+        );
+
+        update({
+          speakingSessionId: sessionId,
+          speakingResult: completion,
+          speakingScore,
+          fluencyScore: speakingScore,
+          speakingTranscripts: transcripts,
+        });
+        setScore(speakingScore);
+      } else {
+        const generatedScore = Math.min(10, Math.max(4, 5 + userCount));
+        update({
+          fluencyScore: generatedScore,
+          speakingTranscripts: transcripts,
+        });
+        setScore(generatedScore);
+      }
+    } catch (_) {
+      const generatedScore = Math.min(10, Math.max(4, 5 + userCount));
+      update({
+        fluencyScore: generatedScore,
+        speakingTranscripts: transcripts,
+      });
+      setScore(generatedScore);
+    }
+
+    setTimeout(() => goNext("speaking"), 400);
+  };
+
+  const userCount = messages.filter((m) => m.role === "user").length;
+  const canContinue = userCount > 0 && sessionStarted;
 
   return (
     <>
@@ -331,18 +435,23 @@ export default function SpeakingStep() {
       `}</style>
 
       <div className="sp-root test-container fade-in">
-
         {/* Header */}
         <div className="sp-header">
           <h2>
-            <i className="fas fa-comments" style={{ color:'#6366f1', marginRight:'0.5rem' }} />
+            <i
+              className="fas fa-comments"
+              style={{ color: "#6366f1", marginRight: "0.5rem" }}
+            />
             Speaking Assessment
           </h2>
-          <p>Speak naturally — the AI responds and your conversation is stored for evaluation.</p>
+          <p>
+            Speak naturally — the AI responds and your conversation is stored
+            for evaluation.
+          </p>
         </div>
 
         {/* Topic pill */}
-        <div style={{ textAlign:'center' }}>
+        <div style={{ textAlign: "center" }}>
           <span className="sp-topic">
             <i className="fas fa-lightbulb" />
             Topic: {topic}
@@ -351,29 +460,36 @@ export default function SpeakingStep() {
 
         {/* Conversation card */}
         <div className="sp-card">
-
           {/* Card header */}
           <div className="sp-card-header">
             <div className="sp-card-hl">
               <div className="sp-ai-ava">🤖</div>
               <div>
                 <div className="sp-ai-name">AI Language Tutor</div>
-                <div className="sp-ai-sub">{languageName} • Conversation Practice</div>
+                <div className="sp-ai-sub">
+                  {languageName} • Conversation Practice
+                </div>
               </div>
             </div>
             <div className="sp-badge">
-              <div className={`sp-dot${aiSpeaking ? ' speak' : recording ? ' listen' : ''}`} />
-              {recording ? 'Listening…' : aiSpeaking ? 'Speaking…' : 'Ready'}
+              <div
+                className={`sp-dot${aiSpeaking ? " speak" : recording ? " listen" : ""}`}
+              />
+              {recording ? "Listening…" : aiSpeaking ? "Speaking…" : "Ready"}
             </div>
           </div>
 
           {/* Messages */}
           <div className="sp-chat">
-            {messages.map(msg => (
+            {messages.map((msg) => (
               <div key={msg.id} className={`sp-row ${msg.role}`}>
-                <div className={`sp-ava ${msg.role}`}>{msg.role === 'ai' ? 'AI' : 'ME'}</div>
+                <div className={`sp-ava ${msg.role}`}>
+                  {msg.role === "ai" ? "AI" : "ME"}
+                </div>
                 <div className="sp-body">
-                  <div className="sp-lbl">{msg.role === 'ai' ? 'AI Tutor' : 'You'}</div>
+                  <div className="sp-lbl">
+                    {msg.role === "ai" ? "AI Tutor" : "You"}
+                  </div>
                   <div className={`sp-bubble ${msg.role}`}>{msg.text}</div>
                 </div>
               </div>
@@ -385,7 +501,11 @@ export default function SpeakingStep() {
                 <div className="sp-body">
                   <div className="sp-lbl">AI Tutor</div>
                   <div className="sp-bubble ai">
-                    <div className="sp-typing"><span/><span/><span/></div>
+                    <div className="sp-typing">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -397,18 +517,23 @@ export default function SpeakingStep() {
 
           {/* Input controls */}
           <div className="sp-controls">
-
             {/* ── Start Session button — shown before session begins ── */}
             {!sessionStarted && (
-              <div style={{ textAlign: 'center', padding: '0.5rem 0 0.25rem' }}>
+              <div style={{ textAlign: "center", padding: "0.5rem 0 0.25rem" }}>
                 <button
                   className="sp-continue"
-                  style={{ margin: '0 auto' }}
+                  style={{ margin: "0 auto" }}
                   onClick={handleStartSession}
                 >
                   🎙️ Start Speaking Session
                 </button>
-                <div style={{ fontSize: '0.77rem', color: 'var(--text-muted)', marginTop: '0.6rem' }}>
+                <div
+                  style={{
+                    fontSize: "0.77rem",
+                    color: "var(--text-muted)",
+                    marginTop: "0.6rem",
+                  }}
+                >
                   Click to start — the AI will speak first
                 </div>
               </div>
@@ -419,17 +544,25 @@ export default function SpeakingStep() {
               <>
                 {/* Mic */}
                 <div className="sp-mic-row">
-                  <div style={{ textAlign:'center' }}>
+                  <div style={{ textAlign: "center" }}>
                     <button
-                      className={`sp-mic-btn ${recording ? 'active' : 'idle'}`}
+                      className={`sp-mic-btn ${recording ? "active" : "idle"}`}
                       onClick={startSpeechRecognition}
                       disabled={recording || aiSpeaking}
-                      title={recording ? 'Listening…' : 'Click to speak'}
+                      title={recording ? "Listening…" : "Click to speak"}
                     >
-                      <i className={`fas ${recording ? 'fa-stop' : 'fa-microphone'}`} />
+                      <i
+                        className={`fas ${recording ? "fa-stop" : "fa-microphone"}`}
+                      />
                     </button>
-                    <div className={`sp-mic-lbl${recording ? ' listen' : aiSpeaking ? ' speak' : ''}`}>
-                      {recording ? 'Listening… speak now' : aiSpeaking ? 'AI is speaking…' : 'Tap mic to speak'}
+                    <div
+                      className={`sp-mic-lbl${recording ? " listen" : aiSpeaking ? " speak" : ""}`}
+                    >
+                      {recording
+                        ? "Listening… speak now"
+                        : aiSpeaking
+                          ? "AI is speaking…"
+                          : "Tap mic to speak"}
                     </div>
                   </div>
                 </div>
@@ -440,14 +573,16 @@ export default function SpeakingStep() {
                     ref={inputRef}
                     className="sp-input"
                     value={input}
-                    onChange={e => setInput(e.target.value)}
+                    onChange={(e) => setInput(e.target.value)}
                     placeholder="Or type your reply here…"
-                    onKeyDown={e => e.key === 'Enter' && handleUserMessage(input)}
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && handleUserMessage(input, "text")
+                    }
                     disabled={recording || aiSpeaking}
                   />
                   <button
                     className="sp-send"
-                    onClick={() => handleUserMessage(input)}
+                    onClick={() => handleUserMessage(input, "text")}
                     disabled={!input.trim() || recording || aiSpeaking}
                   >
                     <i className="fas fa-paper-plane" />
@@ -458,10 +593,16 @@ export default function SpeakingStep() {
                 <div className="sp-footer">
                   <span className="sp-count">
                     <i className="fas fa-comment-dots" />
-                    {userCount} {userCount === 1 ? 'response' : 'responses'} recorded
+                    {userCount} {userCount === 1 ? "response" : "responses"}{" "}
+                    recorded
                   </span>
                   {userCount === 0 && (
-                    <span style={{ fontSize:'0.75rem', color:'var(--text-muted)' }}>
+                    <span
+                      style={{
+                        fontSize: "0.75rem",
+                        color: "var(--text-muted)",
+                      }}
+                    >
                       At least 1 response needed
                     </span>
                   )}
@@ -475,21 +616,25 @@ export default function SpeakingStep() {
         {userCount === 0 && (
           <div className="sp-hint">
             <i className="fas fa-info-circle" />
-            Use the mic to speak, or type below. Your speech is captured and stored for the backend to evaluate.
+            Use the mic to speak, or type below. Your speech is captured and
+            stored for the backend to evaluate.
           </div>
         )}
 
         {/* Navigation */}
         <div className="sp-nav">
-          <button className="sp-back" onClick={() => goPrev('speaking')}>
+          <button className="sp-back" onClick={() => goPrev("speaking")}>
             <i className="fas fa-arrow-left" /> Back
           </button>
-          <button className="sp-continue" onClick={handleContinue} disabled={!canContinue}>
+          <button
+            className="sp-continue"
+            onClick={handleContinue}
+            disabled={!canContinue}
+          >
             Continue <i className="fas fa-arrow-right" />
           </button>
         </div>
-
       </div>
     </>
-  )
+  );
 }

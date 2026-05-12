@@ -238,6 +238,47 @@ export async function createSession() {
 }
 
 /**
+ * Start the backend speaking assessment session.
+ * POST /api/v1/assessment/speaking/start
+ */
+export async function startSpeakingAssessment({
+  level,
+  language,
+  mode = "voice",
+}) {
+  return await apiFetch("/assessment/speaking/start", {
+    method: "POST",
+    body: JSON.stringify({ level, language, mode }),
+  });
+}
+
+/**
+ * Send a speaking response to the backend session.
+ * POST /api/v1/assessment/speaking/:sessionId/message
+ */
+export async function sendSpeakingAssessmentMessage({
+  sessionId,
+  text,
+  mode = "voice",
+  audio_analysis = null,
+}) {
+  return await apiFetch(`/assessment/speaking/${sessionId}/message`, {
+    method: "POST",
+    body: JSON.stringify({ text, mode, audio_analysis }),
+  });
+}
+
+/**
+ * Complete the backend speaking assessment and fetch the final results.
+ * POST /api/v1/assessment/speaking/:sessionId/complete
+ */
+export async function completeSpeakingAssessment(sessionId) {
+  return await apiFetch(`/assessment/speaking/${sessionId}/complete`, {
+    method: "POST",
+  });
+}
+
+/**
  * Upload audio recording for a session.
  * POST /api/v1/sessions/:sessionId/audio
  * Body: FormData with 'audio' file field
