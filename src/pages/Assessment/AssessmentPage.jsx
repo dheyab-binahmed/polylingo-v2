@@ -19,6 +19,7 @@ const DEFAULT_DATA = {
   pronunciationResult: null,
   pronunciationCompleted: false,
   pronunciationSkipped: false,
+  pronunciationPrompt: null, // The pronunciation prompt selected for this assessment
   fluencyScore: 0,
   speakingScore: null,
   speakingResult: null,

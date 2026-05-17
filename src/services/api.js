@@ -347,11 +347,18 @@ export async function getPronunciationJobStatus(jobId) {
  * ⚠️  Currently in PronunciationStep.jsx the score is faked with Math.random().
  *     Replace that with a call to this function.
  */
-export async function scorePronunciation(audioBlob, languageCode) {
+export async function scorePronunciation(
+  audioBlob,
+  languageCode,
+  pronunciationPrompt = null,
+) {
   const token = localStorage.getItem("polylingo_token");
   const formData = new FormData();
   formData.append("audio", audioBlob, "recording.webm");
   formData.append("language", languageCode);
+  if (pronunciationPrompt) {
+    formData.append("reference_text", pronunciationPrompt);
+  }
 
   // ─── REAL IMPLEMENTATION ──────────────────────────────────────
   const response = await fetch(`${BASE_URL}/assessment/pronunciation/score`, {
