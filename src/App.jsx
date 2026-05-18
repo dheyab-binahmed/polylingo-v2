@@ -1,11 +1,14 @@
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import { updatePresence } from "./services/api";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import HomePage from "./pages/HomePage";
 import DashboardPage from "./pages/DashboardPage";
 import PracticePage from "./pages/PracticePage";
 import CommunityPage from "./pages/CommunityPage";
+import FriendsPage from "./pages/Community/FriendsPage";
 import ProfilePage from "./pages/ProfilePage";
 import AssessmentPage from "./pages/Assessment/AssessmentPage";
 import LanguageStep from "./pages/Assessment/LanguageStep";
@@ -20,6 +23,17 @@ import LoginPage from "./components/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 
 export default function App() {
+  useEffect(() => {
+    const token = localStorage.getItem("polylingo_token");
+    if (!token) return undefined;
+
+    updatePresence(true).catch(() => {});
+
+    return () => {
+      updatePresence(false).catch(() => {});
+    };
+  }, []);
+
   return (
     <AuthProvider>
       <BrowserRouter>
@@ -53,6 +67,14 @@ export default function App() {
               element={
                 <AuthRequired>
                   <CommunityPage />
+                </AuthRequired>
+              }
+            />
+            <Route
+              path="/community/friends"
+              element={
+                <AuthRequired>
+                  <FriendsPage />
                 </AuthRequired>
               }
             />
