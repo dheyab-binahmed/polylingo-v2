@@ -36,6 +36,7 @@ const DMModal = ({ partner, onClose, onCall }) => {
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const sendingRef = useRef(false);
+  const optimisticIds = useRef(new Set());
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -43,21 +44,28 @@ const DMModal = ({ partner, onClose, onCall }) => {
 
   useEffect(() => {
     setTimeout(() => inputRef.current?.focus(), 80);
-    // load messages for partner
-    (async () => {
+    let mounted = true;
+    const load = async () => {
       try {
         const data = await getDmMessages(partner.id);
-        setMsgs(data.messages || []);
+        if (!mounted) return;
+        const serverMessages = data.messages || [];
+        setMsgs(serverMessages);
+        optimisticIds.current.clear();
       } catch (err) {
         // ignore
       }
-    })();
+    };
+    load();
+    const interval = setInterval(load, 3000);
     return () => {
+      mounted = false;
+      clearInterval(interval);
       clearTimeout(typingRef.current);
       clearInterval(timerRef.current);
       stopStream();
     };
-  }, []);
+  }, [partner.id]);
 
   // Call duration timer
   useEffect(() => {
@@ -157,11 +165,13 @@ const DMModal = ({ partner, onClose, onCall }) => {
     const text = input.trim();
     if (!text || !user?.id || sendingRef.current) return;
     sendingRef.current = true;
+    const tempId = Date.now();
+    optimisticIds.current.add(tempId);
     const optimistic = {
-      id: Date.now(),
+      id: tempId,
       from: user.id,
       text,
-      created_at: new Date().toISOString(),
+      ts: new Date().toISOString(),
     };
     setMsgs((p) => [...p, optimistic]);
     setInput("");
@@ -169,7 +179,8 @@ const DMModal = ({ partner, onClose, onCall }) => {
     try {
       await postDmMessage(partner.id, text);
     } catch (err) {
-      setMsgs((p) => p.filter((m) => m.id !== optimistic.id));
+      setMsgs((p) => p.filter((m) => m.id !== tempId));
+      optimisticIds.current.delete(tempId);
     } finally {
       setTyping(false);
       sendingRef.current = false;
