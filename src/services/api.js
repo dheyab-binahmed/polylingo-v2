@@ -198,6 +198,63 @@ export async function fetchWeeklyActivity() {
   }
 }
 
+/**
+ * Get weekly leaderboard data.
+ * GET /api/v1/leaderboard/weekly
+ * Expected response: [{ rank, user_id, name, minutes }, ...]
+ */
+export async function fetchLeaderboard() {
+  try {
+    return await apiFetch("/leaderboard/weekly");
+  } catch (err) {
+    console.error("Failed to fetch leaderboard:", err);
+    return null;
+  }
+}
+
+// ─── Friends / Community APIs ─────────────────────────────────
+export async function sendFriendRequest({ receiver_id, message }) {
+  try {
+    return await apiFetch("/friends/request", {
+      method: "POST",
+      body: JSON.stringify({ receiver_id, message }),
+    });
+  } catch (err) {
+    console.error("Failed to send friend request:", err);
+    throw err;
+  }
+}
+
+export async function fetchFriendRequests() {
+  try {
+    return await apiFetch("/friends/requests");
+  } catch (err) {
+    console.error("Failed to fetch friend requests:", err);
+    return { incoming: [], outgoing: [] };
+  }
+}
+
+export async function acceptFriendRequest(request_id) {
+  try {
+    return await apiFetch("/friends/accept", {
+      method: "POST",
+      body: JSON.stringify({ request_id }),
+    });
+  } catch (err) {
+    console.error("Failed to accept friend request:", err);
+    throw err;
+  }
+}
+
+export async function fetchFriends() {
+  try {
+    return await apiFetch("/friends/list");
+  } catch (err) {
+    console.error("Failed to fetch friends:", err);
+    return [];
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  ASSESSMENT & SESSIONS
 // ═══════════════════════════════════════════════════════════════
@@ -347,11 +404,18 @@ export async function getPronunciationJobStatus(jobId) {
  * ⚠️  Currently in PronunciationStep.jsx the score is faked with Math.random().
  *     Replace that with a call to this function.
  */
-export async function scorePronunciation(audioBlob, languageCode) {
+export async function scorePronunciation(
+  audioBlob,
+  languageCode,
+  pronunciationPrompt = null,
+) {
   const token = localStorage.getItem("polylingo_token");
   const formData = new FormData();
   formData.append("audio", audioBlob, "recording.webm");
   formData.append("language", languageCode);
+  if (pronunciationPrompt) {
+    formData.append("reference_text", pronunciationPrompt);
+  }
 
   // ─── REAL IMPLEMENTATION ──────────────────────────────────────
   const response = await fetch(`${BASE_URL}/assessment/pronunciation/score`, {
@@ -458,6 +522,217 @@ export async function sendDirectMessage({ toUserId, content }) {
     });
   } catch (err) {
     console.error("Failed to send direct message:", err);
+    throw err;
+  }
+}
+
+/**
+ * Search users by q (email or name)
+ * GET /api/v1/users/search?q=
+ */
+export async function searchUsers(q) {
+  try {
+    return await apiFetch(`/users/search?q=${encodeURIComponent(q)}`);
+  } catch (err) {
+    console.error("User search failed:", err);
+    return { users: [] };
+  }
+}
+
+/** DM helpers */
+export async function getDmMessages(userId) {
+  try {
+    return await apiFetch(`/community/dms/${userId}/messages`);
+  } catch (err) {
+    console.error("Failed to get DM messages:", err);
+    return { messages: [] };
+  }
+}
+
+export async function postDmMessage(userId, text) {
+  try {
+    return await apiFetch(`/community/dms/${userId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+  } catch (err) {
+    console.error("Failed to post DM message:", err);
+    throw err;
+  }
+}
+
+/** Partners */
+export async function fetchPartners() {
+  try {
+    return await apiFetch(`/community/partners`);
+  } catch (err) {
+    console.error("Failed to fetch partners:", err);
+    return { partners: [] };
+  }
+}
+
+export async function connectPartner(partnerId) {
+  try {
+    return await apiFetch(`/community/partners/${partnerId}/connect`, {
+      method: "POST",
+    });
+  } catch (err) {
+    console.error("Failed to connect partner:", err);
+    throw err;
+  }
+}
+
+export async function disconnectPartner(partnerId) {
+  try {
+    return await apiFetch(`/community/partners/${partnerId}/connect`, {
+      method: "DELETE",
+    });
+  } catch (err) {
+    console.error("Failed to disconnect partner:", err);
+    throw err;
+  }
+}
+
+export async function acceptPartner(partnerId) {
+  try {
+    return await apiFetch(`/community/partners/${partnerId}/accept`, {
+      method: "POST",
+    });
+  } catch (err) {
+    console.error("Failed to accept partner:", err);
+    throw err;
+  }
+}
+
+export async function rejectPartner(partnerId) {
+  try {
+    return await apiFetch(`/community/partners/${partnerId}/reject`, {
+      method: "POST",
+    });
+  } catch (err) {
+    console.error("Failed to reject partner:", err);
+    throw err;
+  }
+}
+
+export async function updatePresence(is_online) {
+  try {
+    return await apiFetch(`/users/presence`, {
+      method: "POST",
+      body: JSON.stringify({ is_online }),
+    });
+  } catch (err) {
+    console.error("Failed to update presence:", err);
+    throw err;
+  }
+}
+
+/** Groups */
+export async function createGroup(payload) {
+  try {
+    return await apiFetch(`/community/groups`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    console.error("Failed to create group:", err);
+    throw err;
+  }
+}
+
+export async function fetchGroups() {
+  try {
+    return await apiFetch(`/community/groups`);
+  } catch (err) {
+    console.error("Failed to fetch groups:", err);
+    return { groups: [] };
+  }
+}
+
+export async function joinGroup(groupId) {
+  try {
+    return await apiFetch(`/community/groups/${groupId}/join`, {
+      method: "POST",
+    });
+  } catch (err) {
+    console.error("Failed to join group:", err);
+    throw err;
+  }
+}
+
+export async function leaveGroup(groupId) {
+  try {
+    return await apiFetch(`/community/groups/${groupId}/join`, {
+      method: "DELETE",
+    });
+  } catch (err) {
+    console.error("Failed to leave group:", err);
+    throw err;
+  }
+}
+
+export async function getGroupMessages(groupId) {
+  try {
+    return await apiFetch(`/community/groups/${groupId}/messages`);
+  } catch (err) {
+    console.error("Failed to get group messages:", err);
+    return { messages: [] };
+  }
+}
+
+export async function postGroupMessage(groupId, text) {
+  try {
+    return await apiFetch(`/community/groups/${groupId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+  } catch (err) {
+    console.error("Failed to post group message:", err);
+    throw err;
+  }
+}
+
+/** Post interactions */
+export async function postComment(postId, text) {
+  try {
+    return await apiFetch(`/community/posts/${postId}/comment`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+  } catch (err) {
+    console.error("Failed to post comment:", err);
+    throw err;
+  }
+}
+
+export async function sharePost(postId) {
+  try {
+    return await apiFetch(`/community/posts/${postId}/share`, {
+      method: "POST",
+    });
+  } catch (err) {
+    console.error("Failed to share post:", err);
+    throw err;
+  }
+}
+
+export async function reportPost(postId, reason) {
+  try {
+    return await apiFetch(`/community/posts/${postId}/report`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
+  } catch (err) {
+    console.error("Failed to report post:", err);
+    throw err;
+  }
+}
+
+export async function deletePost(postId) {
+  try {
+    return await apiFetch(`/community/posts/${postId}`, { method: "DELETE" });
+  } catch (err) {
+    console.error("Failed to delete post:", err);
     throw err;
   }
 }

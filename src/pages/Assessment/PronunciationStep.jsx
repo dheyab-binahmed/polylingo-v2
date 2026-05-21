@@ -9,9 +9,21 @@ import {
 export default function PronunciationStep() {
   const { data, update, goNext, goPrev } = useAssessment();
 
-  // Load pronunciation sentences for the selected language
+  // Load pronunciation sentences for the selected language and difficulty level
   const content = getAssessmentContent(data.language);
-  const SENTENCES = content.pronunciation;
+  const [selectedPrompt, setSelectedPrompt] = useState(null);
+
+  // Initialize with a random prompt based on difficulty level
+  useEffect(() => {
+    if (!selectedPrompt && content.pronunciation && data.level) {
+      const prompts = content.pronunciation[data.level];
+      if (prompts && prompts.length > 0) {
+        const randomIndex = Math.floor(Math.random() * prompts.length);
+        setSelectedPrompt(prompts[randomIndex]);
+        update({ pronunciationPrompt: prompts[randomIndex] });
+      }
+    }
+  }, [data.level, content.pronunciation, selectedPrompt, update]);
 
   const [recording, setRecording] = useState(false);
   const [hasRecorded, setHasRecorded] = useState(false);
@@ -144,7 +156,11 @@ export default function PronunciationStep() {
     setMicError("");
 
     try {
-      const submission = await scorePronunciation(audioBlob, data.language);
+      const submission = await scorePronunciation(
+        audioBlob,
+        data.language,
+        selectedPrompt,
+      );
       const jobId = submission.job_id || submission.id;
 
       if (!jobId) {
@@ -253,7 +269,7 @@ export default function PronunciationStep() {
 
       <div className="test-content">
         <div className="speaking-test">
-          {/* Sentences to read — now in the correct language */}
+          {/* Pronunciation prompt to read — matched to difficulty level */}
           <div
             className="read-aloud-box"
             style={{
@@ -283,32 +299,27 @@ export default function PronunciationStep() {
                   letterSpacing: "0.05em",
                 }}
               >
-                Read Aloud — {content.fullName}
+                Read Aloud ({data.level}) — {content.fullName}
               </span>
             </div>
-            {SENTENCES.map((s, i) => (
+            {selectedPrompt ? (
               <p
-                key={i}
                 style={{
-                  margin: "0 0 0.6rem",
+                  margin: 0,
                   fontWeight: 500,
-                  fontSize: "1rem",
+                  fontSize: "1.1rem",
                   color: "var(--text-base)",
-                  lineHeight: 1.6,
+                  lineHeight: 1.8,
+                  fontStyle: "italic",
                 }}
               >
-                <span
-                  style={{
-                    color: "var(--text-muted)",
-                    marginRight: "0.5rem",
-                    fontSize: "0.8rem",
-                  }}
-                >
-                  {i + 1}.
-                </span>
-                {s}
+                {selectedPrompt}
               </p>
-            ))}
+            ) : (
+              <p style={{ margin: 0, color: "var(--text-muted)" }}>
+                Loading pronunciation prompt...
+              </p>
+            )}
           </div>
 
           {micError && (
