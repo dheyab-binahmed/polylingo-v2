@@ -1,764 +1,717 @@
-import { useState, useRef, useEffect } from "react";
-import { getDmMessages, postDmMessage } from "../../../services/api";
-import { useAuth } from "../../../context/AuthContext";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 
-// ── BACKEND INTEGRATION ──────────────────────────────────────────────────────
-// Load history : GET  /api/community/dm/:partnerId/messages
-// Send message : POST /api/community/dm/:partnerId/messages  { text }
-// Real-time    : socket.on("dm:message", msg => setMsgs(p => [...p, msg]))
-// Start call   : WebRTC peer connection using roomToken from backend
-//              : POST /api/community/dm/:partnerId/call → { roomToken }
-// ─────────────────────────────────────────────────────────────────────────────
+import AuthContext from "../../../context/AuthContext";
+import { getDmMessages } from "../../../services/api";
+import {
+  endCall,
+  onCallAnswered,
+  onCallEnded,
+  onCallIce,
+  onCallIncoming,
+  onDmMessage,
+  sendCallAnswer,
+  sendCallOffer,
+  sendDM,
+  sendIceCandidate,
+} from "../../../services/socket";
 
-const fmt = (s) =>
-  `${Math.floor(s / 60)
-    .toString()
-    .padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
+const ICE_SERVERS = {
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+};
 
-const DMModal = ({ partner, onClose, onCall }) => {
-  const { user } = useAuth();
+function getStoredUser() {
+  try {
+    return JSON.parse(localStorage.getItem("polylingo_auth_user") || "null");
+  } catch (_) {
+    return null;
+  }
+}
+
+function sameId(left, right) {
+  return String(left) === String(right);
+}
+
+function formatTime(seconds) {
+  const minutes = String(Math.floor(seconds / 60)).padStart(2, "0");
+  const secs = String(seconds % 60).padStart(2, "0");
+  return `${minutes}:${secs}`;
+}
+
+function getMessageTime(message) {
+  return message.ts || message.created_at || message.createdAt || null;
+}
+
+export default function DMModal({
+  partner,
+  currentUser: currentUserProp,
+  onClose,
+}) {
+  const auth = useContext(AuthContext);
+  const currentUser = currentUserProp || auth?.user || getStoredUser();
+
   const [msgs, setMsgs] = useState([]);
-  const [input, setInput] = useState("");
-  const [typing, setTyping] = useState(false);
-
-  // Call state
+  const [text, setText] = useState("");
   const [callActive, setCallActive] = useState(false);
-  const [callType, setCallType] = useState(""); // "audio" | "video"
-  const [callMic, setCallMic] = useState(true);
-  const [callCam, setCallCam] = useState(true);
-  const [callTimer, setCallTimer] = useState(0);
-  const [callError, setCallError] = useState("");
+  const [callType, setCallType] = useState(null);
+  const [callSeconds, setCallSeconds] = useState(0);
+  const [mediaError, setMediaError] = useState(null);
+  const [micEnabled, setMicEnabled] = useState(true);
+  const [camEnabled, setCamEnabled] = useState(true);
 
-  const localVideoRef = useRef(null);
+  const pc = useRef(null);
   const localStream = useRef(null);
+  const remoteStream = useRef(null);
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
   const timerRef = useRef(null);
-  const typingRef = useRef(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
-  const sendingRef = useRef(false);
-  const optimisticIds = useRef(new Set());
+  const callActiveRef = useRef(false);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [msgs, typing]);
+    callActiveRef.current = callActive;
+  }, [callActive]);
 
   useEffect(() => {
-    setTimeout(() => inputRef.current?.focus(), 80);
     let mounted = true;
-    const load = async () => {
-      try {
-        const data = await getDmMessages(partner.id);
-        if (!mounted) return;
-        const serverMessages = data.messages || [];
-        setMsgs(serverMessages);
-        optimisticIds.current.clear();
-      } catch (err) {
-        // ignore
-      }
-    };
-    load();
-    const interval = setInterval(load, 3000);
+
+    getDmMessages(partner.id).then((data) => {
+      if (mounted) setMsgs(data.messages || []);
+    });
+
+    setTimeout(() => inputRef.current?.focus(), 80);
+
     return () => {
       mounted = false;
-      clearInterval(interval);
-      clearTimeout(typingRef.current);
-      clearInterval(timerRef.current);
-      stopStream();
     };
   }, [partner.id]);
 
-  // Call duration timer
   useEffect(() => {
-    if (callActive) {
-      timerRef.current = setInterval(() => setCallTimer((t) => t + 1), 1000);
-    } else {
-      clearInterval(timerRef.current);
-      setCallTimer(0);
-    }
-    return () => clearInterval(timerRef.current);
-  }, [callActive]);
+    if (!currentUser?.id) return undefined;
 
-  // Attach stream to video element
+    const unsubscribe = onDmMessage((msg) => {
+      const relevant =
+        (sameId(msg.from, partner.id) && sameId(msg.to, currentUser.id)) ||
+        (sameId(msg.from, currentUser.id) && sameId(msg.to, partner.id));
+
+      if (!relevant) return;
+
+      setMsgs((prev) => {
+        const exists = prev.find(
+          (m) =>
+            (msg.id && m.id === msg.id) ||
+            (msg.tempId && m.tempId === msg.tempId),
+        );
+
+        if (exists) {
+          return prev.map((m) =>
+            (msg.tempId && m.tempId === msg.tempId) ||
+            (msg.id && m.id === msg.id)
+              ? { ...m, ...msg }
+              : m,
+          );
+        }
+
+        return [...prev, msg];
+      });
+    });
+
+    return unsubscribe;
+  }, [partner.id, currentUser?.id]);
+
   useEffect(() => {
-    if (localVideoRef.current && localStream.current) {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [msgs]);
+
+  useEffect(() => {
+    if (callType === "video" && localVideoRef.current && localStream.current) {
       localVideoRef.current.srcObject = localStream.current;
     }
-  }, [callActive]);
 
-  const stopStream = () => {
-    localStream.current?.getTracks().forEach((t) => t.stop());
-    localStream.current = null;
-  };
+    if (callType === "video" && remoteVideoRef.current && remoteStream.current) {
+      remoteVideoRef.current.srcObject = remoteStream.current;
+    }
+  }, [callActive, callType]);
 
-  // ── Start call — requests real permission ─────────────────────────────
+  const stopTimer = useCallback(() => {
+    clearInterval(timerRef.current);
+    timerRef.current = null;
+    setCallSeconds(0);
+  }, []);
+
+  const startTimer = useCallback(() => {
+    stopTimer();
+    setCallSeconds(0);
+    timerRef.current = setInterval(() => {
+      setCallSeconds((seconds) => seconds + 1);
+    }, 1000);
+  }, [stopTimer]);
+
+  const cleanupCall = useCallback(
+    ({ notify = false } = {}) => {
+      if (pc.current) {
+        pc.current.close();
+        pc.current = null;
+      }
+
+      if (localStream.current) {
+        localStream.current.getTracks().forEach((track) => track.stop());
+        localStream.current = null;
+      }
+
+      remoteStream.current = null;
+
+      if (localVideoRef.current) localVideoRef.current.srcObject = null;
+      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+
+      if (notify && callActiveRef.current) endCall(partner.id);
+
+      setCallActive(false);
+      setCallType(null);
+      setMicEnabled(true);
+      setCamEnabled(true);
+      stopTimer();
+    },
+    [partner.id, stopTimer],
+  );
+
+  const buildPC = useCallback((stream, partnerId) => {
+    const conn = new RTCPeerConnection(ICE_SERVERS);
+
+    stream.getTracks().forEach((track) => {
+      conn.addTrack(track, stream);
+    });
+
+    conn.onicecandidate = (event) => {
+      if (event.candidate) sendIceCandidate(partnerId, event.candidate);
+    };
+
+    conn.ontrack = (event) => {
+      remoteStream.current = event.streams[0];
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = event.streams[0];
+      }
+    };
+
+    return conn;
+  }, []);
+
+  const hangUp = useCallback(() => {
+    cleanupCall({ notify: true });
+  }, [cleanupCall]);
+
   const startCall = async (type) => {
-    setCallError("");
-    setCallType(type);
+    setMediaError(null);
 
     try {
-      const constraints = {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: type === "video",
         audio: { echoCancellation: true, noiseSuppression: true },
-        video:
-          type === "video"
-            ? {
-                width: { ideal: 640 },
-                height: { ideal: 480 },
-                facingMode: "user",
-              }
-            : false,
-      };
+      });
 
-      // Browser will show permission popup here
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       localStream.current = stream;
+      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
+      pc.current = buildPC(stream, partner.id);
+      const offer = await pc.current.createOffer();
+      await pc.current.setLocalDescription(offer);
+
+      sendCallOffer(partner.id, offer, type);
       setCallActive(true);
-      setCallMic(true);
-      setCallCam(type === "video");
-
-      // BACKEND INTEGRATION: POST /api/community/dm/:partnerId/call → { roomToken }
-      // Then: create RTCPeerConnection, add tracks from stream, do signalling
+      setCallType(type);
+      setMicEnabled(true);
+      setCamEnabled(type === "video");
+      startTimer();
     } catch (err) {
       if (err.name === "NotAllowedError") {
-        setCallError(
-          `${type === "video" ? "Camera/microphone" : "Microphone"} permission denied. Please allow access in your browser settings.`,
+        setMediaError(
+          "Camera/microphone permission denied. Please allow access in your browser settings.",
         );
       } else if (err.name === "NotFoundError") {
-        setCallError(
-          `No ${type === "video" ? "camera or microphone" : "microphone"} found on this device.`,
-        );
+        setMediaError("No camera or microphone found on this device.");
       } else {
-        setCallError("Could not start call: " + err.message);
+        setMediaError(`Could not start call: ${err.message}`);
       }
     }
   };
 
-  const endCall = () => {
-    stopStream();
-    if (localVideoRef.current) localVideoRef.current.srcObject = null;
-    setCallActive(false);
-    setCallType("");
-    setCallError("");
-    // BACKEND INTEGRATION: POST /api/community/dm/:partnerId/call/end
+  useEffect(() => {
+    const unsubIncoming = onCallIncoming(async ({ from, offer, callType: ct }) => {
+      if (!sameId(from, partner.id)) return;
+
+      const accept = window.confirm(
+        `Incoming ${ct} call from ${partner.name}. Accept?`,
+      );
+
+      if (!accept) {
+        endCall(partner.id);
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: ct === "video",
+          audio: { echoCancellation: true, noiseSuppression: true },
+        });
+
+        localStream.current = stream;
+        if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+
+        pc.current = buildPC(stream, partner.id);
+        await pc.current.setRemoteDescription(offer);
+        const answer = await pc.current.createAnswer();
+        await pc.current.setLocalDescription(answer);
+
+        sendCallAnswer(partner.id, answer);
+        setMediaError(null);
+        setCallActive(true);
+        setCallType(ct);
+        setMicEnabled(true);
+        setCamEnabled(ct === "video");
+        startTimer();
+      } catch (err) {
+        setMediaError(`Could not accept call: ${err.message}`);
+        cleanupCall({ notify: true });
+      }
+    });
+
+    const unsubAnswered = onCallAnswered(async ({ from, answer }) => {
+      if (from && !sameId(from, partner.id)) return;
+
+      try {
+        await pc.current?.setRemoteDescription(answer);
+      } catch (_) {
+        // The peer connection may already have been closed locally.
+      }
+    });
+
+    const unsubIce = onCallIce(async ({ from, candidate }) => {
+      if (from && !sameId(from, partner.id)) return;
+
+      try {
+        await pc.current?.addIceCandidate(candidate);
+      } catch (_) {
+        // ICE can arrive after cleanup or before remote description is set.
+      }
+    });
+
+    const unsubEnded = onCallEnded(({ from } = {}) => {
+      if (from && !sameId(from, partner.id)) return;
+      cleanupCall({ notify: false });
+    });
+
+    return () => {
+      unsubIncoming();
+      unsubAnswered();
+      unsubIce();
+      unsubEnded();
+    };
+  }, [buildPC, cleanupCall, partner.id, partner.name, startTimer]);
+
+  useEffect(() => {
+    return () => {
+      cleanupCall({ notify: true });
+    };
+  }, [cleanupCall]);
+
+  const handleSend = () => {
+    const trimmed = text.trim();
+    if (!trimmed || !currentUser?.id) return;
+
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const optimistic = {
+      tempId,
+      from: currentUser.id,
+      to: partner.id,
+      text: trimmed,
+      ts: new Date().toISOString(),
+    };
+
+    setMsgs((prev) => [...prev, optimistic]);
+    sendDM(partner.id, trimmed, tempId);
+    setText("");
   };
 
-  const toggleMic = () => {
-    if (localStream.current) {
-      localStream.current.getAudioTracks().forEach((t) => {
-        t.enabled = !callMic;
-      });
-    }
-    setCallMic((m) => !m);
+  const toggleMute = () => {
+    if (!localStream.current) return;
+
+    const nextEnabled = !micEnabled;
+    localStream.current.getAudioTracks().forEach((track) => {
+      track.enabled = nextEnabled;
+    });
+    setMicEnabled(nextEnabled);
   };
 
   const toggleCam = () => {
-    if (localStream.current) {
-      localStream.current.getVideoTracks().forEach((t) => {
-        t.enabled = !callCam;
-      });
-    }
-    setCallCam((c) => !c);
-  };
+    if (!localStream.current) return;
 
-  // ── Chat ──────────────────────────────────────────────────────────────
-  const send = async () => {
-    const text = input.trim();
-    if (!text || !user?.id || sendingRef.current) return;
-    sendingRef.current = true;
-    const tempId = Date.now();
-    optimisticIds.current.add(tempId);
-    const optimistic = {
-      id: tempId,
-      from: user.id,
-      text,
-      ts: new Date().toISOString(),
-    };
-    setMsgs((p) => [...p, optimistic]);
-    setInput("");
-    setTyping(true);
-    try {
-      await postDmMessage(partner.id, text);
-    } catch (err) {
-      setMsgs((p) => p.filter((m) => m.id !== tempId));
-      optimisticIds.current.delete(tempId);
-    } finally {
-      setTyping(false);
-      sendingRef.current = false;
-    }
+    const nextEnabled = !camEnabled;
+    localStream.current.getVideoTracks().forEach((track) => {
+      track.enabled = nextEnabled;
+    });
+    setCamEnabled(nextEnabled);
   };
 
   return (
-    <>
-      <style>{`
-        .dm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:flex-end;z-index:950;padding:20px;backdrop-filter:blur(3px);}
-        .dm-box{background:var(--bg-card);border-radius:20px;width:100%;max-width:430px;height:600px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.28);animation:fadeInUp .25s ease;}
-        .dm-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10;}
-        .dm-msgs::-webkit-scrollbar{width:4px;}
-        .dm-msgs::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
-        @keyframes dmBounce{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-5px);opacity:1}}
-        @keyframes callPulse{0%,100%{opacity:1}50%{opacity:.4}}
-      `}</style>
-
-      <div
-        className="dm-overlay"
-        onClick={(e) => e.target === e.currentTarget && onClose()}
-      >
-        <div className="dm-box">
-          {/* ── Header ── */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "13px 16px",
-              borderBottom: "1px solid var(--border)",
-              flexShrink: 0,
-              background: "var(--bg-card)",
-            }}
-          >
-            <div style={{ position: "relative" }}>
-              <div
-                className="ava"
-                style={{
-                  width: 40,
-                  height: 40,
-                  background: partner.color,
-                  fontSize: 14,
-                }}
-              >
-                {partner.initials}
-              </div>
-              {partner.online && (
-                <div
-                  style={{
-                    position: "absolute",
-                    bottom: 0,
-                    right: 0,
-                    width: 11,
-                    height: 11,
-                    background: "#10b981",
-                    border: "2px solid var(--bg-card)",
-                    borderRadius: "50%",
-                  }}
-                />
-              )}
+    <div
+      style={styles.overlay}
+      onClick={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <div style={styles.modal}>
+        <div style={styles.header}>
+          <div style={styles.identity}>
+            <div style={{ ...styles.avatar, background: partner.color || "#6366f1" }}>
+              {partner.initials || partner.name?.slice(0, 2).toUpperCase()}
             </div>
-            <div style={{ flex: 1 }}>
-              <div
-                style={{
-                  fontWeight: 700,
-                  fontSize: 15,
-                  color: "var(--text-base)",
-                }}
-              >
-                {partner.name}
-              </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: callActive
-                    ? "#10b981"
-                    : partner.online
-                      ? "#10b981"
-                      : "var(--text-muted)",
-                }}
-              >
-                {callActive ? (
-                  <span
-                    style={{
-                      animation: "callPulse 1s infinite",
-                      display: "inline-block",
-                    }}
-                  >
-                    📞 {callType === "video" ? "Video" : "Voice"} call ·{" "}
-                    {fmt(callTimer)}
-                  </span>
-                ) : partner.online ? (
-                  "● Online"
-                ) : (
-                  "○ Offline"
-                )}
+            <div>
+              <div style={styles.partnerName}>{partner.name}</div>
+              <div style={styles.statusText}>
+                {callActive
+                  ? `${callType === "video" ? "Video" : "Voice"} call · ${formatTime(callSeconds)}`
+                  : partner.online
+                    ? "Online"
+                    : "Offline"}
               </div>
             </div>
+          </div>
 
-            {/* Call action buttons */}
-            {!callActive ? (
-              <div style={{ display: "flex", gap: 6 }}>
-                {/* Voice call */}
-                <button
-                  onClick={() => startCall("audio")}
-                  title="Voice call"
-                  style={{
-                    background: "var(--bg-subtle)",
-                    border: "none",
-                    width: 34,
-                    height: 34,
-                    borderRadius: "50%",
-                    cursor: "pointer",
-                    fontSize: 15,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#10b981",
-                  }}
-                >
-                  📞
-                </button>
-                {/* Video call */}
-                <button
-                  onClick={() => startCall("video")}
-                  title="Video call"
-                  style={{
-                    background: "var(--bg-subtle)",
-                    border: "none",
-                    width: 34,
-                    height: 34,
-                    borderRadius: "50%",
-                    cursor: "pointer",
-                    fontSize: 15,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#6366f1",
-                  }}
-                >
-                  📹
-                </button>
-              </div>
-            ) : (
-              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <button
-                  onClick={toggleMic}
-                  title={callMic ? "Mute" : "Unmute"}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    fontSize: 16,
-                    opacity: callMic ? 1 : 0.5,
-                  }}
-                >
-                  {callMic ? "🎙️" : "🔇"}
-                </button>
-                {callType === "video" && (
-                  <button
-                    onClick={toggleCam}
-                    title={callCam ? "Stop cam" : "Start cam"}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: 16,
-                      opacity: callCam ? 1 : 0.5,
-                    }}
-                  >
-                    {callCam ? "📹" : "📷"}
-                  </button>
-                )}
-                <button
-                  onClick={endCall}
-                  title="End call"
-                  style={{
-                    background: "#DC2626",
-                    border: "none",
-                    width: 32,
-                    height: 32,
-                    borderRadius: "50%",
-                    cursor: "pointer",
-                    fontSize: 14,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#fff",
-                  }}
-                >
-                  📞
-                </button>
-              </div>
-            )}
+          <div style={styles.callButtons}>
             <button
-              onClick={onClose}
-              style={{
-                background: "var(--bg-subtle)",
-                border: "none",
-                width: 32,
-                height: 32,
-                borderRadius: "50%",
-                cursor: "pointer",
-                fontSize: 15,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "var(--text-muted)",
-              }}
+              onClick={() => startCall("audio")}
+              title="Voice call"
+              style={styles.iconBtn}
+              type="button"
             >
-              ×
+              📞
             </button>
-          </div>
-
-          {/* ── Active call panel ── */}
-          {callActive && (
-            <div style={{ flexShrink: 0 }}>
-              {/* Call info bar */}
-              <div
-                style={{
-                  background: "rgba(16,185,129,.1)",
-                  borderBottom: "1px solid rgba(16,185,129,.2)",
-                  padding: "8px 16px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      background: "#10b981",
-                      animation: "callPulse 1s infinite",
-                    }}
-                  />
-                  <span
-                    style={{ fontSize: 13, color: "#10b981", fontWeight: 600 }}
-                  >
-                    {callType === "video" ? "Video" : "Voice"} call ·{" "}
-                    {fmt(callTimer)}
-                  </span>
-                </div>
-                <button
-                  onClick={endCall}
-                  style={{
-                    background: "#DC2626",
-                    border: "none",
-                    borderRadius: 8,
-                    color: "#fff",
-                    padding: "4px 12px",
-                    fontSize: 12,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    fontWeight: 600,
-                  }}
-                >
-                  End call
-                </button>
-              </div>
-
-              {/* Video preview — shows YOUR camera if video call */}
-              {callType === "video" && (
-                <div
-                  style={{
-                    background: "#0f172a",
-                    padding: "12px 16px",
-                    display: "flex",
-                    gap: 10,
-                    alignItems: "center",
-                  }}
-                >
-                  {/* Self video */}
-                  <div style={{ position: "relative", flexShrink: 0 }}>
-                    {callCam ? (
-                      <video
-                        ref={localVideoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        style={{
-                          width: 110,
-                          height: 75,
-                          objectFit: "cover",
-                          borderRadius: 10,
-                          display: "block",
-                          border: "2px solid #6366f1",
-                          background: "#1e293b",
-                        }}
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          width: 110,
-                          height: 75,
-                          borderRadius: 10,
-                          background: "#1e293b",
-                          border: "2px solid #6366f1",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flexDirection: "column",
-                        }}
-                      >
-                        <div
-                          className="ava"
-                          style={{
-                            width: 32,
-                            height: 32,
-                            background: "#6366f1",
-                            fontSize: 11,
-                          }}
-                        >
-                          ME
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 9,
-                            color: "rgba(255,255,255,.4)",
-                            marginTop: 4,
-                          }}
-                        >
-                          Cam off
-                        </div>
-                      </div>
-                    )}
-                    <div
-                      style={{
-                        position: "absolute",
-                        bottom: 4,
-                        left: 4,
-                        fontSize: 9,
-                        color: "#fff",
-                        background: "rgba(0,0,0,.6)",
-                        borderRadius: 4,
-                        padding: "1px 5px",
-                      }}
-                    >
-                      You
-                    </div>
-                  </div>
-
-                  {/* Partner video placeholder */}
-                  {/* BACKEND INTEGRATION: Replace with <video ref={remoteVideoRef} autoPlay playsInline srcObject={remoteStream} /> */}
-                  <div
-                    style={{
-                      flex: 1,
-                      height: 75,
-                      borderRadius: 10,
-                      background: "#1e293b",
-                      border: "2px solid rgba(255,255,255,.1)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexDirection: "column",
-                    }}
-                  >
-                    <div
-                      className="ava"
-                      style={{
-                        width: 32,
-                        height: 32,
-                        background: partner.color,
-                        fontSize: 11,
-                      }}
-                    >
-                      {partner.initials}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 9,
-                        color: "rgba(255,255,255,.35)",
-                        marginTop: 4,
-                      }}
-                    >
-                      Connecting…
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Permission error ── */}
-          {callError && (
-            <div
-              style={{
-                margin: "10px 14px 0",
-                padding: "10px 14px",
-                background: "rgba(239,68,68,.1)",
-                border: "1px solid rgba(239,68,68,.3)",
-                borderRadius: 10,
-                fontSize: 13,
-                color: "var(--danger)",
-                display: "flex",
-                gap: 8,
-                alignItems: "flex-start",
-                flexShrink: 0,
-              }}
-            >
-              <span style={{ flexShrink: 0 }}>⚠️</span>
-              {callError}
-            </div>
-          )}
-
-          {/* ── Messages ── */}
-          <div className="dm-msgs">
-            {/* BACKEND INTEGRATION: GET /api/community/dm/:partnerId/messages */}
-            {msgs.length === 0 && !typing && (
-              <div
-                style={{
-                  textAlign: "center",
-                  color: "var(--text-muted)",
-                  padding: "40px 20px",
-                }}
-              >
-                <div style={{ fontSize: 36, marginBottom: 10 }}>👋</div>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                  Say hello to {partner.name}!
-                </div>
-                <div style={{ fontSize: 13 }}>
-                  You're connected — start a conversation.
-                </div>
-              </div>
-            )}
-            {msgs.map((msg) => (
-              <div
-                key={msg.id}
-                style={{
-                  display: "flex",
-                  flexDirection: msg.from === user?.id ? "row-reverse" : "row",
-                  gap: 8,
-                  alignItems: "flex-end",
-                }}
-              >
-                {msg.from !== user?.id && (
-                  <div
-                    className="ava"
-                    style={{
-                      width: 26,
-                      height: 26,
-                      background: partner.color,
-                      fontSize: 9,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {partner.initials}
-                  </div>
-                )}
-                <div style={{ maxWidth: "75%" }}>
-                  <div
-                    style={{
-                      background:
-                        msg.from === user?.id
-                          ? "linear-gradient(135deg,#6366f1,#8b5cf6)"
-                          : "var(--bg-subtle)",
-                      color:
-                        msg.from === user?.id ? "#fff" : "var(--text-base)",
-                      borderRadius:
-                        msg.from === user?.id
-                          ? "16px 4px 16px 16px"
-                          : "4px 16px 16px 16px",
-                      padding: "9px 13px",
-                      fontSize: 14,
-                      lineHeight: 1.5,
-                      border:
-                        msg.from === user?.id
-                          ? "none"
-                          : "1px solid var(--border)",
-                    }}
-                  >
-                    {msg.text}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 10,
-                      color: "var(--text-muted)",
-                      marginTop: 3,
-                      textAlign: msg.from === user?.id ? "right" : "left",
-                    }}
-                  >
-                    {new Date(msg.created_at || Date.now()).toLocaleTimeString(
-                      [],
-                      {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      },
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-            {typing && (
-              <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-                <div
-                  className="ava"
-                  style={{
-                    width: 26,
-                    height: 26,
-                    background: partner.color,
-                    fontSize: 9,
-                    flexShrink: 0,
-                  }}
-                >
-                  {partner.initials}
-                </div>
-                <div
-                  style={{
-                    background: "var(--bg-subtle)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "4px 16px 16px 16px",
-                    padding: "10px 14px",
-                    display: "flex",
-                    gap: 4,
-                    alignItems: "center",
-                  }}
-                >
-                  {[0, 1, 2].map((i) => (
-                    <div
-                      key={i}
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: "50%",
-                        background: "var(--text-muted)",
-                        animation: `dmBounce 1.2s infinite ${i * 0.2}s`,
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-            <div ref={bottomRef} />
-          </div>
-
-          {/* ── Input ── */}
-          <div
-            style={{
-              padding: "10px 14px",
-              borderTop: "1px solid var(--border)",
-              display: "flex",
-              gap: 8,
-              alignItems: "flex-end",
-              flexShrink: 0,
-              background: "var(--bg-card)",
-            }}
-          >
-            <textarea
-              ref={inputRef}
-              className="chat-fc"
-              rows={1}
-              placeholder={`Message ${partner.name}… (Enter to send)`}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  if (!sendingRef.current) send();
-                }
-              }}
-              style={{ resize: "none", flex: 1 }}
-            />
             <button
-              className="btn-coral"
-              onClick={send}
-              disabled={!input.trim() || sendingRef.current}
-              style={{ padding: "8px 13px", flexShrink: 0 }}
+              onClick={() => startCall("video")}
+              title="Video call"
+              style={styles.iconBtn}
+              type="button"
             >
-              ✈️
+              📹
+            </button>
+            <button onClick={onClose} style={styles.iconBtn} type="button">
+              ✕
             </button>
           </div>
         </div>
-      </div>
-    </>
-  );
-};
 
-export default DMModal;
+        {mediaError && <div style={styles.errorBar}>{mediaError}</div>}
+
+        {callActive && (
+          <div style={styles.callBar}>
+            <span>
+              {callType === "video" ? "📹 Video call" : "📞 Voice call"} ·{" "}
+              {formatTime(callSeconds)}
+            </span>
+            <div style={styles.callControls}>
+              <button onClick={toggleMute} style={styles.iconBtn} type="button">
+                {micEnabled ? "🎙️" : "🔇"}
+              </button>
+              {callType === "video" && (
+                <button onClick={toggleCam} style={styles.iconBtn} type="button">
+                  {camEnabled ? "📷" : "🚫"}
+                </button>
+              )}
+              <button
+                onClick={hangUp}
+                style={{ ...styles.iconBtn, color: "#ef4444" }}
+                type="button"
+              >
+                📵
+              </button>
+            </div>
+          </div>
+        )}
+
+        {callActive && callType === "video" && (
+          <div style={styles.videoRow}>
+            <video
+              ref={localVideoRef}
+              autoPlay
+              muted
+              playsInline
+              style={styles.videoSelf}
+            />
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              style={styles.videoRemote}
+            />
+          </div>
+        )}
+
+        <div style={styles.msgList}>
+          {msgs.length === 0 && (
+            <div style={styles.emptyState}>
+              <div style={styles.emptyIcon}>👋</div>
+              <div style={styles.emptyTitle}>Say hello to {partner.name}!</div>
+              <div style={styles.emptyCopy}>You're connected. Start a conversation.</div>
+            </div>
+          )}
+
+          {msgs.map((msg, index) => {
+            const mine = sameId(msg.from, currentUser?.id);
+            const time = getMessageTime(msg);
+
+            return (
+              <div
+                key={msg.id ?? msg.tempId ?? index}
+                style={{
+                  ...styles.messageRow,
+                  justifyContent: mine ? "flex-end" : "flex-start",
+                }}
+              >
+                <div
+                  style={{
+                    ...styles.bubble,
+                    background: mine ? "#6366f1" : "#374151",
+                    borderBottomRightRadius: mine ? 4 : 14,
+                    borderBottomLeftRadius: mine ? 14 : 4,
+                  }}
+                >
+                  <span>{msg.text}</span>
+                  <span style={styles.ts}>
+                    {time
+                      ? new Date(time).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : ""}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={bottomRef} />
+        </div>
+
+        <div style={styles.inputRow}>
+          <input
+            ref={inputRef}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder="Type a message..."
+            style={styles.input}
+          />
+          <button
+            onClick={handleSend}
+            disabled={!text.trim() || !currentUser?.id}
+            style={{
+              ...styles.sendBtn,
+              opacity: text.trim() && currentUser?.id ? 1 : 0.55,
+            }}
+            type="button"
+          >
+            Send
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const styles = {
+  overlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.6)",
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "flex-end",
+    padding: 24,
+    zIndex: 1000,
+  },
+  modal: {
+    background: "#1f2937",
+    borderRadius: 12,
+    width: 420,
+    maxWidth: "calc(100vw - 32px)",
+    height: 620,
+    maxHeight: "82vh",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    boxShadow: "0 24px 70px rgba(0,0,0,0.35)",
+  },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    padding: "12px 16px",
+    borderBottom: "1px solid #374151",
+  },
+  identity: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 0,
+  },
+  avatar: {
+    width: 38,
+    height: 38,
+    borderRadius: "50%",
+    color: "#fff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 13,
+    fontWeight: 700,
+    flexShrink: 0,
+  },
+  partnerName: {
+    fontWeight: 700,
+    color: "#fff",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxWidth: 180,
+  },
+  statusText: {
+    fontSize: 12,
+    color: "#9ca3af",
+    marginTop: 2,
+  },
+  callButtons: {
+    display: "flex",
+    gap: 8,
+    flexShrink: 0,
+  },
+  iconBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#fff",
+    cursor: "pointer",
+    fontSize: 18,
+    lineHeight: 1,
+    width: 30,
+    height: 30,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  errorBar: {
+    background: "#7f1d1d",
+    color: "#fecaca",
+    padding: "8px 16px",
+    fontSize: 13,
+  },
+  callBar: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    background: "#065f46",
+    color: "#a7f3d0",
+    padding: "8px 16px",
+    fontSize: 14,
+  },
+  callControls: {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+  },
+  videoRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+    padding: 8,
+    background: "#111827",
+  },
+  videoSelf: {
+    width: "100%",
+    aspectRatio: "4 / 3",
+    borderRadius: 8,
+    border: "2px solid #6366f1",
+    background: "#000",
+    objectFit: "cover",
+  },
+  videoRemote: {
+    width: "100%",
+    aspectRatio: "4 / 3",
+    borderRadius: 8,
+    border: "2px solid rgba(255,255,255,0.16)",
+    background: "#000",
+    objectFit: "cover",
+  },
+  msgList: {
+    flex: 1,
+    overflowY: "auto",
+    padding: 16,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  emptyState: {
+    margin: "auto",
+    textAlign: "center",
+    color: "#9ca3af",
+    padding: "32px 20px",
+  },
+  emptyIcon: {
+    fontSize: 34,
+    marginBottom: 10,
+  },
+  emptyTitle: {
+    color: "#f9fafb",
+    fontWeight: 700,
+    marginBottom: 4,
+  },
+  emptyCopy: {
+    fontSize: 13,
+  },
+  messageRow: {
+    display: "flex",
+    width: "100%",
+  },
+  bubble: {
+    maxWidth: "75%",
+    padding: "8px 12px",
+    borderRadius: 14,
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    color: "#fff",
+    overflowWrap: "anywhere",
+  },
+  ts: {
+    fontSize: 10,
+    opacity: 0.65,
+    alignSelf: "flex-end",
+  },
+  inputRow: {
+    display: "flex",
+    gap: 8,
+    padding: 12,
+    borderTop: "1px solid #374151",
+  },
+  input: {
+    flex: 1,
+    minWidth: 0,
+    background: "#374151",
+    border: "none",
+    borderRadius: 8,
+    padding: "8px 12px",
+    color: "#fff",
+    outline: "none",
+  },
+  sendBtn: {
+    background: "#6366f1",
+    color: "#fff",
+    border: "none",
+    borderRadius: 8,
+    padding: "8px 16px",
+    cursor: "pointer",
+    fontWeight: 600,
+  },
+};

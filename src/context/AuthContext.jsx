@@ -22,6 +22,7 @@ import {
   updateUserProfile,
   saveAssessmentResults,
 } from "../services/api";
+import { connectSocket, disconnectSocket } from "../services/socket";
 
 const AuthContext = createContext(null);
 
@@ -36,7 +37,11 @@ export function AuthProvider({ children }) {
         // fetchCurrentUser() checks localStorage in mock mode,
         // or hits GET /api/auth/me when the real backend is ready.
         const restored = await fetchCurrentUser();
-        if (restored) setUser(restored);
+        if (restored) {
+          setUser(restored);
+          const token = localStorage.getItem("polylingo_token");
+          if (token) connectSocket(token);
+        }
       } catch (_) {
         // Token expired or invalid — stay logged out
         localStorage.removeItem("polylingo_auth_user");
@@ -54,6 +59,13 @@ export function AuthProvider({ children }) {
       const userData = await loginUser({ email, password });
       localStorage.setItem("polylingo_auth_user", JSON.stringify(userData));
       setUser(userData);
+
+      // Connect WebSocket with token
+      const token = localStorage.getItem("polylingo_token");
+      if (token) {
+        connectSocket(token);
+      }
+
       return userData;
     } catch (err) {
       // Re-throw with better error message
@@ -88,6 +100,13 @@ export function AuthProvider({ children }) {
       localStorage.setItem("polylingo_accounts", JSON.stringify(accounts));
       localStorage.setItem("polylingo_auth_user", JSON.stringify(userData));
       setUser(userData);
+
+      // Connect WebSocket with token
+      const token = localStorage.getItem("polylingo_token");
+      if (token) {
+        connectSocket(token);
+      }
+
       return userData;
     } catch (err) {
       // Re-throw with better error message
@@ -103,6 +122,10 @@ export function AuthProvider({ children }) {
     setUser(null);
     localStorage.removeItem("polylingo_auth_user");
     localStorage.removeItem("polylingo_token");
+    localStorage.removeItem("polylingo_refresh_token");
+
+    // Disconnect WebSocket
+    disconnectSocket();
   };
 
   // ── Complete Assessment ──────────────────────────────────────

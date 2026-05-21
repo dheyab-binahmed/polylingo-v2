@@ -1,47 +1,84 @@
 import { io } from "socket.io-client";
 
+const SOCKET_URL =
+  import.meta.env.VITE_SOCKET_URL ||
+  import.meta.env.VITE_API_BASE_URL?.replace("/api/v1", "") ||
+  "http://localhost:5000";
+
 let socket = null;
 
 export function connectSocket(token) {
-  if (socket && socket.connected) return socket;
-  const BASE =
-    import.meta.env.VITE_API_BASE_URL?.replace("/api/v1", "") ||
-    "http://localhost:5000";
-  socket = io(BASE, { transports: ["websocket"], autoConnect: false });
-  socket.connect();
+  if (socket?.connected) return socket;
+
+  socket = io(SOCKET_URL, {
+    transports: ["websocket"],
+    autoConnect: true,
+  });
+
   socket.on("connect", () => {
     socket.emit("authenticate", { token });
   });
+
   return socket;
 }
 
-export function on(event, cb) {
-  if (!socket) return;
-  socket.on(event, cb);
-}
-
-export function off(event, cb) {
-  if (!socket) return;
-  socket.off(event, cb);
-}
-
-export function sendSignal(to, payload) {
-  if (!socket) return;
-  socket.emit("signal", { to, payload });
-}
-
-export function joinCall(room) {
-  if (!socket) return;
-  socket.emit("join_call", { room });
-}
-
-export function leaveCall(room) {
-  if (!socket) return;
-  socket.emit("leave_call", { room });
-}
-
 export function disconnectSocket() {
-  if (!socket) return;
-  socket.disconnect();
-  socket = null;
+  if (socket) {
+    socket.disconnect();
+    socket = null;
+  }
+}
+
+export function getSocket() {
+  return socket;
+}
+
+export function sendDM(to, text, tempId) {
+  socket?.emit("send_dm", { to, text, tempId });
+}
+
+export function onDmMessage(cb) {
+  socket?.on("dm:message", cb);
+  return () => socket?.off("dm:message", cb);
+}
+
+export function sendCallOffer(to, offer, callType) {
+  socket?.emit("call:offer", { to, offer, callType });
+}
+
+export function sendCallAnswer(to, answer) {
+  socket?.emit("call:answer", { to, answer });
+}
+
+export function sendIceCandidate(to, candidate) {
+  socket?.emit("call:ice", { to, candidate });
+}
+
+export function endCall(to) {
+  socket?.emit("call:end", { to });
+}
+
+export function onCallIncoming(cb) {
+  socket?.on("call:incoming", cb);
+  return () => socket?.off("call:incoming", cb);
+}
+
+export function onCallAnswered(cb) {
+  socket?.on("call:answered", cb);
+  return () => socket?.off("call:answered", cb);
+}
+
+export function onCallIce(cb) {
+  socket?.on("call:ice", cb);
+  return () => socket?.off("call:ice", cb);
+}
+
+export function onCallEnded(cb) {
+  socket?.on("call:ended", cb);
+  return () => socket?.off("call:ended", cb);
+}
+
+export function onPresenceUpdate(cb) {
+  socket?.on("presence:update", cb);
+  return () => socket?.off("presence:update", cb);
 }
