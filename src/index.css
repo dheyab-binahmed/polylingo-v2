@@ -2150,12 +2150,14 @@ input:checked + .slider:before { transform: translateX(26px); }
 .practice-category:hover { transform:translateY(-5px); box-shadow:var(--shadow-lg); border-color:var(--primary); }
 .practice-category.active-cat { border-color:var(--primary); background:rgba(99,102,241,0.03); }
 .practice-icon { width:60px; height:60px; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:1.5rem; color:white; margin-bottom:1rem; }
-.practice-category:nth-child(1) .practice-icon { background:var(--purple-gradient); }
-.practice-category:nth-child(2) .practice-icon { background:var(--green-gradient); }
-.practice-category:nth-child(3) .practice-icon { background:var(--orange-gradient); }
-.practice-category:nth-child(4) .practice-icon { background:var(--blue-gradient); }
-.practice-category:nth-child(5) .practice-icon { background:linear-gradient(135deg,#ec4899,#db2777); }
-.practice-category:nth-child(6) .practice-icon { background:linear-gradient(135deg,#06b6d4,#0891b2); }
+/* Card order: 1=Talk with AI, 2=Flashcards, 3=Listening, 4=Writing, 5=Speaking, 6=Reading, 7=Grammar */
+.practice-category:nth-child(1) .practice-icon { background:linear-gradient(135deg,#6366f1,#4f46e5); }
+.practice-category:nth-child(2) .practice-icon { background:var(--purple-gradient); }
+.practice-category:nth-child(3) .practice-icon { background:var(--green-gradient); }
+.practice-category:nth-child(4) .practice-icon { background:var(--orange-gradient); }
+.practice-category:nth-child(5) .practice-icon { background:var(--blue-gradient); }
+.practice-category:nth-child(6) .practice-icon { background:linear-gradient(135deg,#ec4899,#db2777); }
+.practice-category:nth-child(7) .practice-icon { background:linear-gradient(135deg,#06b6d4,#0891b2); }
 .practice-category h3 { font-size:1.2rem; margin-bottom:0.6rem; }
 .practice-category p { color:var(--gray); font-size:0.9rem; margin-bottom:1.25rem; }
 .practice-stats-row { display:flex; justify-content:space-between; padding-top:1rem; border-top:1px solid var(--gray-light); }

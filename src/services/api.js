@@ -493,6 +493,110 @@ export async function logPracticeSession({
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  PRACTICE CONTENT
+// ═══════════════════════════════════════════════════════════════
+
+/** GET /api/v1/practice/flashcards?language=X&level=Y */
+export async function fetchPracticeFlashcards({ language, level }) {
+  return await apiFetch(
+    `/practice/flashcards?language=${encodeURIComponent(language)}&level=${level}`,
+  );
+}
+
+/** GET /api/v1/practice/grammar?language=X&level=Y */
+export async function fetchPracticeGrammar({ language, level }) {
+  return await apiFetch(
+    `/practice/grammar?language=${encodeURIComponent(language)}&level=${level}`,
+  );
+}
+
+/** GET /api/v1/practice/writing/prompt?language=X&level=Y */
+export async function fetchPracticeWritingPrompt({ language, level }) {
+  return await apiFetch(
+    `/practice/writing/prompt?language=${encodeURIComponent(language)}&level=${level}`,
+  );
+}
+
+/** GET /api/v1/practice/speaking?language=X&level=Y */
+export async function fetchPracticeSpeaking({ language, level }) {
+  return await apiFetch(
+    `/practice/speaking?language=${encodeURIComponent(language)}&level=${level}`,
+  );
+}
+
+/** POST /api/v1/practice/writing/grammar-check */
+export async function checkWritingGrammar({ text, language }) {
+  return await apiFetch("/practice/writing/grammar-check", {
+    method: "POST",
+    body: JSON.stringify({ text, language }),
+  });
+}
+
+/** GET /api/v1/practice/reading?language=X&level=Y */
+export async function fetchPracticeReading({ language, level }) {
+  return await apiFetch(
+    `/practice/reading?language=${encodeURIComponent(language)}&level=${level}`,
+  );
+}
+
+/** GET /api/v1/practice/listening?language=X&level=Y */
+export async function fetchPracticeListening({ language, level }) {
+  return await apiFetch(
+    `/practice/listening?language=${encodeURIComponent(language)}&level=${level}`,
+  );
+}
+
+/** POST /api/v1/practice/writing/score */
+export async function scorePracticeWriting({ writingText, prompt, language }) {
+  return await apiFetch("/practice/writing/score", {
+    method: "POST",
+    body: JSON.stringify({ writing_text: writingText, prompt, language }),
+  });
+}
+
+/**
+ * Send a message to the AI language tutor and receive a correction-aware reply.
+ * POST /api/v1/practice/tutor/chat
+ * Request: { message, history, language, level }
+ * Response: { reply, correction, vocab_tip }
+ */
+export async function chatWithTutor({ message, history, language, level }) {
+  return await apiFetch("/practice/tutor/chat", {
+    method: "POST",
+    body: JSON.stringify({ message, history, language, level }),
+  });
+}
+
+/**
+ * Fetch the user's practice progress for a given language.
+ * GET /api/v1/practice/progress?language=French
+ * Response: full stats object (zeros if no data yet)
+ */
+export async function fetchPracticeProgress(language) {
+  try {
+    return await apiFetch(`/practice/progress?language=${encodeURIComponent(language)}`);
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Save the user's practice progress to the database.
+ * PUT /api/v1/practice/progress
+ * Body: full stats object (accumulated totals, not deltas)
+ */
+export async function savePracticeProgress(stats) {
+  try {
+    return await apiFetch("/practice/progress", {
+      method: "PUT",
+      body: JSON.stringify(stats),
+    });
+  } catch (_) {
+    return null; // non-critical — localStorage is the fallback
+  }
+}
+
 // Export for testing/debugging
 export const API = {
   BASE_URL,

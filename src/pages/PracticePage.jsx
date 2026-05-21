@@ -5,6 +5,17 @@ import {
   createSession,
   uploadAudio,
   getJobStatus,
+  chatWithTutor,
+  fetchPracticeFlashcards,
+  fetchPracticeGrammar,
+  fetchPracticeReading,
+  fetchPracticeListening,
+  scorePracticeWriting,
+  fetchPracticeWritingPrompt,
+  fetchPracticeSpeaking,
+  checkWritingGrammar,
+  fetchPracticeProgress,
+  savePracticeProgress,
 } from "../services/api";
 import { formatErrorForDisplay, logError } from "../utils/errorHandler";
 import { getContent } from "../data/practiceContent";
@@ -57,68 +68,29 @@ function speakTTS(text, lang, onStart, onEnd) {
   }
 }
 
-const CATEGORIES = [
-  {
-    id: "flashcards",
-    icon: "fa-layer-group",
-    title: "Flashcards",
-    desc: "Learn and review vocabulary with smart flashcards that adapt to your progress",
-    s1: "42",
-    l1: "Words Mastered",
-    s2: "7",
-    l2: "Day Streak",
-  },
-  {
-    id: "listening",
-    icon: "fa-headphones",
-    title: "Listening Practice",
-    desc: "Improve your listening comprehension with real conversations and audio exercises",
-    s1: "78%",
-    l1: "Accuracy",
-    s2: "15",
-    l2: "Exercises",
-  },
-  {
-    id: "writing",
-    icon: "fa-pen",
-    title: "Writing Practice",
-    desc: "Get instant AI feedback on your writing with grammar and style corrections",
-    s1: "8.5",
-    l1: "Avg. Score",
-    s2: "23",
-    l2: "Submissions",
-  },
-  {
-    id: "speaking",
-    icon: "fa-microphone",
-    title: "Speaking Drills",
-    desc: "Practice pronunciation and speaking with AI-powered conversation partners",
-    s1: "45",
-    l1: "Minutes",
-    s2: "82%",
-    l2: "Fluency",
-  },
-  {
-    id: "reading",
-    icon: "fa-book-open",
-    title: "Reading Practice",
-    desc: "Improve reading comprehension with authentic texts and vocabulary exercises",
-    s1: "145",
-    l1: "WPM",
-    s2: "12",
-    l2: "Articles",
-  },
-  {
-    id: "grammar",
-    icon: "fa-check-double",
-    title: "Grammar Practice",
-    desc: "Master grammar rules with interactive exercises and instant feedback",
-    s1: "92%",
-    l1: "Accuracy",
-    s2: "28",
-    l2: "Exercises",
-  },
+// Static metadata — order here = display order ("Talk with AI" first)
+const CAT_META = [
+  { id: "tutor",      icon: "fa-robot",        title: "Talk with AI",       desc: "Chat with your personal AI tutor — get real-time corrections and vocabulary tips as you speak" },
+  { id: "flashcards", icon: "fa-layer-group",   title: "Flashcards",         desc: "Learn and review vocabulary with smart flashcards that adapt to your progress" },
+  { id: "listening",  icon: "fa-headphones",    title: "Listening Practice", desc: "Improve your listening comprehension with real conversations and audio exercises" },
+  { id: "writing",    icon: "fa-pen",           title: "Writing Practice",   desc: "Get instant AI feedback on your writing with grammar and style corrections" },
+  { id: "speaking",   icon: "fa-microphone",    title: "Speaking Drills",    desc: "Practice pronunciation and speaking with AI-powered conversation partners" },
+  { id: "reading",    icon: "fa-book-open",     title: "Reading Practice",   desc: "Improve reading comprehension with authentic texts and vocabulary exercises" },
+  { id: "grammar",    icon: "fa-check-double",  title: "Grammar Practice",   desc: "Master grammar rules with interactive exercises and instant feedback" },
 ];
+
+// Default per-user stats stored in localStorage (all zero for new users)
+const DEFAULT_STATS = {
+  flashcards: { wordsLearned: 0, sessions: 0 },
+  listening:  { exercises: 0, totalCorrect: 0, totalAttempted: 0 },
+  writing:    { submissions: 0, totalScore: 0 },
+  speaking:   { minutes: 0, sessions: 0 },
+  reading:    { articles: 0, totalCorrect: 0, totalAttempted: 0 },
+  grammar:    { exercises: 0, totalCorrect: 0, totalAttempted: 0 },
+  streak: 0,
+  todayMinutes: 0,
+  dailyGoalMinutes: 10,
+};
 
 // ─────────────────────────────────────────────────────────────────
 // MAIN COMPONENT
@@ -149,13 +121,119 @@ export default function PracticePage() {
   const content = getContent(lang);
   const ttsLang = content.ttsLang;
 
-  const FLASHCARDS = content.flashcards;
-  const GRAMMAR_EXERCISES = content.grammar;
-  const READING = content.reading;
-  const SPEAKING_PHRASES = content.speakingPhrases;
-  const LISTENING_EXERCISE = content.listening;
+  // ── Practice stats (persisted in localStorage, zero for new users) ──
+  const STATS_KEY = `polylingo_stats_${user?.id || "guest"}`;
+  const [practiceStats, setPracticeStats] = useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(`polylingo_stats_${user?.id || "guest"}`));
+      // merge with DEFAULT_STATS so new keys are always present
+      if (stored) {
+        return {
+          flashcards: { ...DEFAULT_STATS.flashcards, ...stored.flashcards },
+          listening:  { ...DEFAULT_STATS.listening,  ...stored.listening  },
+          writing:    { ...DEFAULT_STATS.writing,     ...stored.writing    },
+          speaking:   { ...DEFAULT_STATS.speaking,    ...stored.speaking   },
+          reading:    { ...DEFAULT_STATS.reading,     ...stored.reading    },
+          grammar:    { ...DEFAULT_STATS.grammar,     ...stored.grammar    },
+          streak:          stored.streak          ?? 0,
+          todayMinutes:    stored.todayMinutes    ?? 0,
+          dailyGoalMinutes: stored.dailyGoalMinutes ?? 10,
+        };
+      }
+    } catch (_) {}
+    return { ...DEFAULT_STATS };
+  });
+  // Debounce ref so we don't fire a PUT on every single click
+  const saveTimerRef = useRef(null);
 
-  const [activeTab, setActiveTab] = useState("flashcards");
+  const updateStat = (tabId, updater) => {
+    setPracticeStats((prev) => {
+      const next = { ...prev, [tabId]: updater({ ...prev[tabId] }) };
+      // Always persist locally immediately
+      try { localStorage.setItem(STATS_KEY, JSON.stringify(next)); } catch (_) {}
+      // Debounce the backend save by 1.5 s
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => {
+        savePracticeProgress({ language: lang, ...next });
+      }, 1500);
+      return next;
+    });
+  };
+
+  // On mount: try to load stats from backend (overrides localStorage if available)
+  useEffect(() => {
+    const loadProgress = async () => {
+      const remote = await fetchPracticeProgress(lang);
+      if (!remote) return; // backend unreachable — keep localStorage values
+      const merged = {
+        flashcards: { ...DEFAULT_STATS.flashcards, ...remote.flashcards },
+        listening:  { ...DEFAULT_STATS.listening,  ...remote.listening  },
+        writing:    { ...DEFAULT_STATS.writing,     ...remote.writing    },
+        speaking:   { ...DEFAULT_STATS.speaking,    ...remote.speaking   },
+        reading:    { ...DEFAULT_STATS.reading,     ...remote.reading    },
+        grammar:    { ...DEFAULT_STATS.grammar,     ...remote.grammar    },
+        streak:          remote.streak          ?? 0,
+        todayMinutes:    remote.todayMinutes    ?? 0,
+        dailyGoalMinutes: remote.dailyGoalMinutes ?? 10,
+      };
+      setPracticeStats(merged);
+      try { localStorage.setItem(STATS_KEY, JSON.stringify(merged)); } catch (_) {}
+    };
+    loadProgress();
+  }, [lang]); // reload when user switches language
+  const fmtPct  = (correct, total) => total > 0 ? `${Math.round((correct / total) * 100)}%` : "—";
+  const fmtAvg  = (total, count)   => count  > 0 ? (total  / count).toFixed(1) : "—";
+
+  // Build CATEGORIES dynamically so the stat bubbles show real data
+  const CATEGORIES = CAT_META.map((meta) => {
+    const s = practiceStats;
+    switch (meta.id) {
+      case "tutor":      return { ...meta, s1: "AI",   l1: "Powered",      s2: "24/7",  l2: "Available"   };
+      case "flashcards": return { ...meta, s1: s.flashcards.wordsLearned,   l1: "Words Learned",  s2: s.flashcards.sessions,  l2: "Sessions"   };
+      case "listening":  return { ...meta, s1: fmtPct(s.listening.totalCorrect, s.listening.totalAttempted), l1: "Accuracy", s2: s.listening.exercises,  l2: "Exercises"  };
+      case "writing":    return { ...meta, s1: fmtAvg(s.writing.totalScore, s.writing.submissions),          l1: "Avg. Score", s2: s.writing.submissions,  l2: "Submissions" };
+      case "speaking":   return { ...meta, s1: s.speaking.minutes,          l1: "Minutes",        s2: s.speaking.sessions,    l2: "Sessions"   };
+      case "reading":    return { ...meta, s1: s.reading.articles,          l1: "Articles",       s2: fmtPct(s.reading.totalCorrect, s.reading.totalAttempted), l2: "Accuracy" };
+      case "grammar":    return { ...meta, s1: fmtPct(s.grammar.totalCorrect, s.grammar.totalAttempted), l1: "Accuracy", s2: s.grammar.exercises,   l2: "Exercises"  };
+      default:           return meta;
+    }
+  });
+
+  const [activeTab, setActiveTab] = useState("tutor");
+
+  // ── Dynamic AI content (null = not yet fetched) ──
+  const [dynamicFlashcards, setDynamicFlashcards] = useState(null);
+  const [dynamicGrammar, setDynamicGrammar] = useState(null);
+  const [dynamicReading, setDynamicReading] = useState(null);
+  const [dynamicListening, setDynamicListening] = useState(null);
+  const [tabLoading, setTabLoading] = useState(false);
+
+  // ── Dynamic writing prompt & speaking phrases (AI-generated) ──
+  const [dynamicWritingPrompt, setDynamicWritingPrompt] = useState(null);
+  const [dynamicSpeakingPhrases, setDynamicSpeakingPhrases] = useState(null);
+  const [grammarCheckLoading, setGrammarCheckLoading] = useState(false);
+
+  // ── Level selector (affects all AI content, defaults to user profile) ──
+  const [practiceLevel, setPracticeLevel] = useState(
+    user?.estimated_level || user?.selected_level || "B1"
+  );
+
+  // ── Spaced repetition: remember hard flashcards ──
+  const [hardCards, setHardCards] = useState(new Set());
+
+  // ── Reading TTS ──
+  const [readingTTSPlaying, setReadingTTSPlaying] = useState(false);
+
+  // ── Session summary ──
+  const [sessionSummary, setSessionSummary] = useState(null); // { type, score, total }
+
+  // Use AI-generated content when available, fall back to static
+  const FLASHCARDS = dynamicFlashcards || content.flashcards;
+  const GRAMMAR_EXERCISES = dynamicGrammar || content.grammar;
+  const READING = dynamicReading || content.reading;
+  const SPEAKING_PHRASES = dynamicSpeakingPhrases || content.speakingPhrases;
+  const LISTENING_EXERCISE = dynamicListening || content.listening;
+  const writingPrompt = dynamicWritingPrompt || content.writingPrompt;
 
   // ── Flashcard state ──
   const [cardIdx, setCardIdx] = useState(0);
@@ -174,6 +252,8 @@ export default function PracticePage() {
   // ── Writing state ──
   const [writingText, setWritingText] = useState("");
   const [writingFeedback, setWritingFeedback] = useState("");
+  const [writingScore, setWritingScore] = useState(null);
+  const [writingLoading, setWritingLoading] = useState(false);
   const [wordCount, setWordCount] = useState(0);
   const [grammarInline, setGrammarInline] = useState("");
   const [vocabInline, setVocabInline] = useState("");
@@ -203,11 +283,27 @@ export default function PracticePage() {
   const [processingStatus, setProcessingStatus] = useState("");
   const [feedbackData, setFeedbackData] = useState(null);
 
+  // ── AI Tutor state ──
+  const [tutorMessages, setTutorMessages] = useState([
+    {
+      role: "assistant",
+      content: `Hello! I'm your AI language tutor. Let's practice ${lang} together. Tell me — what did you do today, or is there a topic you'd like to talk about?`,
+      correction: null,
+      vocab_tip: null,
+    },
+  ]);
+  const [tutorInput, setTutorInput] = useState("");
+  const [tutorLoading, setTutorLoading] = useState(false);
+  const [tutorListening, setTutorListening] = useState(false);
+  const [tutorSpeaking, setTutorSpeaking] = useState(false);
+  const [tutorError, setTutorError] = useState("");
+
   const timerRef = useRef(null);
   const barsRef = useRef([]);
   const mediaRecRef = useRef(null);
   const chunksRef = useRef([]);
   const streamRef = useRef(null);
+  const chatEndRef = useRef(null);
 
   // Reset exercise state when language changes
   useEffect(() => {
@@ -229,6 +325,11 @@ export default function PracticePage() {
     setMicError("");
     window.speechSynthesis?.cancel();
   }, [lang]);
+
+  // Scroll to top when the practice page first loads
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, []);
 
   // Create session on component mount
   useEffect(() => {
@@ -264,6 +365,82 @@ export default function PracticePage() {
     };
   }, []);
 
+  // Auto-scroll chat to latest message (only after first message, not on mount)
+  const tutorMsgCount = useRef(0);
+  useEffect(() => {
+    if (tutorMessages.length > tutorMsgCount.current) {
+      tutorMsgCount.current = tutorMessages.length;
+      if (tutorMessages.length > 1) {
+        chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }
+    }
+  }, [tutorMessages]);
+
+  // Reset tutor chat when language changes
+  useEffect(() => {
+    setTutorMessages([
+      {
+        role: "assistant",
+        content: `Hello! I'm your AI language tutor. Let's practice ${lang} together. Tell me — what did you do today, or is there a topic you'd like to talk about?`,
+        correction: null,
+        vocab_tip: null,
+      },
+    ]);
+    setTutorInput("");
+    setTutorError("");
+  }, [lang]);
+
+  // Fetch AI-generated content when a tab is first opened (cached until reset)
+  useEffect(() => {
+    const loadTabContent = async () => {
+      if (activeTab === "flashcards" && !dynamicFlashcards) {
+        updateStat("flashcards", (s) => ({ ...s, sessions: s.sessions + 1 }));
+        setTabLoading(true);
+        try {
+          const data = await fetchPracticeFlashcards({ language: lang, level: practiceLevel });
+          if (data?.flashcards?.length) setDynamicFlashcards(data.flashcards);
+        } catch (_) { /* fall back to static content */ }
+        finally { setTabLoading(false); }
+      } else if (activeTab === "grammar" && !dynamicGrammar) {
+        setTabLoading(true);
+        try {
+          const data = await fetchPracticeGrammar({ language: lang, level: practiceLevel });
+          if (data?.exercises?.length) setDynamicGrammar(data.exercises);
+        } catch (_) { /* fall back to static content */ }
+        finally { setTabLoading(false); }
+      } else if (activeTab === "reading" && !dynamicReading) {
+        setTabLoading(true);
+        try {
+          const data = await fetchPracticeReading({ language: lang, level: practiceLevel });
+          if (data?.title) setDynamicReading(data);
+        } catch (_) { /* fall back to static content */ }
+        finally { setTabLoading(false); }
+      } else if (activeTab === "listening" && !dynamicListening) {
+        setTabLoading(true);
+        try {
+          const data = await fetchPracticeListening({ language: lang, level: practiceLevel });
+          if (data?.question) setDynamicListening(data);
+        } catch (_) { /* fall back to static content */ }
+        finally { setTabLoading(false); }
+      } else if (activeTab === "writing" && !dynamicWritingPrompt) {
+        setTabLoading(true);
+        try {
+          const data = await fetchPracticeWritingPrompt({ language: lang, level: practiceLevel });
+          if (data?.prompt) setDynamicWritingPrompt(data.prompt);
+        } catch (_) { /* fall back to static content */ }
+        finally { setTabLoading(false); }
+      } else if (activeTab === "speaking" && !dynamicSpeakingPhrases) {
+        setTabLoading(true);
+        try {
+          const data = await fetchPracticeSpeaking({ language: lang, level: practiceLevel });
+          if (data?.phrases?.length) setDynamicSpeakingPhrases(data.phrases);
+        } catch (_) { /* fall back to static content */ }
+        finally { setTabLoading(false); }
+      }
+    };
+    loadTabContent();
+  }, [activeTab, dynamicFlashcards, dynamicGrammar, dynamicReading, dynamicListening, dynamicWritingPrompt, dynamicSpeakingPhrases]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Flashcard handlers ────────────────────────────────────────────────────
   const nextCard = () => {
     setCardIdx((i) => (i + 1) % FLASHCARDS.length);
@@ -275,6 +452,7 @@ export default function PracticePage() {
   };
   const markKnown = () => {
     setKnown((k) => k + 1);
+    updateStat("flashcards", (s) => ({ ...s, wordsLearned: s.wordsLearned + 1 }));
     nextCard();
   };
 
@@ -289,7 +467,13 @@ export default function PracticePage() {
     });
     setGrammarScore(score);
     setGrammarChecked(true);
-    // 👉 Log completed session and update user stats
+    setSessionSummary({ type: "Grammar", score, total: GRAMMAR_EXERCISES.length });
+    updateStat("grammar", (s) => ({
+      ...s,
+      exercises:     s.exercises + 1,
+      totalCorrect:  s.totalCorrect  + score,
+      totalAttempted: s.totalAttempted + GRAMMAR_EXERCISES.length,
+    }));
     awardPracticeMinutes("grammar", score * 2);
   };
 
@@ -297,7 +481,18 @@ export default function PracticePage() {
   const setReadingAnswer = (idx, ans) => {
     if (!readingChecked) setReadingAnswers((a) => ({ ...a, [idx]: ans }));
   };
-  const checkReadingAnswers = () => setReadingChecked(true);
+  const checkReadingAnswers = () => {
+    setReadingChecked(true);
+    const correct = READING.questions.filter((rq, qi) => readingAnswers[qi] === rq.correct).length;
+    setSessionSummary({ type: "Reading", score: correct, total: READING.questions.length });
+    updateStat("reading", (s) => ({
+      ...s,
+      articles:      s.articles + 1,
+      totalCorrect:  s.totalCorrect  + correct,
+      totalAttempted: s.totalAttempted + READING.questions.length,
+    }));
+    awardPracticeMinutes("reading", 5);
+  };
 
   // ── Writing handlers ──────────────────────────────────────────────────────
   const countWords = () => {
@@ -305,15 +500,33 @@ export default function PracticePage() {
     setWordCount(wc);
     return wc;
   };
-  const checkGrammarInline = () => {
+  const checkGrammarInline = async () => {
     if (!writingText.trim()) {
       setGrammarInline("Please write something first.");
       return;
     }
-    setGrammarInline(
-      "✓ Grammar looks good! No major errors found. Watch out for article usage.",
-    );
+    setGrammarCheckLoading(true);
+    setGrammarInline("⏳ Checking grammar with AI…");
     setVocabInline("");
+    try {
+      const result = await checkWritingGrammar({ text: writingText, language: lang });
+      if (result?.corrections?.length > 0) {
+        const msgs = result.corrections
+          .map((c) => `• "${c.original}" → "${c.corrected}": ${c.explanation}`)
+          .join("\n");
+        setGrammarInline(
+          `⚠ Found ${result.corrections.length} issue(s):\n${msgs}${result.overall ? `\n\nOverall: ${result.overall}` : ""}`,
+        );
+      } else {
+        setGrammarInline(
+          `✓ Grammar looks good! ${result?.overall || "No major errors found."}`,
+        );
+      }
+    } catch (_) {
+      setGrammarInline("✓ Grammar looks good! No major errors detected.");
+    } finally {
+      setGrammarCheckLoading(false);
+    }
   };
   const checkVocabInline = () => {
     if (!writingText.trim()) {
@@ -326,24 +539,43 @@ export default function PracticePage() {
     setVocabInline(`💡 Suggestions: try "${suggestions}" for variety.`);
     setGrammarInline("");
   };
-  const submitWriting = () => {
+  const submitWriting = async () => {
     const wc = writingText.trim().split(/\s+/).filter(Boolean).length;
     if (wc < 10) {
       setWritingFeedback("⚠ Please write at least 10 words before submitting.");
       return;
     }
     setWordCount(wc);
-    setWritingFeedback(
-      `Great effort! Your paragraph has ${wc} words. Grammar is mostly correct. ` +
-        `Try to vary your sentence structure and include transition words. ` +
-        `Overall score: ${Math.min(10, Math.max(6, Math.round(wc / 10)))}/10`,
-    );
+    setWritingLoading(true);
+    setWritingFeedback("");
+    setWritingScore(null);
     setGrammarInline("");
     setVocabInline("");
-    awardPracticeMinutes(
-      "writing",
-      Math.max(3, Math.min(10, Math.floor(wc / 20))),
-    );
+    try {
+      const result = await scorePracticeWriting({
+        writingText,
+        prompt: writingPrompt,
+        language: lang,
+      });
+      const score = result.score ?? null;
+      setWritingScore(score);
+      setWritingFeedback(result.feedback || "Great effort! Keep writing.");
+      updateStat("writing", (s) => ({
+        ...s,
+        submissions: s.submissions + 1,
+        totalScore:  s.totalScore + (score ?? 0),
+      }));
+      awardPracticeMinutes("writing", Math.max(3, Math.min(10, Math.floor(wc / 20))));
+    } catch (_) {
+      // Fallback to local estimate if backend is unreachable
+      setWritingFeedback(
+        `Great effort! Your paragraph has ${wc} words. Grammar is mostly correct. ` +
+          `Try to vary your sentence structure and include transition words. ` +
+          `Overall score: ${Math.min(10, Math.max(6, Math.round(wc / 10)))}/10`,
+      );
+    } finally {
+      setWritingLoading(false);
+    }
   };
 
   // ── Listening handlers ────────────────────────────────────────────────────
@@ -371,12 +603,37 @@ export default function PracticePage() {
         ? `✓ Correct! ${LISTENING_EXERCISE.options[LISTENING_EXERCISE.correct]}`
         : `✗ Incorrect. The correct answer is: ${LISTENING_EXERCISE.options[LISTENING_EXERCISE.correct]}`,
     );
+    updateStat("listening", (s) => ({
+      ...s,
+      exercises:      s.exercises + 1,
+      totalCorrect:   s.totalCorrect  + (correct ? 1 : 0),
+      totalAttempted: s.totalAttempted + 1,
+    }));
     awardPracticeMinutes("listening", 5);
   };
 
   // ── Speaking/pronunciation handlers ──────────────────────────────────────
   const playExample = () => {
     const phrase = SPEAKING_PHRASES[phraseIdx];
+    // Use ElevenLabs base64 audio if available (from backend)
+    if (phrase.audioBase64) {
+      if (examplePlaying) {
+        setExamplePlaying(false);
+        return;
+      }
+      const audio = new Audio(`data:audio/mpeg;base64,${phrase.audioBase64}`);
+      audio.onended = () => setExamplePlaying(false);
+      audio.onerror = () => {
+        setExamplePlaying(false);
+        speakTTS(phrase.text, ttsLang, () => setExamplePlaying(true), () => setExamplePlaying(false));
+      };
+      setExamplePlaying(true);
+      audio.play().catch(() => {
+        setExamplePlaying(false);
+        speakTTS(phrase.text, ttsLang, () => setExamplePlaying(true), () => setExamplePlaying(false));
+      });
+      return;
+    }
     speakTTS(
       phrase.text,
       ttsLang,
@@ -468,6 +725,11 @@ export default function PracticePage() {
             setShowPronFeedback(true);
             setUploading(false);
             setUploadProgress("");
+            updateStat("speaking", (s) => ({
+              ...s,
+              sessions: s.sessions + 1,
+              minutes:  Math.round(s.minutes + recTime / 60),
+            }));
             awardPracticeMinutes("speaking", 5);
             return true;
           } else if (status.status === "FAILED") {
@@ -528,27 +790,205 @@ export default function PracticePage() {
     setExamplePlaying(false);
   };
 
+  // ── Reading TTS ───────────────────────────────────────────────────────────────
+  const playReadingPassage = () => {
+    if (readingTTSPlaying) {
+      window.speechSynthesis.cancel();
+      setReadingTTSPlaying(false);
+      return;
+    }
+    const fullText = READING.passage.join(" ");
+    speakTTS(fullText, ttsLang, () => setReadingTTSPlaying(true), () => setReadingTTSPlaying(false));
+  };
+
+  // ── AI Tutor handlers ────────────────────────────────────────────────────────
+  const sendTutorChat = async (overrideText) => {
+    const msg = (overrideText ?? tutorInput).trim();
+    if (!msg || tutorLoading) return;
+
+    setTutorInput("");
+    setTutorError("");
+    window.speechSynthesis?.cancel();
+    setTutorSpeaking(false);
+
+    const userMsg = { role: "user", content: msg, correction: null, vocab_tip: null };
+    const updatedHistory = [...tutorMessages, userMsg];
+    setTutorMessages(updatedHistory);
+    setTutorLoading(true);
+
+    try {
+      // Build history without the greeting so we don't inflate the context
+      const historyForApi = updatedHistory
+        .slice(0, -1) // exclude the message we just added
+        .map((m) => ({ role: m.role, content: m.content }));
+
+      const result = await chatWithTutor({
+        message: msg,
+        history: historyForApi,
+        language: lang,
+        level: practiceLevel,
+      });
+
+      const aiMsg = {
+        role: "assistant",
+        content: result.reply || "...",
+        correction: result.correction || null,
+        vocab_tip: result.vocab_tip || null,
+      };
+      setTutorMessages((prev) => [...prev, aiMsg]);
+
+      // Speak the AI reply aloud
+      if (result.reply) {
+        speakTTS(
+          result.reply,
+          ttsLang,
+          () => setTutorSpeaking(true),
+          () => setTutorSpeaking(false),
+        );
+      }
+    } catch (err) {
+      setTutorError("Couldn't reach the tutor. Please check your connection and try again.");
+      const errMsg = {
+        role: "assistant",
+        content: "Sorry, I couldn't connect right now. Please try again!",
+        correction: null,
+        vocab_tip: null,
+      };
+      setTutorMessages((prev) => [...prev, errMsg]);
+    } finally {
+      setTutorLoading(false);
+    }
+  };
+
+  const startVoiceInput = () => {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setTutorError(
+        "Voice input is not supported in this browser. Please use Chrome or Edge.",
+      );
+      return;
+    }
+    window.speechSynthesis?.cancel();
+    setTutorSpeaking(false);
+
+    const rec = new SpeechRecognition();
+    rec.lang = ttsLang;
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+
+    setTutorListening(true);
+    setTutorError("");
+
+    rec.onresult = (e) => {
+      const transcript = e.results[0][0].transcript;
+      setTutorListening(false);
+      setTutorInput(transcript);
+      sendTutorChat(transcript);
+    };
+    rec.onerror = () => {
+      setTutorListening(false);
+      setTutorError("Couldn't hear you. Please try again.");
+    };
+    rec.onend = () => setTutorListening(false);
+    rec.start();
+  };
+
   // ─────────────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────────────
   return (
     <div id="practice-page">
       <div className="container">
-        {/* Language indicator */}
-        <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
-          <span
-            style={{
-              background: "rgba(99,102,241,0.1)",
-              border: "1px solid rgba(99,102,241,0.25)",
-              color: "#6366f1",
-              padding: "0.4rem 1.2rem",
-              borderRadius: "99px",
-              fontSize: "0.85rem",
-              fontWeight: 700,
-            }}
-          >
-            📚 Practicing: {lang}
-          </span>
+        {/* ── Page header: language badge + level selector + streak + daily goal ── */}
+        <div style={{ paddingTop: "2rem", marginBottom: "1.5rem" }}>
+          {/* Row 1: badge + level selector */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+            <span
+              style={{
+                background: "rgba(99,102,241,0.1)",
+                border: "1px solid rgba(99,102,241,0.25)",
+                color: "#6366f1",
+                padding: "0.45rem 1.2rem",
+                borderRadius: "99px",
+                fontSize: "0.88rem",
+                fontWeight: 700,
+              }}
+            >
+              📚 Practicing: {lang}
+            </span>
+            <select
+              value={practiceLevel}
+              onChange={(e) => {
+                setPracticeLevel(e.target.value);
+                // Clear cached AI content so next tab-open re-fetches at new level
+                setDynamicFlashcards(null);
+                setDynamicGrammar(null);
+                setDynamicReading(null);
+                setDynamicListening(null);
+                setDynamicWritingPrompt(null);
+                setDynamicSpeakingPhrases(null);
+              }}
+              style={{
+                background: "rgba(99,102,241,0.08)",
+                border: "1px solid rgba(99,102,241,0.25)",
+                color: "var(--primary)",
+                padding: "0.4rem 0.9rem",
+                borderRadius: "99px",
+                fontSize: "0.88rem",
+                fontWeight: 700,
+                cursor: "pointer",
+                outline: "none",
+              }}
+            >
+              {["A1","A2","B1","B2","C1","C2"].map((lvl) => (
+                <option key={lvl} value={lvl}>{lvl}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Row 2: streak + daily goal */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "1.5rem", marginTop: "0.9rem", flexWrap: "wrap" }}>
+            {/* Streak */}
+            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.88rem", fontWeight: 600, color: practiceStats.streak > 0 ? "#f59e0b" : "var(--gray)" }}>
+              🔥 {practiceStats.streak} day streak
+            </div>
+            {/* Daily goal progress */}
+            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+              <span style={{ fontSize: "0.82rem", color: "var(--gray)", fontWeight: 600 }}>
+                🎯 Today: {practiceStats.todayMinutes}/{practiceStats.dailyGoalMinutes} min
+              </span>
+              <div style={{ width: 80, height: 6, background: "var(--border)", borderRadius: 99, overflow: "hidden" }}>
+                <div style={{
+                  height: "100%",
+                  width: `${Math.min(100, (practiceStats.todayMinutes / (practiceStats.dailyGoalMinutes || 10)) * 100)}%`,
+                  background: practiceStats.todayMinutes >= practiceStats.dailyGoalMinutes ? "var(--secondary)" : "var(--primary)",
+                  borderRadius: 99,
+                  transition: "width 0.4s ease",
+                }} />
+              </div>
+            </div>
+            {/* CEFR level progress */}
+            {(() => {
+              const levels = ["A1","A2","B1","B2","C1","C2"];
+              const idx = levels.indexOf(practiceLevel);
+              const totalEx = (practiceStats.grammar.totalAttempted || 0) + (practiceStats.reading.totalAttempted || 0) + (practiceStats.listening.totalAttempted || 0);
+              const pct = Math.min(100, Math.round((totalEx / Math.max(1, (idx + 1) * 20)) * 100));
+              const nextLevel = idx < 5 ? levels[idx + 1] : null;
+              return nextLevel ? (
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <span style={{ fontSize: "0.82rem", color: "var(--gray)", fontWeight: 600 }}>
+                    📈 {practiceLevel}→{nextLevel}: {pct}%
+                  </span>
+                  <div style={{ width: 80, height: 6, background: "var(--border)", borderRadius: 99, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${pct}%`, background: "linear-gradient(90deg,#6366f1,#8b5cf6)", borderRadius: 99, transition: "width 0.4s ease" }} />
+                  </div>
+                </div>
+              ) : (
+                <span style={{ fontSize: "0.82rem", color: "#f59e0b", fontWeight: 700 }}>🏆 Max Level!</span>
+              );
+            })()}
+          </div>
         </div>
 
         {/* ── CATEGORY CARDS ── */}
@@ -593,11 +1033,34 @@ export default function PracticePage() {
           </div>
 
           {/* ════════════════════════════════
+              LOADING BANNER (shared across tabs)
+          ════════════════════════════════ */}
+          {tabLoading && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.75rem",
+                padding: "0.85rem 1.25rem",
+                background: "rgba(99,102,241,0.08)",
+                border: "1px solid rgba(99,102,241,0.2)",
+                borderRadius: "var(--border-radius)",
+                marginBottom: "1.5rem",
+                color: "var(--primary)",
+                fontSize: "0.9rem",
+                fontWeight: 600,
+              }}
+            >
+              <span className="auth-spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
+              Generating AI content for you…
+            </div>
+          )}
+
+          {/* ════════════════════════════════
               FLASHCARDS
           ════════════════════════════════ */}
           {activeTab === "flashcards" && (
             <div className="fade-in">
-              {/* BACKEND INTEGRATION: GET /api/practice/flashcards?language={lang} */}
               <div
                 className={`flashcard-container${flipped ? " flipped" : ""}`}
                 onClick={() => setFlipped((f) => !f)}
@@ -619,20 +1082,53 @@ export default function PracticePage() {
                   </div>
                 </div>
               </div>
+              {/* Celebration overlay when all cards known */}
+              {known >= FLASHCARDS.length && (
+                <div style={{
+                  textAlign: "center",
+                  padding: "2rem",
+                  background: "rgba(16,185,129,0.08)",
+                  border: "1px solid rgba(16,185,129,0.25)",
+                  borderRadius: "var(--border-radius)",
+                  marginBottom: "1rem",
+                }}>
+                  <div style={{ fontSize: "2.5rem", marginBottom: "0.5rem" }}>🎉</div>
+                  <h3 style={{ color: "var(--secondary)", marginBottom: "0.5rem" }}>You know all {FLASHCARDS.length} words!</h3>
+                  <p style={{ color: "var(--gray)", marginBottom: "1rem" }}>Great session — your vocabulary is growing!</p>
+                  <button className="btn btn-primary" onClick={() => {
+                    setKnown(0); setCardIdx(0); setFlipped(false);
+                    setDynamicFlashcards(null);
+                    setHardCards(new Set());
+                  }}>
+                    <i className="fas fa-sync-alt" /> New Set
+                  </button>
+                </div>
+              )}
               <div className="flashcard-controls">
                 <button className="btn btn-outline" onClick={prevCard}>
                   <i className="fas fa-arrow-left" /> Previous
                 </button>
-                <button className="btn btn-primary" onClick={markKnown}>
+                <button className="btn btn-primary" onClick={markKnown} disabled={known >= FLASHCARDS.length}>
                   <i className="fas fa-check" /> I Know This
+                </button>
+                <button
+                  className="btn btn-outline"
+                  title="Mark as hard — will appear again"
+                  onClick={() => {
+                    setHardCards((prev) => new Set([...prev, cardIdx]));
+                    nextCard();
+                  }}
+                >
+                  <i className="fas fa-redo" /> Hard
                 </button>
                 <button className="btn btn-outline" onClick={nextCard}>
                   Next <i className="fas fa-arrow-right" />
                 </button>
               </div>
-              <div style={{ textAlign: "center", marginTop: "2rem" }}>
-                <p>
-                  Card {cardIdx + 1} of {FLASHCARDS.length} | Known: {known}
+              <div style={{ textAlign: "center", marginTop: "1.5rem" }}>
+                <p style={{ color: "var(--gray)", fontSize: "0.9rem" }}>
+                  Card {cardIdx + 1} of {FLASHCARDS.length} &nbsp;|&nbsp; Known: {known}
+                  {hardCards.size > 0 && <>&nbsp;|&nbsp; Hard: {hardCards.size}</>}
                 </p>
                 <div
                   className="goal-progress"
@@ -643,6 +1139,29 @@ export default function PracticePage() {
                     style={{ width: `${(known / FLASHCARDS.length) * 100}%` }}
                   />
                 </div>
+              </div>
+              {/* Spaced repetition: re-review hard cards */}
+              {hardCards.size > 0 && known >= FLASHCARDS.length - hardCards.size && (
+                <div style={{ textAlign: "center", marginTop: "1rem" }}>
+                  <button className="btn btn-outline" style={{ fontSize: "0.85rem" }} onClick={() => {
+                    const hardArr = [...hardCards];
+                    setCardIdx(hardArr[0]);
+                    setFlipped(false);
+                    setHardCards(new Set());
+                  }}>
+                    <i className="fas fa-redo-alt" /> Review {hardCards.size} Hard Card{hardCards.size > 1 ? "s" : ""}
+                  </button>
+                </div>
+              )}
+              {/* New Set button */}
+              <div style={{ textAlign: "center", marginTop: "0.75rem" }}>
+                <button className="btn btn-outline" style={{ fontSize: "0.82rem" }} onClick={() => {
+                  setKnown(0); setCardIdx(0); setFlipped(false);
+                  setDynamicFlashcards(null);
+                  setHardCards(new Set());
+                }}>
+                  <i className="fas fa-sync-alt" /> New Set
+                </button>
               </div>
             </div>
           )}
@@ -776,14 +1295,30 @@ export default function PracticePage() {
                   </div>
                 )}
 
-                <button
-                  className="btn btn-primary"
-                  style={{ marginTop: "1.5rem" }}
-                  onClick={checkListeningAnswer}
-                  disabled={listeningAnswer === null}
-                >
-                  <i className="fas fa-check-circle" /> Check Answer
-                </button>
+                <div style={{ display: "flex", gap: "1rem", marginTop: "1.5rem", flexWrap: "wrap" }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={checkListeningAnswer}
+                    disabled={listeningAnswer === null || !!listeningResult}
+                  >
+                    <i className="fas fa-check-circle" /> Check Answer
+                  </button>
+                  {listeningResult && (
+                    <button
+                      className="btn btn-outline"
+                      onClick={() => {
+                        setListeningAnswer(null);
+                        setListeningResult("");
+                        setShowTranscript(false);
+                        setAudioPlaying(false);
+                        window.speechSynthesis.cancel();
+                        setDynamicListening(null); // triggers fresh AI exercise
+                      }}
+                    >
+                      <i className="fas fa-sync-alt" /> Try Again (New Exercise)
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -793,19 +1328,27 @@ export default function PracticePage() {
           ════════════════════════════════ */}
           {activeTab === "writing" && (
             <div className="fade-in">
-              {/* BACKEND INTEGRATION: GET /api/practice/writing/prompt?language={lang} */}
               <div className="writing-prompt">
-                <h3>Writing Prompt</h3>
-                <p>{content.writingPrompt}</p>
-                <p
-                  style={{
-                    color: "var(--gray)",
-                    fontSize: "0.9rem",
-                    marginTop: "0.5rem",
-                  }}
-                >
-                  <i className="fas fa-lightbulb" /> Tip: Try to use time
-                  expressions and transition words in {lang}.
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", marginBottom: "0.5rem" }}>
+                  <h3 style={{ margin: 0 }}>Writing Prompt</h3>
+                  <button
+                    className="btn btn-outline"
+                    style={{ fontSize: "0.8rem", padding: "0.3rem 0.75rem", flexShrink: 0 }}
+                    onClick={() => {
+                      setDynamicWritingPrompt(null);
+                      setWritingText("");
+                      setWritingFeedback("");
+                      setWritingScore(null);
+                      setGrammarInline("");
+                      setVocabInline("");
+                    }}
+                  >
+                    <i className="fas fa-sync-alt" /> New Prompt
+                  </button>
+                </div>
+                <p>{writingPrompt}</p>
+                <p style={{ color: "var(--gray)", fontSize: "0.9rem", marginTop: "0.5rem" }}>
+                  <i className="fas fa-lightbulb" /> Tip: Try to use time expressions and transition words in {lang}.
                 </p>
               </div>
               <textarea
@@ -819,8 +1362,11 @@ export default function PracticePage() {
                 }}
               />
               <div className="writing-tools">
-                <button className="tool-btn" onClick={checkGrammarInline}>
-                  <i className="fas fa-spell-check" /> Check Grammar
+                <button className="tool-btn" onClick={checkGrammarInline} disabled={grammarCheckLoading}>
+                  {grammarCheckLoading
+                    ? <><span className="auth-spinner" style={{ width: 12, height: 12, borderWidth: 2, marginRight: "0.4rem" }} />Checking…</>
+                    : <><i className="fas fa-spell-check" /> Check Grammar</>
+                  }
                 </button>
                 <button className="tool-btn" onClick={checkVocabInline}>
                   <i className="fas fa-book" /> Vocabulary Help
@@ -876,9 +1422,13 @@ export default function PracticePage() {
                 className="btn btn-primary"
                 style={{ marginTop: "1.5rem", width: "100%" }}
                 onClick={submitWriting}
-                disabled={!writingText.trim()}
+                disabled={!writingText.trim() || writingLoading}
               >
-                <i className="fas fa-robot" /> Get AI Feedback
+                {writingLoading ? (
+                  <><span className="auth-spinner" style={{ width: 14, height: 14, borderWidth: 2, marginRight: "0.5rem" }} /> Analysing…</>
+                ) : (
+                  <><i className="fas fa-robot" /> Get AI Feedback</>
+                )}
               </button>
               {writingFeedback && (
                 <div
@@ -889,14 +1439,21 @@ export default function PracticePage() {
                     borderRadius: "var(--border-radius)",
                   }}
                 >
-                  <h4 style={{ marginBottom: "0.75rem" }}>
-                    <i
-                      className="fas fa-robot"
-                      style={{ color: "var(--primary)", marginRight: "0.5rem" }}
-                    />
-                    AI Feedback
-                  </h4>
-                  <p>{writingFeedback}</p>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
+                    <h4 style={{ margin: 0 }}>
+                      <i
+                        className="fas fa-robot"
+                        style={{ color: "var(--primary)", marginRight: "0.5rem" }}
+                      />
+                      AI Feedback
+                    </h4>
+                    {writingScore !== null && (
+                      <span style={{ fontWeight: 700, fontSize: "1.1rem", color: writingScore >= 7 ? "var(--secondary)" : writingScore >= 5 ? "var(--accent)" : "var(--danger)" }}>
+                        {writingScore}/10
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ lineHeight: 1.7 }}>{writingFeedback}</p>
                 </div>
               )}
             </div>
@@ -1171,78 +1728,77 @@ export default function PracticePage() {
                     <h4 style={{ marginBottom: "1rem" }}>
                       Pronunciation Analysis
                     </h4>
-                    {/* BACKEND INTEGRATION: POST /api/practice/speaking/analyze → { score, clarity, intonation, rhythm } */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "1rem",
-                        marginBottom: "1rem",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: "2rem",
-                          fontWeight: 700,
-                          color: "var(--secondary)",
-                        }}
-                      >
-                        85%
-                      </div>
-                      <div>
-                        <div style={{ fontWeight: 600 }}>Good job!</div>
-                        <div style={{ color: "var(--gray)" }}>
-                          Your pronunciation is clear and understandable
-                        </div>
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns:
-                          "repeat(auto-fit,minmax(150px,1fr))",
-                        gap: "1rem",
-                      }}
-                    >
-                      <div
-                        style={{
-                          background: "var(--bg-card)",
-                          padding: "1rem",
-                          borderRadius: "var(--border-radius)",
-                          border: "1px solid var(--border)",
-                        }}
-                      >
+                    {feedbackData ? (
+                      <>
                         <div
-                          style={{ fontWeight: 600, color: "var(--secondary)" }}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "1rem",
+                            marginBottom: "1rem",
+                          }}
                         >
-                          ✓ Good
+                          <div
+                            style={{
+                              fontSize: "2rem",
+                              fontWeight: 700,
+                              color: (feedbackData.score ?? feedbackData.overall_score ?? 0) >= 75
+                                ? "var(--secondary)"
+                                : (feedbackData.score ?? feedbackData.overall_score ?? 0) >= 50
+                                  ? "var(--accent)"
+                                  : "var(--danger)",
+                            }}
+                          >
+                            {feedbackData.score ?? feedbackData.overall_score ?? "—"}%
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 600 }}>
+                              {(feedbackData.score ?? feedbackData.overall_score ?? 0) >= 75
+                                ? "Great job!"
+                                : (feedbackData.score ?? feedbackData.overall_score ?? 0) >= 50
+                                  ? "Good effort!"
+                                  : "Keep practising!"}
+                            </div>
+                            <div style={{ color: "var(--gray)", fontSize: "0.9rem" }}>
+                              {feedbackData.feedback || "Your recording has been processed."}
+                            </div>
+                          </div>
                         </div>
-                        <div
-                          style={{ fontSize: "0.9rem", color: "var(--gray)" }}
-                        >
-                          Vowel sounds
+                        {(feedbackData.strengths || feedbackData.improvements) && (
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
+                              gap: "1rem",
+                            }}
+                          >
+                            {feedbackData.strengths?.map((s, i) => (
+                              <div key={i} style={{ background: "var(--bg-card)", padding: "1rem", borderRadius: "var(--border-radius)", border: "1px solid var(--border)" }}>
+                                <div style={{ fontWeight: 600, color: "var(--secondary)" }}>✓ Good</div>
+                                <div style={{ fontSize: "0.9rem", color: "var(--gray)" }}>{s}</div>
+                              </div>
+                            ))}
+                            {feedbackData.improvements?.map((s, i) => (
+                              <div key={i} style={{ background: "var(--bg-card)", padding: "1rem", borderRadius: "var(--border-radius)", border: "1px solid var(--border)" }}>
+                                <div style={{ fontWeight: 600, color: "var(--accent)" }}>⚠ Needs Work</div>
+                                <div style={{ fontSize: "0.9rem", color: "var(--gray)" }}>{s}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      /* No detailed data — show the generic summary */
+                      <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                        <div style={{ fontSize: "2rem", fontWeight: 700, color: "var(--secondary)" }}>✓</div>
+                        <div>
+                          <div style={{ fontWeight: 600 }}>Recording saved</div>
+                          <div style={{ color: "var(--gray)", fontSize: "0.9rem" }}>
+                            Your audio has been uploaded and will be analysed shortly.
+                          </div>
                         </div>
                       </div>
-                      <div
-                        style={{
-                          background: "var(--bg-card)",
-                          padding: "1rem",
-                          borderRadius: "var(--border-radius)",
-                          border: "1px solid var(--border)",
-                        }}
-                      >
-                        <div
-                          style={{ fontWeight: 600, color: "var(--accent)" }}
-                        >
-                          ⚠ Needs Work
-                        </div>
-                        <div
-                          style={{ fontSize: "0.9rem", color: "var(--gray)" }}
-                        >
-                          Intonation
-                        </div>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1261,7 +1817,17 @@ export default function PracticePage() {
                   Read the passage and answer the questions that follow
                 </p>
                 <div className="reading-passage">
-                  <h3>{READING.title}</h3>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem", gap: "1rem", flexWrap: "wrap" }}>
+                    <h3 style={{ margin: 0 }}>{READING.title}</h3>
+                    <button
+                      className={`btn ${readingTTSPlaying ? "btn-primary" : "btn-outline"}`}
+                      style={{ fontSize: "0.82rem", padding: "0.3rem 0.8rem" }}
+                      onClick={playReadingPassage}
+                    >
+                      <i className={`fas ${readingTTSPlaying ? "fa-stop" : "fa-volume-up"}`} />
+                      {readingTTSPlaying ? " Stop" : " Listen"}
+                    </button>
+                  </div>
                   {READING.passage.map((para, i) => (
                     <p key={i}>{para}</p>
                   ))}
@@ -1343,9 +1909,10 @@ export default function PracticePage() {
                       onClick={() => {
                         setReadingAnswers({});
                         setReadingChecked(false);
+                        setDynamicReading(null); // triggers fresh AI passage on next render
                       }}
                     >
-                      Try Again
+                      Try Again (New Passage)
                     </button>
                   </div>
                 )}
@@ -1440,15 +2007,300 @@ export default function PracticePage() {
                         setGrammarAnswers({});
                         setGrammarChecked(false);
                         setGrammarScore(0);
+                        setDynamicGrammar(null); // triggers fresh AI fetch on next render
                       }}
                     >
-                      Try Again
+                      Try Again (New Questions)
                     </button>
                   </div>
                 )}
               </div>
             </div>
           )}
+          {/* ════════════════════════════════
+              SESSION SUMMARY (dismissable)
+          ════════════════════════════════ */}
+          {sessionSummary && (
+            <div
+              style={{
+                margin: "1.5rem 0",
+                padding: "1.25rem 1.5rem",
+                background: sessionSummary.score / sessionSummary.total >= 0.7
+                  ? "rgba(16,185,129,0.08)"
+                  : "rgba(99,102,241,0.08)",
+                border: `1px solid ${sessionSummary.score / sessionSummary.total >= 0.7 ? "rgba(16,185,129,0.25)" : "rgba(99,102,241,0.2)"}`,
+                borderRadius: "var(--border-radius)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "1rem",
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                <span style={{ fontSize: "1.75rem" }}>
+                  {sessionSummary.score / sessionSummary.total >= 0.8 ? "🏆" : sessionSummary.score / sessionSummary.total >= 0.5 ? "👍" : "💪"}
+                </span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>
+                    {sessionSummary.type} Session Complete
+                  </div>
+                  <div style={{ color: "var(--gray)", fontSize: "0.88rem" }}>
+                    Score: {sessionSummary.score}/{sessionSummary.total} ({Math.round((sessionSummary.score / sessionSummary.total) * 100)}%)
+                    &nbsp;·&nbsp;
+                    {sessionSummary.score / sessionSummary.total >= 0.8
+                      ? "Excellent work!"
+                      : sessionSummary.score / sessionSummary.total >= 0.5
+                        ? "Good effort, keep going!"
+                        : "Keep practising — you'll improve!"}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setSessionSummary(null)}
+                style={{ background: "none", border: "none", color: "var(--gray)", cursor: "pointer", fontSize: "1.1rem", flexShrink: 0 }}
+                title="Dismiss"
+              >
+                <i className="fas fa-times" />
+              </button>
+            </div>
+          )}
+
+          {/* ════════════════════════════════
+              TALK WITH AI TUTOR
+          ════════════════════════════════ */}
+          {activeTab === "tutor" && (
+            <div className="fade-in">
+              <div className="listening-exercise">
+                {/* Header */}
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
+                  <h3 style={{ margin: 0 }}>Talk with your AI Tutor</h3>
+                  {tutorSpeaking && (
+                    <span style={{ fontSize: "0.8rem", color: "var(--primary)", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                      <i className="fas fa-volume-up" /> Speaking…
+                    </span>
+                  )}
+                </div>
+                <p style={{ color: "var(--gray)", marginBottom: "1.5rem", fontSize: "0.9rem" }}>
+                  Level: <strong>{practiceLevel}</strong> · Language: <strong>{lang}</strong> · Mistakes are corrected gently as you go
+                </p>
+
+                {/* Chat window */}
+                <div
+                  style={{
+                    height: "420px",
+                    overflowY: "auto",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "1.25rem",
+                    padding: "1rem",
+                    background: "var(--light)",
+                    borderRadius: "var(--border-radius)",
+                    marginBottom: "1.25rem",
+                  }}
+                >
+                  {tutorMessages.map((msg, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: msg.role === "user" ? "flex-end" : "flex-start",
+                        gap: "0.4rem",
+                      }}
+                    >
+                      {/* Bubble */}
+                      <div
+                        style={{
+                          maxWidth: "78%",
+                          padding: "0.75rem 1rem",
+                          borderRadius: msg.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                          background: msg.role === "user" ? "var(--primary)" : "var(--bg-card)",
+                          color: msg.role === "user" ? "#fff" : "var(--text)",
+                          border: msg.role === "user" ? "none" : "1px solid var(--border)",
+                          fontSize: "0.95rem",
+                          lineHeight: 1.55,
+                          boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
+                        }}
+                      >
+                        {msg.role === "assistant" && (
+                          <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--primary)", display: "block", marginBottom: "0.3rem" }}>
+                            <i className="fas fa-robot" /> AI Tutor
+                          </span>
+                        )}
+                        {msg.content}
+                      </div>
+
+                      {/* Correction chip */}
+                      {msg.correction && (
+                        <div
+                          style={{
+                            maxWidth: "78%",
+                            padding: "0.5rem 0.85rem",
+                            borderRadius: "10px",
+                            background: "rgba(239,68,68,0.08)",
+                            border: "1px solid rgba(239,68,68,0.25)",
+                            color: "#ef4444",
+                            fontSize: "0.83rem",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                          }}
+                        >
+                          <i className="fas fa-pencil-alt" />
+                          <span><strong>Correction:</strong> {msg.correction}</span>
+                        </div>
+                      )}
+
+                      {/* Vocab tip chip */}
+                      {msg.vocab_tip && (
+                        <div
+                          style={{
+                            maxWidth: "78%",
+                            padding: "0.5rem 0.85rem",
+                            borderRadius: "10px",
+                            background: "rgba(99,102,241,0.08)",
+                            border: "1px solid rgba(99,102,241,0.25)",
+                            color: "var(--primary)",
+                            fontSize: "0.83rem",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                          }}
+                        >
+                          <i className="fas fa-lightbulb" />
+                          <span>{msg.vocab_tip}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* Thinking indicator */}
+                  {tutorLoading && (
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: "0.4rem" }}>
+                      <div
+                        style={{
+                          padding: "0.75rem 1rem",
+                          borderRadius: "18px 18px 18px 4px",
+                          background: "var(--bg-card)",
+                          border: "1px solid var(--border)",
+                          color: "var(--gray)",
+                          fontSize: "0.88rem",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.5rem",
+                        }}
+                      >
+                        <span className="auth-spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                        Tutor is thinking…
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+
+                {/* Error bar */}
+                {tutorError && (
+                  <div
+                    style={{
+                      marginBottom: "1rem",
+                      padding: "0.75rem 1rem",
+                      borderRadius: "var(--border-radius)",
+                      background: "rgba(239,68,68,0.08)",
+                      border: "1px solid rgba(239,68,68,0.2)",
+                      color: "#ef4444",
+                      fontSize: "0.88rem",
+                    }}
+                  >
+                    <i className="fas fa-exclamation-circle" /> {tutorError}
+                  </div>
+                )}
+
+                {/* Input area */}
+                <div style={{ display: "flex", gap: "0.6rem", alignItems: "flex-end" }}>
+                  <textarea
+                    rows={2}
+                    placeholder={tutorListening ? "🎤 Listening…" : "Type your message or use the mic…"}
+                    value={tutorListening ? "🎤 Listening…" : tutorInput}
+                    onChange={(e) => setTutorInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        sendTutorChat();
+                      }
+                    }}
+                    disabled={tutorLoading || tutorListening}
+                    style={{
+                      flex: 1,
+                      padding: "0.75rem 1rem",
+                      borderRadius: "14px",
+                      border: "1.5px solid var(--border)",
+                      background: "var(--bg-card)",
+                      color: "var(--text)",
+                      fontSize: "0.95rem",
+                      resize: "none",
+                      outline: "none",
+                      fontFamily: "inherit",
+                      lineHeight: 1.5,
+                    }}
+                  />
+
+                  {/* Mic button */}
+                  <button
+                    onClick={startVoiceInput}
+                    disabled={tutorLoading || tutorListening}
+                    title="Speak your message"
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: "50%",
+                      border: "none",
+                      background: tutorListening ? "#ef4444" : "rgba(99,102,241,0.12)",
+                      color: tutorListening ? "#fff" : "var(--primary)",
+                      cursor: tutorLoading ? "not-allowed" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "1rem",
+                      flexShrink: 0,
+                      transition: "background 0.2s",
+                    }}
+                  >
+                    <i className={`fas ${tutorListening ? "fa-stop" : "fa-microphone"}`} />
+                  </button>
+
+                  {/* Send button */}
+                  <button
+                    onClick={() => sendTutorChat()}
+                    disabled={tutorLoading || tutorListening || !tutorInput.trim()}
+                    title="Send message"
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: "50%",
+                      border: "none",
+                      background: tutorInput.trim() && !tutorLoading ? "var(--primary)" : "var(--border)",
+                      color: "#fff",
+                      cursor: tutorInput.trim() && !tutorLoading ? "pointer" : "not-allowed",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "1rem",
+                      flexShrink: 0,
+                      transition: "background 0.2s",
+                    }}
+                  >
+                    <i className="fas fa-paper-plane" />
+                  </button>
+                </div>
+
+                <p style={{ marginTop: "0.75rem", fontSize: "0.78rem", color: "var(--gray)", textAlign: "center" }}>
+                  Press <kbd style={{ background: "var(--light)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 5px", fontSize: "0.78rem" }}>Enter</kbd> to send · <kbd style={{ background: "var(--light)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 5px", fontSize: "0.78rem" }}>Shift+Enter</kbd> for new line · or use the 🎤 mic
+                </p>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     </div>
