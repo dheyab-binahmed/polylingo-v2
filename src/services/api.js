@@ -7,8 +7,7 @@
  */
 
 // ─── Base URL ────────────────────────────────────────────────
-const BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api/v1";
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 // ─── Error extraction helper ───────────────────────────────────
 /**
@@ -63,7 +62,7 @@ async function apiFetch(path, options = {}) {
     ...options.headers,
   };
 
-  const response = await fetch(`${BASE_URL}${path}`, {
+  const response = await fetch(`${BASE_URL}/api/v1${path}`, {
     ...options,
     headers,
   });
@@ -355,7 +354,7 @@ export async function uploadAudio(sessionId, audioBlob) {
   formData.append("audio", audioBlob, "recording.webm");
 
   try {
-    const response = await fetch(`${BASE_URL}/sessions/${sessionId}/audio`, {
+    const response = await fetch(`${BASE_URL}/api/v1/sessions/${sessionId}/audio`, {
       method: "POST",
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -426,7 +425,7 @@ export async function scorePronunciation(
   }
 
   // ─── REAL IMPLEMENTATION ──────────────────────────────────────
-  const response = await fetch(`${BASE_URL}/assessment/pronunciation/score`, {
+  const response = await fetch(`${BASE_URL}/api/v1/assessment/pronunciation/score`, {
     method: "POST",
     headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: formData, // Don't set Content-Type — browser sets multipart boundary automatically
@@ -917,7 +916,7 @@ export function streamTutorChat({ message, history, language, level }, callbacks
 
   (async () => {
     try {
-      const response = await fetch(`${BASE_URL}/practice/tutor/chat/stream`, {
+      const response = await fetch(`${BASE_URL}/api/v1/practice/tutor/chat/stream`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

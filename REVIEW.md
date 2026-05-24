@@ -53,7 +53,7 @@ Covered endpoints:
 
 ### ✅ New: `.env.example`
 ```
-VITE_API_BASE_URL=http://localhost:3001
+VITE_API_URL=https://your-backend.railway.app
 ```
 Copy to `.env.local` and set your real backend URL.
 
@@ -66,7 +66,7 @@ Copy to `.env.local` and set your real backend URL.
 | # | File | Issue | Fix |
 |---|---|---|---|
 | 1 | `AuthContext.jsx` | All auth logic used `setTimeout` mocks with no API layer | Moved to `src/services/api.js` |
-| 2 | Multiple files | No `.env` or `VITE_API_BASE_URL` — backend URL had no home | Added `.env.example` |
+| 2 | Multiple files | No `.env` or `VITE_API_URL` — backend URL had no home | Added `.env.example` |
 | 3 | `PronunciationStep.jsx` line 58 | `Math.random()` used as "pronunciation score" | `scorePronunciation()` in `api.js` replaces this |
 | 4 | `SpeakingStep.jsx` | `AI_REPLIES` is a hardcoded local array — no real AI evaluation | `getSpeakingReply()` in `api.js` replaces this |
 
@@ -96,7 +96,7 @@ Copy to `.env.local` and set your real backend URL.
 ### Step 1 — Set your API URL
 ```bash
 cp .env.example .env.local
-# Edit .env.local and set VITE_API_BASE_URL=https://your-backend.com
+# Edit .env.local and set VITE_API_URL=https://your-backend.com
 ```
 
 ### Step 2 — Remove `axios` (it's unused)
@@ -250,7 +250,7 @@ polylingo-v2/
 
 ## 7. Quick Checklist Before Going Live
 
-- [ ] Set `VITE_API_BASE_URL` in `.env.local` / deployment env
+- [ ] Set `VITE_API_URL` in `.env.local` / deployment env
 - [ ] Remove `axios` from `package.json`
 - [ ] Swap all mock blocks in `api.js` with real fetch calls
 - [ ] Remove demo credentials from `LoginPage.jsx`

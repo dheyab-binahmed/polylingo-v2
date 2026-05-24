@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAssessment } from './assessmentContext'
 import { getAssessmentContent } from '../../data/assessmentContent'
 
-const BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:5000/api/v1'
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 function getToken() {
   return localStorage.getItem('polylingo_token') || ''
@@ -52,7 +51,7 @@ export default function ReadingStep() {
         const lang  = data.language || 'en'
         const level = data.level    || ''
         const res   = await fetch(
-          `${BASE_URL}/assessment/content?step_type=reading&language=${lang}${level ? `&level=${level}` : ''}`,
+          `${BASE_URL}/api/v1/assessment/content?step_type=reading&language=${lang}${level ? `&level=${level}` : ''}`,
           {
             headers: {
               'Content-Type':  'application/json',
@@ -133,7 +132,7 @@ export default function ReadingStep() {
       }))
 
       const token = getToken()
-      const res   = await fetch(`${BASE_URL}/sessions/${sessionId}/score`, {
+      const res   = await fetch(`${BASE_URL}/api/v1/sessions/${sessionId}/score`, {
         method:  'PUT',
         headers: {
           'Content-Type':  'application/json',
