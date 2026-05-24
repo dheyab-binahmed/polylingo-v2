@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useAssessment } from "./assessmentContext";
+import PronunciationScoreCard from "../../components/assessment/PronunciationScoreCard";
 
 function toPercentScore(value, fallback = 0) {
   const numeric = Number(value ?? fallback);
@@ -112,150 +113,12 @@ export default function PronunciationDetailsPage() {
         </p>
       </div>
 
-      {/* Overall Score Card */}
-      <div
-        style={{
-          background: "var(--bg-card)",
-          borderRadius: "16px",
-          padding: "2rem",
-          boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
-          marginBottom: "2rem",
-          border: "2px solid #6366f1",
-          textAlign: "center",
-        }}
-      >
-        <div
-          style={{
-            fontSize: "0.85rem",
-            color: "var(--text-muted)",
-            marginBottom: "0.5rem",
-          }}
-        >
-          Overall Pronunciation Score
+      {/* Use new PronunciationScoreCard if result has comprehensive data */}
+      {result.pronunciation_score != null && (
+        <div style={{ marginBottom: "2rem" }}>
+          <PronunciationScoreCard result={result} />
         </div>
-        <div
-          style={{
-            fontSize: "3.5rem",
-            fontWeight: 900,
-            color: "#6366f1",
-            lineHeight: 1,
-          }}
-        >
-          {overallScore}
-          <span style={{ fontSize: "1.2rem", color: "var(--text-muted)" }}>
-            {" "}
-            / 100
-          </span>
-        </div>
-        <div
-          style={{
-            marginTop: "1rem",
-            fontSize: "0.95rem",
-            color: "var(--text-base)",
-            fontWeight: 600,
-          }}
-        >
-          {overallScore >= 80
-            ? "Excellent pronunciation!"
-            : overallScore >= 60
-              ? "Good pronunciation with room for improvement"
-              : "Keep practicing to improve your pronunciation"}
-        </div>
-      </div>
-
-      {/* Detailed Metrics */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-          gap: "1rem",
-          marginBottom: "2rem",
-        }}
-      >
-        {[
-          {
-            label: "Intelligibility",
-            value: toPercentScore(result.intelligibility_score, overallScore),
-            icon: "fa-comment-dots",
-            color: "#6366f1",
-          },
-          {
-            label: "Accuracy",
-            value: toPercentScore(result.pronunciation_accuracy, 61),
-            icon: "fa-bullseye",
-            color: "#8b5cf6",
-          },
-          {
-            label: "Fluency",
-            value: toPercentScore(result.fluency_score, 60),
-            icon: "fa-water",
-            color: "#10b981",
-          },
-          {
-            label: "Clarity",
-            value: toPercentScore(result.clarity_score, 65),
-            icon: "fa-volume-up",
-            color: "#3b82f6",
-          },
-          {
-            label: "Audio Quality",
-            value: toPercentScore(
-              result.audio_quality_score ?? result.noise_quality_score,
-              80,
-            ),
-            icon: "fa-volume-mute",
-            color: "#f59e0b",
-          },
-        ].map((metric) => (
-          <div
-            key={metric.label}
-            style={{
-              background: "var(--bg-card)",
-              borderRadius: "12px",
-              padding: "1.5rem",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-              textAlign: "center",
-            }}
-          >
-            <div
-              style={{
-                width: "44px",
-                height: "44px",
-                borderRadius: "50%",
-                background: metric.color + "18",
-                color: metric.color,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 0.75rem",
-                fontSize: "1.1rem",
-              }}
-            >
-              <i className={`fas ${metric.icon}`} />
-            </div>
-            <div
-              style={{
-                fontSize: "1.8rem",
-                fontWeight: 800,
-                color: metric.color,
-                lineHeight: 1,
-              }}
-            >
-              {metric.value}
-            </div>
-            <div
-              style={{
-                fontSize: "0.75rem",
-                color: "var(--text-muted)",
-                fontWeight: 600,
-                marginTop: "4px",
-              }}
-            >
-              {metric.label}
-            </div>
-          </div>
-        ))}
-      </div>
+      )}
 
       {/* Analysis Details */}
       {result.pronunciation_accuracy || result.fluency_score ? (

@@ -442,6 +442,24 @@ export async function scorePronunciation(
  * Expected request: { message: string, history: [...], language: string }
  * Expected response: { reply: string, fluencyScore: number }
  */
+export async function updateSessionScore(sessionId, scoreData) {
+  try {
+    return await apiFetch(`/sessions/${sessionId}/score`, {
+      method: "PUT",
+      body: JSON.stringify(scoreData),
+    });
+  } catch (err) {
+    console.error("Failed to update session score:", err);
+    throw err;
+  }
+}
+
+/**
+ * Send a speaking message and get an AI reply.
+ * POST /api/v1/assessment/speaking/reply
+ * Expected request: { message: string, history: [...], language: string }
+ * Expected response: { reply: string, fluencyScore: number }
+ */
 export async function getSpeakingReply({ message, history, language }) {
   try {
     return await apiFetch("/assessment/speaking/reply", {
@@ -850,7 +868,9 @@ export async function chatWithTutor({ message, history, language, level }) {
  */
 export async function fetchPracticeProgress(language) {
   try {
-    return await apiFetch(`/practice/progress?language=${encodeURIComponent(language)}`);
+    return await apiFetch(
+      `/practice/progress?language=${encodeURIComponent(language)}`,
+    );
   } catch (_) {
     return null;
   }

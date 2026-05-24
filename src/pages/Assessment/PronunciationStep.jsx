@@ -4,6 +4,7 @@ import { getAssessmentContent } from "../../data/assessmentContent";
 import {
   scorePronunciation,
   getPronunciationJobStatus,
+  updateSessionScore,
 } from "../../services/api";
 
 export default function PronunciationStep() {
@@ -162,6 +163,7 @@ export default function PronunciationStep() {
         selectedPrompt,
       );
       const jobId = submission.job_id || submission.id;
+      const sessionId = submission.session_id;
 
       if (!jobId) {
         throw new Error("Pronunciation analysis job was not created.");
@@ -202,6 +204,23 @@ export default function PronunciationStep() {
             61,
         ),
       );
+
+      // Send comprehensive pronunciation data to API if sessionId is available
+      if (sessionId) {
+        try {
+          await updateSessionScore(sessionId, {
+            test_type: "pronunciation",
+            score:
+              backendResult.overall_score ||
+              backendResult.pronunciation_score ||
+              recScore,
+            job_result: backendResult,
+          });
+        } catch (apiError) {
+          console.error("Failed to update session score:", apiError);
+          // Continue anyway - the analysis result is still valid
+        }
+      }
 
       setScore(Math.round(recScore / 10));
       update({
@@ -303,18 +322,89 @@ export default function PronunciationStep() {
               </span>
             </div>
             {selectedPrompt ? (
-              <p
-                style={{
-                  margin: 0,
-                  fontWeight: 500,
-                  fontSize: "1.1rem",
-                  color: "var(--text-base)",
-                  lineHeight: 1.8,
-                  fontStyle: "italic",
-                }}
-              >
-                {selectedPrompt}
-              </p>
+              <>
+                {typeof selectedPrompt === "string" ? (
+                  <p
+                    style={{
+                      margin: 0,
+                      fontWeight: 500,
+                      fontSize: "1.1rem",
+                      color: "var(--text-base)",
+                      lineHeight: 1.8,
+                      fontStyle: "italic",
+                    }}
+                  >
+                    {selectedPrompt}
+                  </p>
+                ) : (
+                  <>
+                    {selectedPrompt.title && (
+                      <div
+                        style={{
+                          marginBottom: "0.5rem",
+                          fontSize: "0.9rem",
+                          fontWeight: 600,
+                          color: "#6366f1",
+                        }}
+                      >
+                        {selectedPrompt.title}
+                      </div>
+                    )}
+                    <p
+                      style={{
+                        margin: "0 0 1rem 0",
+                        fontWeight: 500,
+                        fontSize: "1.1rem",
+                        color: "var(--text-base)",
+                        lineHeight: 1.8,
+                        fontStyle: "italic",
+                      }}
+                    >
+                      {selectedPrompt.passage || selectedPrompt}
+                    </p>
+                    {(selectedPrompt.word_count ||
+                      selectedPrompt.estimated_duration_seconds) && (
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "1rem",
+                          fontSize: "0.85rem",
+                          color: "var(--text-muted)",
+                          marginBottom: "0.5rem",
+                        }}
+                      >
+                        {selectedPrompt.word_count && (
+                          <span>📝 {selectedPrompt.word_count} words</span>
+                        )}
+                        {selectedPrompt.estimated_duration_seconds && (
+                          <span>
+                            ⏱️ ~
+                            {Math.round(
+                              selectedPrompt.estimated_duration_seconds,
+                            )}
+                            s
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {selectedPrompt.instructions && (
+                      <div
+                        style={{
+                          fontSize: "0.9rem",
+                          color: "var(--text-muted)",
+                          fontStyle: "normal",
+                          padding: "0.5rem 0",
+                          borderTop: "1px solid var(--border)",
+                          marginTop: "0.75rem",
+                          paddingTop: "0.75rem",
+                        }}
+                      >
+                        {selectedPrompt.instructions}
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
             ) : (
               <p style={{ margin: 0, color: "var(--text-muted)" }}>
                 Loading pronunciation prompt...
