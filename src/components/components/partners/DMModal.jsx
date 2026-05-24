@@ -207,24 +207,28 @@ export default function DMModal({
       console.log("ICE state:", pc.current.iceConnectionState);
     };
 
-    const conn = pc.current;
-
-    stream.getTracks().forEach((track) => {
-      conn.addTrack(track, stream);
-    });
-
-    conn.onicecandidate = (event) => {
+    pc.current.onicecandidate = (event) => {
       if (event.candidate) sendIceCandidate(partnerId, event.candidate);
     };
 
-    conn.ontrack = (event) => {
-      remoteStream.current = event.streams[0];
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = event.streams[0];
+    stream.getTracks().forEach((track) => {
+      console.log("Adding track to peer connection:", track.kind);
+      pc.current.addTrack(track, stream);
+    });
+
+    pc.current.ontrack = (event) => {
+      console.log("Got remote track:", event.streams, event.track);
+      if (event.streams && event.streams[0]) {
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = event.streams[0];
+          console.log("Remote stream attached to video element");
+        } else {
+          console.warn("remoteVideoRef is null when ontrack fired");
+        }
       }
     };
 
-    return conn;
+    return pc.current;
   }, []);
 
   const hangUp = useCallback(() => {
@@ -289,17 +293,22 @@ export default function DMModal({
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
         buildPC(stream, partner.id);
-        await pc.current.setRemoteDescription(offer);
-        const answer = await pc.current.createAnswer();
-        await pc.current.setLocalDescription(answer);
-
-        sendCallAnswer(partner.id, answer);
         setMediaError(null);
         setCallActive(true);
         setCallType(ct);
         setMicEnabled(true);
         setCamEnabled(ct === "video");
+        await pc.current.setRemoteDescription(offer);
+        const answer = await pc.current.createAnswer();
+        await pc.current.setLocalDescription(answer);
+
+        sendCallAnswer(partner.id, answer);
         startTimer();
+
+        setTimeout(() => {
+          console.log("Remote video element:", remoteVideoRef.current);
+          console.log("Remote stream:", remoteVideoRef.current?.srcObject);
+        }, 3000);
       } catch (err) {
         setMediaError(`Could not accept call: ${err.message}`);
         cleanupCall({ notify: true });
@@ -470,7 +479,7 @@ export default function DMModal({
               ref={remoteVideoRef}
               autoPlay
               playsInline
-              style={styles.videoRemote}
+              style={{ width: "45%", borderRadius: 8, background: "#000" }}
             />
           </div>
         )}
