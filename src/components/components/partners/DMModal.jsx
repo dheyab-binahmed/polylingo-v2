@@ -17,25 +17,31 @@ import {
 
 const ICE_SERVERS = {
   iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    { urls: "stun:stun2.l.google.com:19302" },
     {
-      urls: "turn:openrelay.metered.ca:80",
-      username: "openrelayproject",
-      credential: "openrelayproject",
+      urls: "stun:stun.relay.metered.ca:80",
     },
     {
-      urls: "turn:openrelay.metered.ca:443",
-      username: "openrelayproject",
-      credential: "openrelayproject",
+      urls: "turn:global.relay.metered.ca:80",
+      username: "6581927f246d886071999175",
+      credential: "zG5aDkE2qoxGbHHR",
     },
     {
-      urls: "turns:openrelay.metered.ca:443",
-      username: "openrelayproject",
-      credential: "openrelayproject",
+      urls: "turn:global.relay.metered.ca:80?transport=tcp",
+      username: "6581927f246d886071999175",
+      credential: "zG5aDkE2qoxGbHHR",
+    },
+    {
+      urls: "turn:global.relay.metered.ca:443",
+      username: "6581927f246d886071999175",
+      credential: "zG5aDkE2qoxGbHHR",
+    },
+    {
+      urls: "turns:global.relay.metered.ca:443?transport=tcp",
+      username: "6581927f246d886071999175",
+      credential: "zG5aDkE2qoxGbHHR",
     },
   ],
+  iceCandidatePoolSize: 10,
 };
 
 function getStoredUser() {
@@ -195,10 +201,7 @@ export default function DMModal({
   );
 
   const buildPC = useCallback((stream, partnerId) => {
-    pc.current = new RTCPeerConnection({
-      ...ICE_SERVERS,
-      iceCandidatePoolSize: 10,
-    });
+    pc.current = new RTCPeerConnection(ICE_SERVERS);
 
     pc.current.onconnectionstatechange = () => {
       console.log("Connection state:", pc.current.connectionState);
