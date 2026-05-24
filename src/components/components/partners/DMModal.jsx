@@ -16,7 +16,26 @@ import {
 } from "../../../services/socket";
 
 const ICE_SERVERS = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turns:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+  ],
 };
 
 function getStoredUser() {
@@ -176,7 +195,19 @@ export default function DMModal({
   );
 
   const buildPC = useCallback((stream, partnerId) => {
-    const conn = new RTCPeerConnection(ICE_SERVERS);
+    pc.current = new RTCPeerConnection({
+      ...ICE_SERVERS,
+      iceCandidatePoolSize: 10,
+    });
+
+    pc.current.onconnectionstatechange = () => {
+      console.log("Connection state:", pc.current.connectionState);
+    };
+    pc.current.oniceconnectionstatechange = () => {
+      console.log("ICE state:", pc.current.iceConnectionState);
+    };
+
+    const conn = pc.current;
 
     stream.getTracks().forEach((track) => {
       conn.addTrack(track, stream);
@@ -212,7 +243,7 @@ export default function DMModal({
       localStream.current = stream;
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
-      pc.current = buildPC(stream, partner.id);
+      buildPC(stream, partner.id);
       const offer = await pc.current.createOffer();
       await pc.current.setLocalDescription(offer);
 
@@ -257,7 +288,7 @@ export default function DMModal({
         localStream.current = stream;
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
-        pc.current = buildPC(stream, partner.id);
+        buildPC(stream, partner.id);
         await pc.current.setRemoteDescription(offer);
         const answer = await pc.current.createAnswer();
         await pc.current.setLocalDescription(answer);
