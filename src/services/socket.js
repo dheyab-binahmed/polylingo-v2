@@ -60,6 +60,10 @@ export function onCallIncoming(cb) {
   return () => socket?.off("call:incoming", cb);
 }
 
+export function offCallIncoming(cb) {
+  socket?.off("call:incoming", cb);
+}
+
 export function onCallAnswered(cb) {
   socket?.on("call:answered", cb);
   return () => socket?.off("call:answered", cb);

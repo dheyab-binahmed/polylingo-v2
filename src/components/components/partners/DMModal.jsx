@@ -4,6 +4,7 @@ import AuthContext from "../../../context/AuthContext";
 import { getDmMessages } from "../../../services/api";
 import {
   endCall,
+  offCallIncoming,
   onCallAnswered,
   onCallEnded,
   onCallIce,
@@ -95,10 +96,16 @@ export default function DMModal({
   const inputRef = useRef(null);
   const callActiveRef = useRef(false);
   const ringingRef = useRef(null);
+  const partnerRef = useRef(partner);
+  const cleanupCallRef = useRef(null);
 
   useEffect(() => {
     callActiveRef.current = callActive;
   }, [callActive]);
+
+  useEffect(() => {
+    partnerRef.current = partner;
+  }, [partner]);
 
   useEffect(() => {
     let mounted = true;
@@ -227,39 +234,9 @@ export default function DMModal({
     [partner.id, stopRinging, stopTimer],
   );
 
-  const buildPC = useCallback((stream, partnerId) => {
-    pc.current = new RTCPeerConnection(ICE_SERVERS);
-
-    pc.current.onconnectionstatechange = () => {
-      console.log("Connection state:", pc.current.connectionState);
-    };
-    pc.current.oniceconnectionstatechange = () => {
-      console.log("ICE state:", pc.current.iceConnectionState);
-    };
-
-    pc.current.onicecandidate = (event) => {
-      if (event.candidate) sendIceCandidate(partnerId, event.candidate);
-    };
-
-    stream.getTracks().forEach((track) => {
-      console.log("Adding track to peer connection:", track.kind);
-      pc.current.addTrack(track, stream);
-    });
-
-    pc.current.ontrack = (event) => {
-      console.log("Got remote track:", event.streams, event.track);
-      if (event.streams && event.streams[0]) {
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = event.streams[0];
-          console.log("Remote stream attached to video element");
-        } else {
-          console.warn("remoteVideoRef is null when ontrack fired");
-        }
-      }
-    };
-
-    return pc.current;
-  }, []);
+  useEffect(() => {
+    cleanupCallRef.current = cleanupCall;
+  }, [cleanupCall]);
 
   const hangUp = useCallback(() => {
     cleanupCall({ notify: true });
@@ -271,13 +248,47 @@ export default function DMModal({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: type === "video",
-        audio: { echoCancellation: true, noiseSuppression: true },
+        audio: true,
       });
 
       localStream.current = stream;
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
-      buildPC(stream, partner.id);
+      pc.current = new RTCPeerConnection({
+        ...ICE_SERVERS,
+        iceCandidatePoolSize: 10,
+      });
+
+      pc.current.ontrack = (event) => {
+        console.log("Got remote track on caller:", event.streams, event.track.kind);
+        if (event.streams && event.streams[0]) {
+          remoteStream.current = event.streams[0];
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = event.streams[0];
+            console.log("Remote stream attached on caller side");
+          }
+        }
+      };
+
+      pc.current.onicecandidate = (event) => {
+        if (event.candidate) {
+          console.log("Caller sending ICE candidate");
+          sendIceCandidate(partner.id, event.candidate);
+        }
+      };
+
+      pc.current.onconnectionstatechange = () => {
+        console.log("Caller connection state:", pc.current.connectionState);
+      };
+      pc.current.oniceconnectionstatechange = () => {
+        console.log("Caller ICE state:", pc.current.iceConnectionState);
+      };
+
+      stream.getTracks().forEach((track) => {
+        console.log("Caller adding track:", track.kind);
+        pc.current.addTrack(track, stream);
+      });
+
       const offer = await pc.current.createOffer();
       await pc.current.setLocalDescription(offer);
 
@@ -308,96 +319,144 @@ export default function DMModal({
 
   const handleAcceptCall = useCallback(
     async (call) => {
-      stopRinging();
       setIncomingCall(null);
+      ringingRef.current?.pause();
+      ringingRef.current = null;
 
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: call.callType === "video",
-          audio: { echoCancellation: true, noiseSuppression: true },
+          audio: true,
         });
 
         localStream.current = stream;
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
-        buildPC(stream, partner.id);
+        pc.current = new RTCPeerConnection({
+          ...ICE_SERVERS,
+          iceCandidatePoolSize: 10,
+        });
+
+        pc.current.ontrack = (event) => {
+          console.log(
+            "Got remote track on answerer:",
+            event.streams,
+            event.track.kind,
+          );
+          if (event.streams && event.streams[0]) {
+            remoteStream.current = event.streams[0];
+            if (remoteVideoRef.current) {
+              remoteVideoRef.current.srcObject = event.streams[0];
+              console.log("Remote stream attached on answerer side");
+            }
+          }
+        };
+
+        pc.current.onicecandidate = (event) => {
+          if (event.candidate) {
+            console.log("Answerer sending ICE candidate");
+            sendIceCandidate(call.from, event.candidate);
+          }
+        };
+
+        pc.current.onconnectionstatechange = () => {
+          console.log("Answerer connection state:", pc.current.connectionState);
+        };
+        pc.current.oniceconnectionstatechange = () => {
+          console.log("Answerer ICE state:", pc.current.iceConnectionState);
+        };
+
+        stream.getTracks().forEach((track) => {
+          console.log("Answerer adding track:", track.kind);
+          pc.current.addTrack(track, stream);
+        });
+
+        await pc.current.setRemoteDescription(
+          new RTCSessionDescription(call.offer),
+        );
+
+        const answer = await pc.current.createAnswer();
+        await pc.current.setLocalDescription(answer);
+
+        sendCallAnswer(call.from, answer);
+
         setMediaError(null);
         setCallActive(true);
         setCallType(call.callType);
         setMicEnabled(true);
         setCamEnabled(call.callType === "video");
-        await pc.current.setRemoteDescription(call.offer);
-        const answer = await pc.current.createAnswer();
-        await pc.current.setLocalDescription(answer);
-
-        sendCallAnswer(partner.id, answer);
         startTimer();
-
-        setTimeout(() => {
-          console.log("Remote video element:", remoteVideoRef.current);
-          console.log("Remote stream:", remoteVideoRef.current?.srcObject);
-        }, 3000);
       } catch (err) {
         setMediaError(`Could not accept call: ${err.message}`);
         cleanupCall({ notify: true });
       }
     },
-    [buildPC, cleanupCall, partner.id, startTimer, stopRinging],
+    [cleanupCall, startTimer],
   );
 
   useEffect(() => {
-    const unsubIncoming =
-      onCallIncoming(({ from, offer, callType: ct }) => {
-        if (!sameId(from, partner.id)) return;
+    const handleIncomingCall = ({ from, offer, callType: ct }) => {
+      const activePartner = partnerRef.current;
+      if (!sameId(from, activePartner.id)) return;
 
-        setIncomingCall({ from, offer, callType: ct, callerName: partner.name });
+      setIncomingCall({
+        from,
+        offer,
+        callType: ct,
+        callerName: activePartner.name,
+      });
 
-        if (typeof Audio !== "undefined") {
-          stopRinging();
-          const ring = new Audio(
-            "https://cdn.pixabay.com/audio/2022/03/15/audio_1a4e8c3b3b.mp3",
-          );
-          ring.loop = true;
-          ring.play().catch(() => {});
-          ringingRef.current = ring;
-        }
-      }) || (() => {});
+      if (typeof Audio !== "undefined") {
+        stopRinging();
+        const ring = new Audio(
+          "https://cdn.pixabay.com/audio/2022/03/15/audio_1a4e8c3b3b.mp3",
+        );
+        ring.loop = true;
+        ring.play().catch(() => {});
+        ringingRef.current = ring;
+      }
+    };
+
+    onCallIncoming(handleIncomingCall);
 
     const unsubAnswered =
-      onCallAnswered(async ({ from, answer }) => {
-        if (from && !sameId(from, partner.id)) return;
-
-        try {
-          await pc.current?.setRemoteDescription(answer);
-        } catch (_) {
-          // The peer connection may already have been closed locally.
+      onCallAnswered(async ({ answer }) => {
+        console.log("Caller received answer, setting remote description");
+        if (pc.current) {
+          await pc.current.setRemoteDescription(
+            new RTCSessionDescription(answer),
+          );
+          console.log("Remote description set on caller side");
         }
       }) || (() => {});
 
     const unsubIce =
-      onCallIce(async ({ from, candidate }) => {
-        if (from && !sameId(from, partner.id)) return;
-
-        try {
-          await pc.current?.addIceCandidate(candidate);
-        } catch (_) {
-          // ICE can arrive after cleanup or before remote description is set.
+      onCallIce(async ({ candidate }) => {
+        console.log("Received ICE candidate, adding to peer connection");
+        if (pc.current && candidate) {
+          try {
+            await pc.current.addIceCandidate(new RTCIceCandidate(candidate));
+            console.log("ICE candidate added successfully");
+          } catch (err) {
+            console.warn("Failed to add ICE candidate:", err);
+          }
         }
       }) || (() => {});
 
     const unsubEnded =
       onCallEnded(({ from } = {}) => {
-        if (from && !sameId(from, partner.id)) return;
-        cleanupCall({ notify: false });
+        const activePartner = partnerRef.current;
+        if (from && !sameId(from, activePartner.id)) return;
+        cleanupCallRef.current?.({ notify: false });
       }) || (() => {});
 
     return () => {
-      unsubIncoming();
+      offCallIncoming(handleIncomingCall);
       unsubAnswered();
       unsubIce();
       unsubEnded();
     };
-  }, [cleanupCall, partner.id, partner.name, stopRinging]);
+  }, []);
 
   useEffect(() => {
     return () => {

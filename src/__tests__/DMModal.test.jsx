@@ -17,6 +17,7 @@ jest.mock("../services/socket", () => ({
   connectSocket: jest.fn(),
   disconnectSocket: jest.fn(),
   endCall: jest.fn(),
+  offCallIncoming: jest.fn(),
   onCallAnswered: jest.fn(() => jest.fn()),
   onCallEnded: jest.fn(() => jest.fn()),
   onCallIce: jest.fn(() => jest.fn()),
