@@ -60,10 +60,11 @@ function Toggle({ checked, onChange, label }) {
 // ─── Edit Profile Modal ───────────────────────────────────────────────────────
 function EditProfileModal({ user, onClose, onSave }) {
   const [form, setForm] = useState({
-    name:              user?.name              || '',
-    email:             user?.email             || '',
-    age:               user?.age               || '',
-    preferredLanguage: user?.preferredLanguage || '',
+    full_name:          user?.full_name          || '',
+    email:              user?.email              || '',
+    age:                user?.age                || '',
+    preferred_language: user?.preferred_language || '',
+    selected_level:     user?.estimated_level || user?.selected_level || '',
   })
   const [formError, setFormError] = useState('')
 
@@ -72,11 +73,20 @@ function EditProfileModal({ user, onClose, onSave }) {
     'Mandarin','Japanese','Korean','Arabic','Russian','Hindi','Dutch',
   ]
 
+  const CEFR_LEVELS = [
+    { value: 'A1', label: 'A1 — Beginner' },
+    { value: 'A2', label: 'A2 — Elementary' },
+    { value: 'B1', label: 'B1 — Intermediate' },
+    { value: 'B2', label: 'B2 — Upper Intermediate' },
+    { value: 'C1', label: 'C1 — Advanced' },
+    { value: 'C2', label: 'C2 — Proficient' },
+  ]
+
   const handleSave = () => {
     setFormError('')
-    if (!form.name.trim())              { setFormError('Name is required');                  return }
-    if (!form.email.trim())             { setFormError('Email is required');                 return }
-    if (!form.email.includes('@'))      { setFormError('Please enter a valid email address'); return }
+    if (!form.full_name.trim())          { setFormError('Name is required');                  return }
+    if (!form.email.trim())              { setFormError('Email is required');                 return }
+    if (!form.email.includes('@'))       { setFormError('Please enter a valid email address'); return }
     onSave(form)
   }
 
@@ -123,9 +133,9 @@ function EditProfileModal({ user, onClose, onSave }) {
 
         {/* Text fields */}
         {[
-          { label: 'Full Name', key: 'name',  type: 'text',   placeholder: 'Your name'        },
-          { label: 'Email',     key: 'email', type: 'email',  placeholder: 'you@example.com'  },
-          { label: 'Age',       key: 'age',   type: 'number', placeholder: '25'               },
+          { label: 'Full Name', key: 'full_name', type: 'text',   placeholder: 'Your name'        },
+          { label: 'Email',     key: 'email',     type: 'email',  placeholder: 'you@example.com'  },
+          { label: 'Age',       key: 'age',       type: 'number', placeholder: '25'               },
         ].map(f => (
           <div key={f.key} style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>{f.label}</label>
@@ -148,16 +158,16 @@ function EditProfileModal({ user, onClose, onSave }) {
         ))}
 
         {/* Language select */}
-        <div style={{ marginBottom: '1.5rem' }}>
+        <div style={{ marginBottom: '1rem' }}>
           <label style={{ display: 'block', fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Learning Language</label>
           <select
-            value={form.preferredLanguage}
-            onChange={e => setForm(p => ({ ...p, preferredLanguage: e.target.value }))}
+            value={form.preferred_language}
+            onChange={e => setForm(p => ({ ...p, preferred_language: e.target.value }))}
             style={{
               width: '100%', padding: '0.75rem 1rem',
               border: '2px solid var(--border)', borderRadius: '10px',
               fontSize: '0.92rem', fontFamily: 'inherit',
-              color: 'var(--text-base)', background: 'var(--bg-card)', // FIX #8
+              color: 'var(--text-base)', background: 'var(--bg-card)',
               cursor: 'pointer', outline: 'none',
             }}
             onFocus={e => e.target.style.borderColor = '#6366f1'}
@@ -165,6 +175,27 @@ function EditProfileModal({ user, onClose, onSave }) {
           >
             <option value="">Select language…</option>
             {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </div>
+
+        {/* CEFR Level select */}
+        <div style={{ marginBottom: '1.5rem' }}>
+          <label style={{ display: 'block', fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Proficiency Level</label>
+          <select
+            value={form.selected_level}
+            onChange={e => setForm(p => ({ ...p, selected_level: e.target.value }))}
+            style={{
+              width: '100%', padding: '0.75rem 1rem',
+              border: '2px solid var(--border)', borderRadius: '10px',
+              fontSize: '0.92rem', fontFamily: 'inherit',
+              color: 'var(--text-base)', background: 'var(--bg-card)',
+              cursor: 'pointer', outline: 'none',
+            }}
+            onFocus={e => e.target.style.borderColor = '#6366f1'}
+            onBlur={e => e.target.style.borderColor = 'var(--border)'}
+          >
+            <option value="">Select level…</option>
+            {CEFR_LEVELS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
           </select>
         </div>
 
@@ -223,10 +254,10 @@ export default function ProfilePage() {
   const [saveErr,  setSaveErr]  = useState('')
 
   // ── Derived display values ──────────────────────────────────────────────
-  const displayName  = user?.name              || 'Learner'
+  const displayName  = user?.full_name         || 'Learner'
   const displayEmail = user?.email             || ''
-  const displayLang  = user?.preferredLanguage || 'Not set'
-  const level        = user?.assessmentResults?.level   || 'Beginner'
+  const displayLang  = user?.preferred_language || 'Not set'
+  const level        = user?.estimated_level || user?.selected_level || user?.assessmentResults?.level || 'A1'
   const overall      = user?.assessmentResults?.overall ?? 0
 
   const initials = displayName
@@ -267,10 +298,11 @@ export default function ProfilePage() {
     setSaveErr('')
     try {
       await updateUser({
-        name:              form.name,
-        email:             form.email,
-        age:               form.age,
-        preferredLanguage: form.preferredLanguage,
+        full_name:          form.full_name,
+        email:              form.email,
+        age:                form.age,
+        preferred_language: form.preferred_language,
+        selected_level:     form.selected_level || undefined,
       })
       setEditOpen(false)
       setSaved(true)

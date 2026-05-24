@@ -162,17 +162,44 @@ export function AuthProvider({ children }) {
     } catch (err) {
       console.warn("Could not persist assessment to server:", err.message);
     }
+
+    // 👉 BACKEND: sync preferred_language and CEFR level to the user profile
+    try {
+      const profileUpdates = {};
+      if (results.preferredLanguage) {
+        profileUpdates.preferred_language = results.preferredLanguage;
+      }
+      if (results.cefrLevel) {
+        profileUpdates.selected_level = results.cefrLevel;
+      }
+      if (Object.keys(profileUpdates).length > 0) {
+        const serverUser = await updateUserProfile(profileUpdates);
+        if (serverUser && (serverUser.id || serverUser.email)) {
+          // Merge server fields into the already-updated local user
+          const merged = { ...updated, ...serverUser };
+          setUser(merged);
+          localStorage.setItem("polylingo_auth_user", JSON.stringify(merged));
+        }
+      }
+    } catch (err) {
+      console.warn("Could not sync assessment language/level to profile:", err.message);
+    }
   };
 
   // ── Update user fields (profile edits, streak bumps, etc.) ──
   const updateUser = async (updates) => {
-    const updated = { ...user, ...updates };
-    setUser(updated);
-    localStorage.setItem("polylingo_auth_user", JSON.stringify(updated));
+    // Optimistic update so the UI is instant
+    const optimistic = { ...user, ...updates };
+    setUser(optimistic);
+    localStorage.setItem("polylingo_auth_user", JSON.stringify(optimistic));
 
-    // 👉 BACKEND: sync changes to server when real API is ready
+    // Sync to backend and use the server response as source of truth
     try {
-      await updateUserProfile(updates);
+      const serverUser = await updateUserProfile(updates);
+      if (serverUser && (serverUser.id || serverUser.email)) {
+        setUser(serverUser);
+        localStorage.setItem("polylingo_auth_user", JSON.stringify(serverUser));
+      }
     } catch (err) {
       console.warn("Could not sync profile update to server:", err.message);
     }

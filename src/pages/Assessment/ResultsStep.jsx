@@ -182,6 +182,13 @@ export default function ResultsStep() {
           ? "Upper Beginner"
           : "Beginner";
 
+  // Map to CEFR for backend storage
+  const cefrLevel =
+    overall >= 9 ? "C1" :
+    overall >= 7 ? "B2" :
+    overall >= 5 ? "B1" :
+    overall >= 3 ? "A2" : "A1";
+
   const CIRC = 283;
   const offset = CIRC - (overall / 10) * CIRC;
   const scoreColor =
@@ -217,14 +224,15 @@ export default function ResultsStep() {
   const recommendations = langContent.recommendations(data.language);
 
   const handleStart = () => {
-    // Save assessment results AND update preferredLanguage to the language chosen in assessment
+    // Save assessment results AND update preferredLanguage + CEFR level to the user profile
     const assessmentResults = {
       level,
+      cefrLevel,           // ← CEFR level for backend profile (A1-C1)
       overall,
       fluencyScore: fs,
       grammarScore: gs,
       readingScore: rs,
-      preferredLanguage: languageFullName, // ← fixes issue #9: persists chosen language to user profile
+      preferredLanguage: languageFullName, // ← persists chosen language to user profile
     };
 
     if (hasPronunciationResult) {
