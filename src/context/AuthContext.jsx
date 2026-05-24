@@ -26,6 +26,15 @@ import { connectSocket, disconnectSocket } from "../services/socket";
 
 const AuthContext = createContext(null);
 
+function requestNotificationPermission() {
+  if (
+    typeof Notification !== "undefined" &&
+    Notification.permission === "default"
+  ) {
+    Notification.requestPermission();
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -39,6 +48,7 @@ export function AuthProvider({ children }) {
         const restored = await fetchCurrentUser();
         if (restored) {
           setUser(restored);
+          requestNotificationPermission();
           const token = localStorage.getItem("polylingo_token");
           if (token) connectSocket(token);
         }
@@ -59,6 +69,7 @@ export function AuthProvider({ children }) {
       const userData = await loginUser({ email, password });
       localStorage.setItem("polylingo_auth_user", JSON.stringify(userData));
       setUser(userData);
+      requestNotificationPermission();
 
       // Connect WebSocket with token
       const token = localStorage.getItem("polylingo_token");
@@ -100,6 +111,7 @@ export function AuthProvider({ children }) {
       localStorage.setItem("polylingo_accounts", JSON.stringify(accounts));
       localStorage.setItem("polylingo_auth_user", JSON.stringify(userData));
       setUser(userData);
+      requestNotificationPermission();
 
       // Connect WebSocket with token
       const token = localStorage.getItem("polylingo_token");

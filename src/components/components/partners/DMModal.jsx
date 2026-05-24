@@ -14,6 +14,7 @@ import {
   sendDM,
   sendIceCandidate,
 } from "../../../services/socket";
+import IncomingCallModal from "./IncomingCallModal";
 
 const ICE_SERVERS = {
   iceServers: [
@@ -82,6 +83,7 @@ export default function DMModal({
   const [mediaError, setMediaError] = useState(null);
   const [micEnabled, setMicEnabled] = useState(true);
   const [camEnabled, setCamEnabled] = useState(true);
+  const [incomingCall, setIncomingCall] = useState(null);
 
   const pc = useRef(null);
   const localStream = useRef(null);
@@ -92,6 +94,7 @@ export default function DMModal({
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const callActiveRef = useRef(false);
+  const ringingRef = useRef(null);
 
   useEffect(() => {
     callActiveRef.current = callActive;
@@ -100,8 +103,8 @@ export default function DMModal({
   useEffect(() => {
     let mounted = true;
 
-    getDmMessages(partner.id).then((data) => {
-      if (mounted) setMsgs(data.messages || []);
+    Promise.resolve(getDmMessages(partner.id)).then((data) => {
+      if (mounted) setMsgs(data?.messages || []);
     });
 
     setTimeout(() => inputRef.current?.focus(), 80);
@@ -120,6 +123,19 @@ export default function DMModal({
         (sameId(msg.from, currentUser.id) && sameId(msg.to, partner.id));
 
       if (!relevant) return;
+
+      if (
+        !sameId(msg.from, currentUser.id) &&
+        typeof Notification !== "undefined" &&
+        Notification.permission === "granted" &&
+        typeof document !== "undefined" &&
+        document.hidden
+      ) {
+        new Notification(`New message from ${partner.name}`, {
+          body: msg.text,
+          icon: "/favicon.ico",
+        });
+      }
 
       setMsgs((prev) => {
         const exists = prev.find(
@@ -142,7 +158,7 @@ export default function DMModal({
     });
 
     return unsubscribe;
-  }, [partner.id, currentUser?.id]);
+  }, [partner.id, partner.name, currentUser?.id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -172,8 +188,18 @@ export default function DMModal({
     }, 1000);
   }, [stopTimer]);
 
+  const stopRinging = useCallback(() => {
+    if (!ringingRef.current) return;
+
+    ringingRef.current.pause();
+    ringingRef.current.currentTime = 0;
+    ringingRef.current = null;
+  }, []);
+
   const cleanupCall = useCallback(
     ({ notify = false } = {}) => {
+      stopRinging();
+
       if (pc.current) {
         pc.current.close();
         pc.current = null;
@@ -191,13 +217,14 @@ export default function DMModal({
 
       if (notify && callActiveRef.current) endCall(partner.id);
 
+      setIncomingCall(null);
       setCallActive(false);
       setCallType(null);
       setMicEnabled(true);
       setCamEnabled(true);
       stopTimer();
     },
-    [partner.id, stopTimer],
+    [partner.id, stopRinging, stopTimer],
   );
 
   const buildPC = useCallback((stream, partnerId) => {
@@ -273,22 +300,20 @@ export default function DMModal({
     }
   };
 
-  useEffect(() => {
-    const unsubIncoming = onCallIncoming(async ({ from, offer, callType: ct }) => {
-      if (!sameId(from, partner.id)) return;
+  const handleDeclineCall = useCallback(() => {
+    stopRinging();
+    endCall(partner.id);
+    setIncomingCall(null);
+  }, [partner.id, stopRinging]);
 
-      const accept = window.confirm(
-        `Incoming ${ct} call from ${partner.name}. Accept?`,
-      );
-
-      if (!accept) {
-        endCall(partner.id);
-        return;
-      }
+  const handleAcceptCall = useCallback(
+    async (call) => {
+      stopRinging();
+      setIncomingCall(null);
 
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: ct === "video",
+          video: call.callType === "video",
           audio: { echoCancellation: true, noiseSuppression: true },
         });
 
@@ -298,10 +323,10 @@ export default function DMModal({
         buildPC(stream, partner.id);
         setMediaError(null);
         setCallActive(true);
-        setCallType(ct);
+        setCallType(call.callType);
         setMicEnabled(true);
-        setCamEnabled(ct === "video");
-        await pc.current.setRemoteDescription(offer);
+        setCamEnabled(call.callType === "video");
+        await pc.current.setRemoteDescription(call.offer);
         const answer = await pc.current.createAnswer();
         await pc.current.setLocalDescription(answer);
 
@@ -316,32 +341,55 @@ export default function DMModal({
         setMediaError(`Could not accept call: ${err.message}`);
         cleanupCall({ notify: true });
       }
-    });
+    },
+    [buildPC, cleanupCall, partner.id, startTimer, stopRinging],
+  );
 
-    const unsubAnswered = onCallAnswered(async ({ from, answer }) => {
-      if (from && !sameId(from, partner.id)) return;
+  useEffect(() => {
+    const unsubIncoming =
+      onCallIncoming(({ from, offer, callType: ct }) => {
+        if (!sameId(from, partner.id)) return;
 
-      try {
-        await pc.current?.setRemoteDescription(answer);
-      } catch (_) {
-        // The peer connection may already have been closed locally.
-      }
-    });
+        setIncomingCall({ from, offer, callType: ct, callerName: partner.name });
 
-    const unsubIce = onCallIce(async ({ from, candidate }) => {
-      if (from && !sameId(from, partner.id)) return;
+        if (typeof Audio !== "undefined") {
+          stopRinging();
+          const ring = new Audio(
+            "https://cdn.pixabay.com/audio/2022/03/15/audio_1a4e8c3b3b.mp3",
+          );
+          ring.loop = true;
+          ring.play().catch(() => {});
+          ringingRef.current = ring;
+        }
+      }) || (() => {});
 
-      try {
-        await pc.current?.addIceCandidate(candidate);
-      } catch (_) {
-        // ICE can arrive after cleanup or before remote description is set.
-      }
-    });
+    const unsubAnswered =
+      onCallAnswered(async ({ from, answer }) => {
+        if (from && !sameId(from, partner.id)) return;
 
-    const unsubEnded = onCallEnded(({ from } = {}) => {
-      if (from && !sameId(from, partner.id)) return;
-      cleanupCall({ notify: false });
-    });
+        try {
+          await pc.current?.setRemoteDescription(answer);
+        } catch (_) {
+          // The peer connection may already have been closed locally.
+        }
+      }) || (() => {});
+
+    const unsubIce =
+      onCallIce(async ({ from, candidate }) => {
+        if (from && !sameId(from, partner.id)) return;
+
+        try {
+          await pc.current?.addIceCandidate(candidate);
+        } catch (_) {
+          // ICE can arrive after cleanup or before remote description is set.
+        }
+      }) || (() => {});
+
+    const unsubEnded =
+      onCallEnded(({ from } = {}) => {
+        if (from && !sameId(from, partner.id)) return;
+        cleanupCall({ notify: false });
+      }) || (() => {});
 
     return () => {
       unsubIncoming();
@@ -349,7 +397,7 @@ export default function DMModal({
       unsubIce();
       unsubEnded();
     };
-  }, [buildPC, cleanupCall, partner.id, partner.name, startTimer]);
+  }, [cleanupCall, partner.id, partner.name, stopRinging]);
 
   useEffect(() => {
     return () => {
@@ -396,10 +444,20 @@ export default function DMModal({
   };
 
   return (
-    <div
-      style={styles.overlay}
-      onClick={(event) => event.target === event.currentTarget && onClose()}
-    >
+    <>
+      {incomingCall && (
+        <IncomingCallModal
+          caller={{ name: incomingCall.callerName }}
+          callType={incomingCall.callType}
+          onAccept={() => handleAcceptCall(incomingCall)}
+          onDecline={() => handleDeclineCall(incomingCall)}
+        />
+      )}
+
+      <div
+        style={styles.overlay}
+        onClick={(event) => event.target === event.currentTarget && onClose()}
+      >
       <div style={styles.modal}>
         <div style={styles.header}>
           <div style={styles.identity}>
@@ -559,7 +617,8 @@ export default function DMModal({
           </button>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 

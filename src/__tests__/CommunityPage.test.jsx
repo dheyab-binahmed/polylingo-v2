@@ -34,6 +34,14 @@ jest.mock(
   { virtual: true },
 );
 
+jest.mock(
+  "../services/socket",
+  () => ({
+    onDmMessage: jest.fn(() => jest.fn()),
+  }),
+  { virtual: true },
+);
+
 const { AuthProvider } = require("../context/AuthContext");
 const CommunityPage = require("../pages/CommunityPage").default;
 

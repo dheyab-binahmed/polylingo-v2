@@ -19,6 +19,8 @@ import {
   joinGroup as apiJoinGroup,
   leaveGroup as apiLeaveGroup,
 } from "../services/api";
+import { onDmMessage } from "../services/socket";
+import MessageToast from "../components/common/MessageToast";
 import ToastContainer from "../components/components/ui/ToastContainer";
 import Section from "../components/components/ui/Section";
 import Hero from "../components/components/Hero";
@@ -59,6 +61,7 @@ export default function CommunityPage() {
   const [activeGroup, setActiveGroup] = useState(null);
   const [dmPartner, setDmPartner] = useState(null);
   const [toasts, setToasts] = useState([]);
+  const [messageToasts, setMessageToasts] = useState([]);
 
   // Feed filters
   const [feedSearch, setFeedSearch] = useState("");
@@ -119,6 +122,44 @@ export default function CommunityPage() {
     }, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const unsubscribe = onDmMessage((msg) => {
+      const sender = partners.find(
+        (partner) => String(partner.id) === String(msg.from),
+      );
+      if (!sender) return;
+
+      const chatIsOpen =
+        dmPartner &&
+        (String(dmPartner.id) === String(msg.from) ||
+          String(dmPartner.id) === String(msg.to));
+      const tabHidden = typeof document !== "undefined" && document.hidden;
+
+      if (chatIsOpen && !tabHidden) return;
+
+      if (
+        typeof Notification !== "undefined" &&
+        Notification.permission === "granted" &&
+        tabHidden
+      ) {
+        new Notification(`New message from ${sender.name}`, {
+          body: msg.text,
+          icon: "/favicon.ico",
+        });
+      }
+
+      setMessageToasts((prev) => [
+        ...prev,
+        { senderName: sender.name, text: msg.text },
+      ]);
+      setTimeout(() => {
+        setMessageToasts((prev) => prev.filter((_, index) => index !== 0));
+      }, 5000);
+    }) || (() => {});
+
+    return unsubscribe;
+  }, [dmPartner, partners]);
 
   // ── Scroll to section ─────────────────────────────────────────────────
   const scrollTo = useCallback((section) => {
@@ -603,6 +644,14 @@ export default function CommunityPage() {
     <div className="plg-root">
       <CommunityStyles />
       <ToastContainer toasts={toasts} />
+      <MessageToast
+        messages={messageToasts}
+        onClose={(index) =>
+          setMessageToasts((prev) =>
+            prev.filter((_, currentIndex) => currentIndex !== index),
+          )
+        }
+      />
 
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 24px" }}>
         <Hero
