@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { fetchWeeklyActivity, fetchLeaderboard } from "../services/api";
+import { fetchWeeklyActivity, fetchLeaderboard, fetchPracticeStats } from "../services/api";
 
 // Weekly chart data – ready for Recharts drop-in:
 // import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
@@ -84,62 +84,53 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const firstName = user?.name ? user.name.split(" ")[0] : "Learner";
-  const language = user?.preferredLanguage || "your language";
-  const level = user?.assessmentResults?.level || "Beginner";
-  const overall = user?.assessmentResults?.overall || 0;
-  const [weekData, setWeekData] = useState(() =>
-    buildWeekData(user?.totalMinutes || 0),
-  );
+  // ── Correct field names from backend (/auth/me returns snake_case) ──────────
+  const firstName = user?.full_name
+    ? user.full_name.split(" ")[0]
+    : user?.name?.split(" ")[0] || "Learner";
+
+  // ── State: practice stats + weekly chart + leaderboard ─────────────────────
+  const [practiceStats, setPracticeStats] = useState(null);
+  const [weekData, setWeekData] = useState(() => buildWeekData(0));
   const [leaderboardData, setLeaderboardData] = useState(null);
-  const maxMinutes = useMemo(
-    () => Math.max(...weekData.map((d) => d.minutes), 1),
-    [weekData],
-  );
-  const totalMins = useMemo(
-    () => weekData.reduce((a, b) => a + b.minutes, 0),
-    [weekData],
-  );
+
+  // Derive display values (fall back gracefully while loading)
+  const language   = practiceStats?.language  || user?.preferred_language || user?.preferredLanguage || "English";
+  const level      = practiceStats?.level     || user?.estimated_level    || user?.selected_level    || "B1";
+  const streak     = practiceStats?.streak    ?? 0;
+  const todayMins  = practiceStats?.today_minutes   ?? 0;
+  const dailyGoal  = practiceStats?.daily_goal_minutes ?? 10;
+  const goalPct    = dailyGoal > 0 ? Math.min(100, Math.round((todayMins / dailyGoal) * 100)) : 0;
+  const todayDisplay = `${todayMins}m`;
+
+  const maxMinutes = useMemo(() => Math.max(...weekData.map((d) => d.minutes), 1), [weekData]);
+  const totalMins  = useMemo(() => weekData.reduce((a, b) => a + b.minutes, 0), [weekData]);
   const totalHours = `${Math.floor(totalMins / 60)}h ${totalMins % 60}m`;
 
-  // Derive stat values from real user data
-  const overallProgress = overall > 0 ? `${Math.round(overall * 10)}%` : "—";
-  const todayMins =
-    weekData.find((d) => {
-      const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-      return d.day === days[new Date().getDay()];
-    })?.minutes || 0;
-  const todayDisplay = todayMins > 0 ? `${todayMins}m` : "0m";
-
-  // Fetch weekly activity and leaderboard from backend when component mounts
+  // Fetch everything on mount
   useEffect(() => {
     let mounted = true;
     const load = async () => {
+      // Practice stats (streak, today, goal, level, language)
+      const stats = await fetchPracticeStats();
+      if (mounted && stats) setPracticeStats(stats);
+
+      // Weekly chart
       try {
         const activity = await fetchWeeklyActivity();
-        if (mounted && Array.isArray(activity)) {
-          // Expecting array of { date, label, minutes } ordered oldest->newest
-          const mapped = activity.map((item) => ({
-            day: item.label,
-            minutes: item.minutes,
-          }));
-          setWeekData(mapped);
+        if (mounted && Array.isArray(activity) && activity.some((d) => d.minutes > 0)) {
+          setWeekData(activity.map((item) => ({ day: item.label, minutes: item.minutes })));
         }
-      } catch (err) {
-        // ignore, keep fallback weekData
-      }
+      } catch (_) {}
 
+      // Leaderboard
       try {
         const lb = await fetchLeaderboard();
-        if (mounted && Array.isArray(lb)) setLeaderboardData(lb);
-      } catch (err) {
-        // ignore
-      }
+        if (mounted && Array.isArray(lb) && lb.length > 0) setLeaderboardData(lb);
+      } catch (_) {}
     };
     load();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
 
   // 👉 BACKEND: Replace with GET /api/leaderboard/weekly — real ranked data
@@ -205,31 +196,31 @@ export default function DashboardPage() {
               Welcome back, {firstName}! 👋
             </h1>
             <p style={{ color: "var(--text-muted)", fontSize: "0.95rem" }}>
-              Studying <strong>{language}</strong> · Keep up your streak!
+              Studying <strong>{language}</strong>
+              {streak > 0 && <> · <span style={{ color: "#f59e0b" }}>🔥 {streak}-day streak</span></>}
             </p>
           </div>
-          {level && (
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                color: "white",
-                padding: "0.5rem 1.25rem",
-                borderRadius: "99px",
-                fontSize: "0.88rem",
-                fontWeight: 700,
-                boxShadow: "0 4px 14px rgba(99,102,241,0.35)",
-                flexShrink: 0,
-              }}
-            >
-              <i className="fas fa-graduation-cap" /> {level}
-              {overall > 0 && (
-                <span style={{ opacity: 0.8 }}>· {overall}/10</span>
-              )}
-            </div>
-          )}
+          <button
+            onClick={() => navigate("/assessment")}
+            title="Retake assessment to update your level"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+              color: "white",
+              padding: "0.5rem 1.25rem",
+              borderRadius: "99px",
+              fontSize: "0.88rem",
+              fontWeight: 700,
+              boxShadow: "0 4px 14px rgba(99,102,241,0.35)",
+              flexShrink: 0,
+              border: "none",
+              cursor: "pointer",
+            }}
+          >
+            <i className="fas fa-graduation-cap" /> Level: {level}
+          </button>
         </div>
 
         {/* ── Stat Cards ── */}
@@ -243,14 +234,14 @@ export default function DashboardPage() {
         >
           {[
             {
-              icon: "fa-trophy",
-              value: overallProgress,
-              label: "Overall Progress",
+              icon: "fa-layer-group",
+              value: level,
+              label: "Current Level",
               grad: "linear-gradient(135deg,#6366f1,#8b5cf6)",
             },
             {
               icon: "fa-fire",
-              value: `${user?.streak || 0}`,
+              value: streak > 0 ? `${streak} 🔥` : "0",
               label: "Day Streak",
               grad: "linear-gradient(135deg,#10b981,#34d399)",
             },
@@ -261,9 +252,9 @@ export default function DashboardPage() {
               grad: "linear-gradient(135deg,#f59e0b,#fbbf24)",
             },
             {
-              icon: "fa-star",
-              value: `${user?.achievements || 0}`,
-              label: "Achievements",
+              icon: "fa-bullseye",
+              value: `${goalPct}%`,
+              label: "Daily Goal",
               grad: "linear-gradient(135deg,#3b82f6,#60a5fa)",
             },
           ].map((card) => (
@@ -404,11 +395,11 @@ export default function DashboardPage() {
                 <span
                   style={{
                     fontSize: "0.8rem",
-                    color: "#6366f1",
+                    color: goalPct >= 100 ? "#10b981" : "#6366f1",
                     fontWeight: 700,
                   }}
                 >
-                  75%
+                  {goalPct}%{goalPct >= 100 ? " ✓" : ""}
                 </span>
               </div>
               <div
@@ -421,10 +412,13 @@ export default function DashboardPage() {
               >
                 <div
                   style={{
-                    width: "75%",
+                    width: `${goalPct}%`,
                     height: "100%",
-                    background: "linear-gradient(90deg,#6366f1,#8b5cf6)",
+                    background: goalPct >= 100
+                      ? "linear-gradient(90deg,#10b981,#34d399)"
+                      : "linear-gradient(90deg,#6366f1,#8b5cf6)",
                     borderRadius: "99px",
+                    transition: "width 0.6s ease",
                   }}
                 />
               </div>
@@ -435,8 +429,8 @@ export default function DashboardPage() {
                   marginTop: "0.5rem",
                 }}
               >
-                {Math.min(user?.totalMinutes || 0, 30)} of 30 minutes completed
-                today
+                {todayMins} of {dailyGoal} minutes completed today
+                {goalPct >= 100 && " 🎉"}
               </p>
             </div>
 

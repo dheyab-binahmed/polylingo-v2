@@ -6,6 +6,8 @@ import {
   uploadAudio,
   getJobStatus,
   chatWithTutor,
+  streamTutorChat,
+  fetchTTS,
   fetchPracticeFlashcards,
   fetchPracticeGrammar,
   fetchPracticeReading,
@@ -304,6 +306,9 @@ export default function PracticePage() {
   const chunksRef = useRef([]);
   const streamRef = useRef(null);
   const chatEndRef = useRef(null);
+  const tutorStreamRef = useRef(null);  // AbortController for active SSE stream
+  const ttsQueueRef = useRef([]);        // Sentences waiting for TTS playback
+  const ttsBusyRef = useRef(false);      // Whether TTS is currently speaking
 
   // Reset exercise state when language changes
   useEffect(() => {
@@ -802,62 +807,132 @@ export default function PracticePage() {
   };
 
   // ── AI Tutor handlers ────────────────────────────────────────────────────────
-  const sendTutorChat = async (overrideText) => {
+  // ── Queued TTS so sentences play back-to-back without overlap ────────────────
+
+  // _onTTSDone: called when a sentence finishes playing (from any TTS source)
+  const _onTTSDone = () => {
+    ttsBusyRef.current = false;
+    if (ttsQueueRef.current.length > 0) {
+      _drainTTSQueue();
+    } else {
+      setTutorSpeaking(false);
+    }
+  };
+
+  const _drainTTSQueue = async () => {
+    if (ttsBusyRef.current || ttsQueueRef.current.length === 0) return;
+    const sentence = ttsQueueRef.current.shift();
+    ttsBusyRef.current = true;
+    setTutorSpeaking(true);
+
+    // Try ElevenLabs first via backend proxy
+    try {
+      const { audioBase64 } = await fetchTTS(sentence);
+      if (audioBase64) {
+        const audio = new Audio(`data:audio/mp3;base64,${audioBase64}`);
+        audio.onended = _onTTSDone;
+        audio.onerror = () => {
+          // ElevenLabs audio failed — fall through to browser TTS
+          speakTTS(sentence, lang, () => {}, _onTTSDone);
+        };
+        audio.play().catch(() => {
+          speakTTS(sentence, lang, () => {}, _onTTSDone);
+        });
+        return;
+      }
+    } catch (_) {
+      // Network error — fall through to browser TTS
+    }
+
+    // Browser TTS fallback
+    speakTTS(sentence, lang, () => {}, _onTTSDone);
+  };
+
+  const _enqueueSentence = (sentence) => {
+    if (!sentence) return;
+    ttsQueueRef.current.push(sentence);
+    _drainTTSQueue();
+  };
+
+  const sendTutorChat = (overrideText) => {
     const msg = (overrideText ?? tutorInput).trim();
     if (!msg || tutorLoading) return;
 
+    // Cancel any in-flight stream + TTS
+    tutorStreamRef.current?.abort();
+    tutorStreamRef.current = null;
+    window.speechSynthesis?.cancel();
+    ttsQueueRef.current = [];
+    ttsBusyRef.current = false;
+    setTutorSpeaking(false);
     setTutorInput("");
     setTutorError("");
-    window.speechSynthesis?.cancel();
-    setTutorSpeaking(false);
 
-    const userMsg = { role: "user", content: msg, correction: null, vocab_tip: null };
-    const updatedHistory = [...tutorMessages, userMsg];
-    setTutorMessages(updatedHistory);
+    // Snapshot history BEFORE adding new messages (so we don't send the new user msg as history)
+    const historyForApi = tutorMessages.map((m) => ({ role: m.role, content: m.content }));
+
+    // Add user message + empty assistant placeholder in ONE state update
+    // (never put setTimeout/side-effects inside a state updater — React StrictMode double-fires them)
+    const userMsg       = { role: "user",      content: msg, correction: null, vocab_tip: null };
+    const placeholderMsg = { role: "assistant", content: "",  correction: null, vocab_tip: null, streaming: true };
+    setTutorMessages((prev) => [...prev, userMsg, placeholderMsg]);
     setTutorLoading(true);
 
-    try {
-      // Build history without the greeting so we don't inflate the context
-      const historyForApi = updatedHistory
-        .slice(0, -1) // exclude the message we just added
-        .map((m) => ({ role: m.role, content: m.content }));
+    // Kick off the SSE stream directly — no setTimeout needed
+    const controller = streamTutorChat(
+      { message: msg, history: historyForApi, language: lang, level: practiceLevel },
+      {
+        onToken: (token) => {
+          setTutorMessages((prev) => {
+            const msgs = [...prev];
+            const last = msgs[msgs.length - 1];
+            if (last?.streaming) {
+              msgs[msgs.length - 1] = { ...last, content: last.content + token };
+            }
+            return msgs;
+          });
+        },
+        onSentence: (sentence) => {
+          _enqueueSentence(sentence);
+        },
+        onDone: ({ correction, vocab_tip }) => {
+          setTutorMessages((prev) => {
+            const msgs = [...prev];
+            const last = msgs[msgs.length - 1];
+            if (last?.streaming) {
+              msgs[msgs.length - 1] = {
+                ...last,
+                correction: correction || null,
+                vocab_tip: vocab_tip || null,
+                streaming: false,
+              };
+            }
+            return msgs;
+          });
+          setTutorLoading(false);
+        },
+        onError: () => {
+          setTutorError("Couldn't reach the tutor. Please check your connection and try again.");
+          setTutorMessages((prev) => {
+            const msgs = [...prev];
+            const last = msgs[msgs.length - 1];
+            if (last?.streaming) {
+              msgs[msgs.length - 1] = {
+                role: "assistant",
+                content: "Sorry, I couldn't connect right now. Please try again!",
+                correction: null,
+                vocab_tip: null,
+                streaming: false,
+              };
+            }
+            return msgs;
+          });
+          setTutorLoading(false);
+        },
+      },
+    );
 
-      const result = await chatWithTutor({
-        message: msg,
-        history: historyForApi,
-        language: lang,
-        level: practiceLevel,
-      });
-
-      const aiMsg = {
-        role: "assistant",
-        content: result.reply || "...",
-        correction: result.correction || null,
-        vocab_tip: result.vocab_tip || null,
-      };
-      setTutorMessages((prev) => [...prev, aiMsg]);
-
-      // Speak the AI reply aloud
-      if (result.reply) {
-        speakTTS(
-          result.reply,
-          ttsLang,
-          () => setTutorSpeaking(true),
-          () => setTutorSpeaking(false),
-        );
-      }
-    } catch (err) {
-      setTutorError("Couldn't reach the tutor. Please check your connection and try again.");
-      const errMsg = {
-        role: "assistant",
-        content: "Sorry, I couldn't connect right now. Please try again!",
-        correction: null,
-        vocab_tip: null,
-      };
-      setTutorMessages((prev) => [...prev, errMsg]);
-    } finally {
-      setTutorLoading(false);
-    }
+    tutorStreamRef.current = controller;
   };
 
   const startVoiceInput = () => {
@@ -2129,6 +2204,18 @@ export default function PracticePage() {
                           </span>
                         )}
                         {msg.content}
+                        {/* Blinking cursor while streaming */}
+                        {msg.streaming && (
+                          <span style={{
+                            display: "inline-block",
+                            width: "2px",
+                            height: "1em",
+                            background: "var(--primary)",
+                            marginLeft: "2px",
+                            verticalAlign: "text-bottom",
+                            animation: "blink 0.8s step-end infinite",
+                          }} />
+                        )}
                       </div>
 
                       {/* Correction chip */}
@@ -2175,8 +2262,8 @@ export default function PracticePage() {
                     </div>
                   ))}
 
-                  {/* Thinking indicator */}
-                  {tutorLoading && (
+                  {/* Thinking indicator — only show before first streaming token arrives */}
+                  {tutorLoading && !tutorMessages[tutorMessages.length - 1]?.streaming && (
                     <div style={{ display: "flex", alignItems: "flex-start", gap: "0.4rem" }}>
                       <div
                         style={{

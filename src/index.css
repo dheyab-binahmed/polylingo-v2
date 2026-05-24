@@ -3160,6 +3160,12 @@ button, [role="button"],
   50%       { box-shadow: 0 0 0 12px rgba(239,68,68,.1); }
 }
 
+/* Blinking cursor for AI streaming replies */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
 /* ── Navbar link active indicator ── */
 .nav-links a.active {
   color: var(--primary) !important;

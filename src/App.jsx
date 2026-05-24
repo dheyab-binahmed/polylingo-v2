@@ -23,6 +23,16 @@ import LoginPage from "./components/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 
 export default function App() {
+  // ── Restore dark mode preference on first load ───────────────────────
+  useEffect(() => {
+    try {
+      const settings = JSON.parse(localStorage.getItem("polylingo_settings") || "{}");
+      document.documentElement.setAttribute("data-dark", settings.dark ? "true" : "false");
+    } catch (_) {
+      document.documentElement.setAttribute("data-dark", "false");
+    }
+  }, []);
+
   useEffect(() => {
     const token = localStorage.getItem("polylingo_token");
     if (!token) return undefined;

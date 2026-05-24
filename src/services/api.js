@@ -163,23 +163,31 @@ export async function fetchCurrentUser() {
 
 /**
  * Update user profile fields.
- * PATCH /api/v1/user/profile
+ * PUT /api/v1/auth/profile
+ * Accepts both camelCase (legacy) and snake_case field names and normalises to snake_case.
  * Expected response: { user: {...} }
  */
 export async function updateUserProfile(updates) {
+  // Normalise to the snake_case field names the backend expects
+  const payload = {};
+  if (updates.full_name          !== undefined) payload.full_name          = updates.full_name;
+  if (updates.name               !== undefined) payload.full_name          = updates.name;          // legacy camelCase
+  if (updates.preferred_language !== undefined) payload.preferred_language = updates.preferred_language;
+  if (updates.preferredLanguage  !== undefined) payload.preferred_language = updates.preferredLanguage; // legacy
+  if (updates.selected_level     !== undefined) payload.selected_level     = updates.selected_level;
+
   try {
-    const data = await apiFetch("/user/profile", {
-      method: "PATCH",
-      body: JSON.stringify(updates),
+    const data = await apiFetch("/auth/profile", {
+      method: "PUT",
+      body: JSON.stringify(payload),
     });
     const updated = data.user || data;
     localStorage.setItem("polylingo_auth_user", JSON.stringify(updated));
     return updated;
   } catch (err) {
-    const stored = JSON.parse(
-      localStorage.getItem("polylingo_auth_user") || "{}",
-    );
-    const updated = { ...stored, ...updates };
+    // Fallback: merge locally so the UI still reflects the change
+    const stored = JSON.parse(localStorage.getItem("polylingo_auth_user") || "{}");
+    const updated = { ...stored, ...payload, ...updates };
     localStorage.setItem("polylingo_auth_user", JSON.stringify(updated));
     return updated;
   }
@@ -849,6 +857,35 @@ export async function scorePracticeWriting({ writingText, prompt, language }) {
 }
 
 /**
+ * Fetch lightweight practice stats for the dashboard.
+ * GET /api/v1/practice/stats
+ * Returns: { streak, today_minutes, daily_goal_minutes, level, language }
+ */
+/**
+ * Convert text to speech using ElevenLabs (proxied through backend).
+ * POST /api/v1/practice/tts
+ * Returns: { audioBase64: "..." } — null if ElevenLabs is not configured.
+ */
+export async function fetchTTS(text) {
+  try {
+    return await apiFetch("/practice/tts", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+  } catch (_) {
+    return { audioBase64: null };
+  }
+}
+
+export async function fetchPracticeStats() {
+  try {
+    return await apiFetch("/practice/stats");
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
  * Send a message to the AI language tutor and receive a correction-aware reply.
  * POST /api/v1/practice/tutor/chat
  * Request: { message, history, language, level }
@@ -859,6 +896,87 @@ export async function chatWithTutor({ message, history, language, level }) {
     method: "POST",
     body: JSON.stringify({ message, history, language, level }),
   });
+}
+
+/**
+ * Streaming version of chatWithTutor.
+ * Calls POST /api/v1/practice/tutor/chat/stream and fires callbacks as SSE events arrive.
+ *
+ * @param {object} params - { message, history, language, level }
+ * @param {object} callbacks - {
+ *   onToken(text)         – called with each text chunk for display,
+ *   onSentence(sentence)  – called when a full sentence is ready (for TTS),
+ *   onDone({correction, vocab_tip}) – called when the response is complete,
+ *   onError(err)          – called on network/parse error
+ * }
+ * @returns {AbortController} – call .abort() to cancel mid-stream
+ */
+export function streamTutorChat({ message, history, language, level }, callbacks = {}) {
+  const token = localStorage.getItem("polylingo_token");
+  const controller = new AbortController();
+
+  (async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/practice/tutor/chat/stream`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ message, history, language, level }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Process complete SSE lines
+        const lines = buffer.split("\n");
+        buffer = lines.pop(); // Keep incomplete last line
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const dataStr = line.slice(6).trim();
+          if (!dataStr) continue;
+
+          try {
+            const data = JSON.parse(dataStr);
+            if (data.token !== undefined) {
+              callbacks.onToken?.(data.token);
+            } else if (data.sentence) {
+              callbacks.onSentence?.(data.sentence);
+            } else if (data.done) {
+              callbacks.onDone?.({
+                correction: data.correction || null,
+                vocab_tip: data.vocab_tip || null,
+              });
+            } else if (data.error) {
+              callbacks.onError?.(new Error(data.error));
+            }
+          } catch (_) {
+            // Ignore malformed SSE lines
+          }
+        }
+      }
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        callbacks.onError?.(err);
+      }
+    }
+  })();
+
+  return controller;
 }
 
 /**

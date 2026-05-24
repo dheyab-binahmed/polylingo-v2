@@ -25,9 +25,10 @@ export default function Navbar() {
     navigate('/');
   };
 
-  const initials = user?.name
-    ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-    : '?';
+  const displayName = user?.full_name || user?.name || "";
+  const initials = displayName
+    ? displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+    : (user?.email?.[0] || '?').toUpperCase();
 
   return (
     <>
@@ -61,7 +62,7 @@ export default function Navbar() {
                   >
                     <i className="fas fa-rocket" /> Assessment
                   </button>
-                  <div className="navbar-avatar" title={user.name || user.email}>
+                  <div className="navbar-avatar" title={displayName || user?.email}>
                     {initials}
                   </div>
                   <button className="btn btn-outline navbar-logout-btn" onClick={handleLogout}>
