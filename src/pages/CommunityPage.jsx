@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import CommunityStyles from "../styles/CommunityStyles";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   fetchCommunityPosts,
   createPost as apiCreatePost,
@@ -54,12 +54,14 @@ const GROUPS_PAGE_SZ = 5; // groups shown per page
 
 export default function CommunityPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [posts, setPosts] = useState([]);
   const [groups, setGroups] = useState([]);
   const [partners, setPartners] = useState([]);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [activeGroup, setActiveGroup] = useState(null);
   const [dmPartner, setDmPartner] = useState(null);
+  const [pendingIncomingCall, setPendingIncomingCall] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [messageToasts, setMessageToasts] = useState([]);
 
@@ -90,6 +92,25 @@ export default function CommunityPage() {
     setTimeout(() => setToasts((p) => p.filter((t) => t.id !== id)), 3500);
   }, []);
 
+  // ── Handle incoming call from global listener ──────────────────────────
+  useEffect(() => {
+    // Check for pending call in navigation state
+    if (location.state?.pendingCall) {
+      setPendingIncomingCall(location.state.pendingCall);
+    }
+
+    // Also check sessionStorage as fallback
+    const stored = sessionStorage.getItem("pendingIncomingCall");
+    if (stored && !pendingIncomingCall) {
+      try {
+        const callData = JSON.parse(stored);
+        setPendingIncomingCall(callData);
+      } catch (_) {
+        // ignore
+      }
+    }
+  }, [location.state]);
+
   // Load initial community data
   useEffect(() => {
     let mounted = true;
@@ -111,6 +132,23 @@ export default function CommunityPage() {
     return () => (mounted = false);
   }, [notify]);
 
+  // ── Auto-open DM when incoming call arrives and partners loaded ────────
+  useEffect(() => {
+    if (!pendingIncomingCall || !partners.length) return;
+
+    const caller = partners.find(
+      (p) => String(p.id) === String(pendingIncomingCall.from),
+    );
+
+    if (caller) {
+      setDmPartner(caller);
+      setActiveGroup(null);
+      // Clear pending call after opening DM
+      setPendingIncomingCall(null);
+      sessionStorage.removeItem("pendingIncomingCall");
+    }
+  }, [pendingIncomingCall, partners]);
+
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
@@ -124,39 +162,40 @@ export default function CommunityPage() {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = onDmMessage((msg) => {
-      const sender = partners.find(
-        (partner) => String(partner.id) === String(msg.from),
-      );
-      if (!sender) return;
+    const unsubscribe =
+      onDmMessage((msg) => {
+        const sender = partners.find(
+          (partner) => String(partner.id) === String(msg.from),
+        );
+        if (!sender) return;
 
-      const chatIsOpen =
-        dmPartner &&
-        (String(dmPartner.id) === String(msg.from) ||
-          String(dmPartner.id) === String(msg.to));
-      const tabHidden = typeof document !== "undefined" && document.hidden;
+        const chatIsOpen =
+          dmPartner &&
+          (String(dmPartner.id) === String(msg.from) ||
+            String(dmPartner.id) === String(msg.to));
+        const tabHidden = typeof document !== "undefined" && document.hidden;
 
-      if (chatIsOpen && !tabHidden) return;
+        if (chatIsOpen && !tabHidden) return;
 
-      if (
-        typeof Notification !== "undefined" &&
-        Notification.permission === "granted" &&
-        tabHidden
-      ) {
-        new Notification(`New message from ${sender.name}`, {
-          body: msg.text,
-          icon: "/favicon.ico",
-        });
-      }
+        if (
+          typeof Notification !== "undefined" &&
+          Notification.permission === "granted" &&
+          tabHidden
+        ) {
+          new Notification(`New message from ${sender.name}`, {
+            body: msg.text,
+            icon: "/favicon.ico",
+          });
+        }
 
-      setMessageToasts((prev) => [
-        ...prev,
-        { senderName: sender.name, text: msg.text },
-      ]);
-      setTimeout(() => {
-        setMessageToasts((prev) => prev.filter((_, index) => index !== 0));
-      }, 5000);
-    }) || (() => {});
+        setMessageToasts((prev) => [
+          ...prev,
+          { senderName: sender.name, text: msg.text },
+        ]);
+        setTimeout(() => {
+          setMessageToasts((prev) => prev.filter((_, index) => index !== 0));
+        }, 5000);
+      }) || (() => {});
 
     return unsubscribe;
   }, [dmPartner, partners]);
@@ -1339,6 +1378,7 @@ export default function CommunityPage() {
           partner={dmPartner}
           onClose={() => setDmPartner(null)}
           onCall={handleCall}
+          pendingIncomingCall={pendingIncomingCall}
         />
       )}
     </div>

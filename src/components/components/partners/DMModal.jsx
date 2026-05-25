@@ -72,6 +72,7 @@ export default function DMModal({
   partner,
   currentUser: currentUserProp,
   onClose,
+  pendingIncomingCall,
 }) {
   const auth = useContext(AuthContext);
   const currentUser = currentUserProp || auth?.user || getStoredUser();
@@ -98,6 +99,7 @@ export default function DMModal({
   const ringingRef = useRef(null);
   const partnerRef = useRef(partner);
   const cleanupCallRef = useRef(null);
+  const iceCandidateBuffer = useRef([]);
 
   useEffect(() => {
     callActiveRef.current = callActive;
@@ -176,7 +178,11 @@ export default function DMModal({
       localVideoRef.current.srcObject = localStream.current;
     }
 
-    if (callType === "video" && remoteVideoRef.current && remoteStream.current) {
+    if (
+      callType === "video" &&
+      remoteVideoRef.current &&
+      remoteStream.current
+    ) {
       remoteVideoRef.current.srcObject = remoteStream.current;
     }
   }, [callActive, callType]);
@@ -238,6 +244,32 @@ export default function DMModal({
     cleanupCallRef.current = cleanupCall;
   }, [cleanupCall]);
 
+  // ── Auto-accept pending incoming call ──────────────────────────────────
+  useEffect(() => {
+    if (
+      !pendingIncomingCall ||
+      !sameId(pendingIncomingCall.from, partner.id) ||
+      callActive
+    ) {
+      return;
+    }
+
+    console.log(
+      "Auto-accepting pending incoming call from:",
+      pendingIncomingCall.from,
+    );
+
+    // Auto-accept the incoming call
+    const call = {
+      from: pendingIncomingCall.from,
+      offer: pendingIncomingCall.offer,
+      callType: pendingIncomingCall.callType,
+      callerName: partner.name,
+    };
+
+    handleAcceptCall(call);
+  }, [pendingIncomingCall, partner.id, partner.name, callActive]);
+
   const hangUp = useCallback(() => {
     cleanupCall({ notify: true });
   }, [cleanupCall]);
@@ -260,7 +292,11 @@ export default function DMModal({
       });
 
       pc.current.ontrack = (event) => {
-        console.log("Got remote track on caller:", event.streams, event.track.kind);
+        console.log(
+          "Got remote track on caller:",
+          event.streams,
+          event.track.kind,
+        );
         if (event.streams && event.streams[0]) {
           remoteStream.current = event.streams[0];
           if (remoteVideoRef.current) {
@@ -380,6 +416,17 @@ export default function DMModal({
 
         sendCallAnswer(call.from, answer);
 
+        // Flush buffered ICE candidates
+        for (const candidate of iceCandidateBuffer.current) {
+          try {
+            await pc.current.addIceCandidate(new RTCIceCandidate(candidate));
+            console.log("Flushed buffered ICE candidate");
+          } catch (e) {
+            console.warn("Failed to add buffered ICE candidate:", e);
+          }
+        }
+        iceCandidateBuffer.current = [];
+
         setMediaError(null);
         setCallActive(true);
         setCallType(call.callType);
@@ -427,18 +474,35 @@ export default function DMModal({
             new RTCSessionDescription(answer),
           );
           console.log("Remote description set on caller side");
+          // Flush buffered ICE candidates
+          for (const candidate of iceCandidateBuffer.current) {
+            try {
+              await pc.current.addIceCandidate(new RTCIceCandidate(candidate));
+              console.log("Flushed buffered ICE candidate");
+            } catch (e) {
+              console.warn("Failed to add buffered ICE candidate:", e);
+            }
+          }
+          iceCandidateBuffer.current = [];
         }
       }) || (() => {});
 
     const unsubIce =
       onCallIce(async ({ candidate }) => {
-        console.log("Received ICE candidate, adding to peer connection");
-        if (pc.current && candidate) {
-          try {
-            await pc.current.addIceCandidate(new RTCIceCandidate(candidate));
-            console.log("ICE candidate added successfully");
-          } catch (err) {
-            console.warn("Failed to add ICE candidate:", err);
+        console.log("Received ICE candidate, checking if we can add it");
+        if (pc.current && pc.current.remoteDescription) {
+          if (candidate) {
+            try {
+              await pc.current.addIceCandidate(new RTCIceCandidate(candidate));
+              console.log("ICE candidate added immediately");
+            } catch (err) {
+              console.warn("Failed to add ICE candidate:", err);
+            }
+          }
+        } else {
+          console.log("Buffering ICE candidate - no remote description yet");
+          if (candidate) {
+            iceCandidateBuffer.current.push(candidate);
           }
         }
       }) || (() => {});
@@ -517,165 +581,182 @@ export default function DMModal({
         style={styles.overlay}
         onClick={(event) => event.target === event.currentTarget && onClose()}
       >
-      <div style={styles.modal}>
-        <div style={styles.header}>
-          <div style={styles.identity}>
-            <div style={{ ...styles.avatar, background: partner.color || "#6366f1" }}>
-              {partner.initials || partner.name?.slice(0, 2).toUpperCase()}
-            </div>
-            <div>
-              <div style={styles.partnerName}>{partner.name}</div>
-              <div style={styles.statusText}>
-                {callActive
-                  ? `${callType === "video" ? "Video" : "Voice"} call · ${formatTime(callSeconds)}`
-                  : partner.online
-                    ? "Online"
-                    : "Offline"}
+        <div style={styles.modal}>
+          <div style={styles.header}>
+            <div style={styles.identity}>
+              <div
+                style={{
+                  ...styles.avatar,
+                  background: partner.color || "#6366f1",
+                }}
+              >
+                {partner.initials || partner.name?.slice(0, 2).toUpperCase()}
+              </div>
+              <div>
+                <div style={styles.partnerName}>{partner.name}</div>
+                <div style={styles.statusText}>
+                  {callActive
+                    ? `${callType === "video" ? "Video" : "Voice"} call · ${formatTime(callSeconds)}`
+                    : partner.online
+                      ? "Online"
+                      : "Offline"}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div style={styles.callButtons}>
-            <button
-              onClick={() => startCall("audio")}
-              title="Voice call"
-              style={styles.iconBtn}
-              type="button"
-            >
-              📞
-            </button>
-            <button
-              onClick={() => startCall("video")}
-              title="Video call"
-              style={styles.iconBtn}
-              type="button"
-            >
-              📹
-            </button>
-            <button onClick={onClose} style={styles.iconBtn} type="button">
-              ✕
-            </button>
-          </div>
-        </div>
-
-        {mediaError && <div style={styles.errorBar}>{mediaError}</div>}
-
-        {callActive && (
-          <div style={styles.callBar}>
-            <span>
-              {callType === "video" ? "📹 Video call" : "📞 Voice call"} ·{" "}
-              {formatTime(callSeconds)}
-            </span>
-            <div style={styles.callControls}>
-              <button onClick={toggleMute} style={styles.iconBtn} type="button">
-                {micEnabled ? "🎙️" : "🔇"}
-              </button>
-              {callType === "video" && (
-                <button onClick={toggleCam} style={styles.iconBtn} type="button">
-                  {camEnabled ? "📷" : "🚫"}
-                </button>
-              )}
+            <div style={styles.callButtons}>
               <button
-                onClick={hangUp}
-                style={{ ...styles.iconBtn, color: "#ef4444" }}
+                onClick={() => startCall("audio")}
+                title="Voice call"
+                style={styles.iconBtn}
                 type="button"
               >
-                📵
+                📞
+              </button>
+              <button
+                onClick={() => startCall("video")}
+                title="Video call"
+                style={styles.iconBtn}
+                type="button"
+              >
+                📹
+              </button>
+              <button onClick={onClose} style={styles.iconBtn} type="button">
+                ✕
               </button>
             </div>
           </div>
-        )}
 
-        {callActive && callType === "video" && (
-          <div style={styles.videoRow}>
-            <video
-              ref={localVideoRef}
-              autoPlay
-              muted
-              playsInline
-              style={styles.videoSelf}
-            />
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              style={{ width: "45%", borderRadius: 8, background: "#000" }}
-            />
-          </div>
-        )}
+          {mediaError && <div style={styles.errorBar}>{mediaError}</div>}
 
-        <div style={styles.msgList}>
-          {msgs.length === 0 && (
-            <div style={styles.emptyState}>
-              <div style={styles.emptyIcon}>👋</div>
-              <div style={styles.emptyTitle}>Say hello to {partner.name}!</div>
-              <div style={styles.emptyCopy}>You're connected. Start a conversation.</div>
+          {callActive && (
+            <div style={styles.callBar}>
+              <span>
+                {callType === "video" ? "📹 Video call" : "📞 Voice call"} ·{" "}
+                {formatTime(callSeconds)}
+              </span>
+              <div style={styles.callControls}>
+                <button
+                  onClick={toggleMute}
+                  style={styles.iconBtn}
+                  type="button"
+                >
+                  {micEnabled ? "🎙️" : "🔇"}
+                </button>
+                {callType === "video" && (
+                  <button
+                    onClick={toggleCam}
+                    style={styles.iconBtn}
+                    type="button"
+                  >
+                    {camEnabled ? "📷" : "🚫"}
+                  </button>
+                )}
+                <button
+                  onClick={hangUp}
+                  style={{ ...styles.iconBtn, color: "#ef4444" }}
+                  type="button"
+                >
+                  📵
+                </button>
+              </div>
             </div>
           )}
 
-          {msgs.map((msg, index) => {
-            const mine = sameId(msg.from, currentUser?.id);
-            const time = getMessageTime(msg);
+          {callActive && callType === "video" && (
+            <div style={styles.videoRow}>
+              <video
+                ref={localVideoRef}
+                autoPlay
+                muted
+                playsInline
+                style={styles.videoSelf}
+              />
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                style={{ width: "45%", borderRadius: 8, background: "#000" }}
+              />
+            </div>
+          )}
 
-            return (
-              <div
-                key={msg.id ?? msg.tempId ?? index}
-                style={{
-                  ...styles.messageRow,
-                  justifyContent: mine ? "flex-end" : "flex-start",
-                }}
-              >
-                <div
-                  style={{
-                    ...styles.bubble,
-                    background: mine ? "#6366f1" : "#374151",
-                    borderBottomRightRadius: mine ? 4 : 14,
-                    borderBottomLeftRadius: mine ? 14 : 4,
-                  }}
-                >
-                  <span>{msg.text}</span>
-                  <span style={styles.ts}>
-                    {time
-                      ? new Date(time).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })
-                      : ""}
-                  </span>
+          <div style={styles.msgList}>
+            {msgs.length === 0 && (
+              <div style={styles.emptyState}>
+                <div style={styles.emptyIcon}>👋</div>
+                <div style={styles.emptyTitle}>
+                  Say hello to {partner.name}!
+                </div>
+                <div style={styles.emptyCopy}>
+                  You're connected. Start a conversation.
                 </div>
               </div>
-            );
-          })}
-          <div ref={bottomRef} />
-        </div>
+            )}
 
-        <div style={styles.inputRow}>
-          <input
-            ref={inputRef}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                handleSend();
-              }
-            }}
-            placeholder="Type a message..."
-            style={styles.input}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!text.trim() || !currentUser?.id}
-            style={{
-              ...styles.sendBtn,
-              opacity: text.trim() && currentUser?.id ? 1 : 0.55,
-            }}
-            type="button"
-          >
-            Send
-          </button>
+            {msgs.map((msg, index) => {
+              const mine = sameId(msg.from, currentUser?.id);
+              const time = getMessageTime(msg);
+
+              return (
+                <div
+                  key={msg.id ?? msg.tempId ?? index}
+                  style={{
+                    ...styles.messageRow,
+                    justifyContent: mine ? "flex-end" : "flex-start",
+                  }}
+                >
+                  <div
+                    style={{
+                      ...styles.bubble,
+                      background: mine ? "#6366f1" : "#374151",
+                      borderBottomRightRadius: mine ? 4 : 14,
+                      borderBottomLeftRadius: mine ? 14 : 4,
+                    }}
+                  >
+                    <span>{msg.text}</span>
+                    <span style={styles.ts}>
+                      {time
+                        ? new Date(time).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : ""}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={bottomRef} />
+          </div>
+
+          <div style={styles.inputRow}>
+            <input
+              ref={inputRef}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder="Type a message..."
+              style={styles.input}
+            />
+            <button
+              onClick={handleSend}
+              disabled={!text.trim() || !currentUser?.id}
+              style={{
+                ...styles.sendBtn,
+                opacity: text.trim() && currentUser?.id ? 1 : 0.55,
+              }}
+              type="button"
+            >
+              Send
+            </button>
+          </div>
         </div>
-      </div>
       </div>
     </>
   );

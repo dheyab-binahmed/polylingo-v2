@@ -1,7 +1,14 @@
-import { useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useEffect, useState, useRef } from "react";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+} from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { updatePresence } from "./services/api";
+import { onCallIncoming, offCallIncoming, endCall } from "./services/socket";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import HomePage from "./pages/HomePage";
@@ -21,13 +28,33 @@ import PronunciationDetailsPage from "./pages/Assessment/PronunciationDetailsPag
 import AuthRequired from "./components/AuthRequired";
 import LoginPage from "./components/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
+import IncomingCallModal from "./components/components/partners/IncomingCallModal";
 
 export default function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <AppContent />
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}
+
+function AppContent() {
+  const navigate = useNavigate();
+  const [globalIncomingCall, setGlobalIncomingCall] = useState(null);
+  const globalRingRef = useRef(null);
+
   // ── Restore dark mode preference on first load ───────────────────────
   useEffect(() => {
     try {
-      const settings = JSON.parse(localStorage.getItem("polylingo_settings") || "{}");
-      document.documentElement.setAttribute("data-dark", settings.dark ? "true" : "false");
+      const settings = JSON.parse(
+        localStorage.getItem("polylingo_settings") || "{}",
+      );
+      document.documentElement.setAttribute(
+        "data-dark",
+        settings.dark ? "true" : "false",
+      );
     } catch (_) {
       document.documentElement.setAttribute("data-dark", "false");
     }
@@ -44,90 +71,160 @@ export default function App() {
     };
   }, []);
 
+  // ── Global incoming call listener ────────────────────────────────────
+  useEffect(() => {
+    const handleIncomingCall = ({ from, offer, callType, callerName }) => {
+      console.log("Global incoming call from:", from, "caller:", callerName);
+      setGlobalIncomingCall({ from, offer, callType, callerName });
+
+      // Play ringing sound
+      if (typeof Audio !== "undefined") {
+        const ring = new Audio(
+          "https://cdn.pixabay.com/audio/2022/03/15/audio_1a4e8c3b3b.mp3",
+        );
+        ring.loop = true;
+        ring.play().catch(() => {});
+        globalRingRef.current = ring;
+      }
+    };
+
+    onCallIncoming(handleIncomingCall);
+
+    return () => {
+      offCallIncoming(handleIncomingCall);
+    };
+  }, []);
+
+  const handleAcceptGlobalCall = () => {
+    if (!globalIncomingCall) return;
+
+    // Stop ringing
+    if (globalRingRef.current) {
+      globalRingRef.current.pause();
+      globalRingRef.current.currentTime = 0;
+      globalRingRef.current = null;
+    }
+
+    // Store call for DMModal to handle
+    const callData = JSON.stringify(globalIncomingCall);
+    sessionStorage.setItem("pendingIncomingCall", callData);
+
+    // Navigate to community and open DM
+    navigate("/community", {
+      state: {
+        openDMWithUserId: globalIncomingCall.from,
+        pendingCall: globalIncomingCall,
+      },
+    });
+
+    setGlobalIncomingCall(null);
+  };
+
+  const handleDeclineGlobalCall = () => {
+    if (!globalIncomingCall) return;
+
+    // Stop ringing
+    if (globalRingRef.current) {
+      globalRingRef.current.pause();
+      globalRingRef.current.currentTime = 0;
+      globalRingRef.current = null;
+    }
+
+    // Emit end call
+    endCall(globalIncomingCall.from);
+    setGlobalIncomingCall(null);
+  };
+
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Navbar />
-        <main className="main-content">
-          <Routes>
-            {/* Public Routes */}
-            <Route path="/" element={<HomePage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
+    <>
+      {globalIncomingCall && (
+        <IncomingCallModal
+          caller={{ name: globalIncomingCall.callerName }}
+          callType={globalIncomingCall.callType}
+          onAccept={handleAcceptGlobalCall}
+          onDecline={handleDeclineGlobalCall}
+        />
+      )}
+      <Navbar />
+      <main className="main-content">
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/" element={<HomePage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
 
-            {/* Protected Routes - Assessment gate removed, users can access directly */}
-            <Route
-              path="/dashboard"
-              element={
-                <AuthRequired>
-                  <DashboardPage />
-                </AuthRequired>
-              }
-            />
-            <Route
-              path="/practice"
-              element={
-                <AuthRequired>
-                  <PracticePage />
-                </AuthRequired>
-              }
-            />
-            <Route
-              path="/community"
-              element={
-                <AuthRequired>
-                  <CommunityPage />
-                </AuthRequired>
-              }
-            />
-            <Route
-              path="/community/friends"
-              element={
-                <AuthRequired>
-                  <FriendsPage />
-                </AuthRequired>
-              }
-            />
-            <Route
-              path="/profile"
-              element={
-                <AuthRequired>
-                  <ProfilePage />
-                </AuthRequired>
-              }
-            />
+          {/* Protected Routes - Assessment gate removed, users can access directly */}
+          <Route
+            path="/dashboard"
+            element={
+              <AuthRequired>
+                <DashboardPage />
+              </AuthRequired>
+            }
+          />
+          <Route
+            path="/practice"
+            element={
+              <AuthRequired>
+                <PracticePage />
+              </AuthRequired>
+            }
+          />
+          <Route
+            path="/community"
+            element={
+              <AuthRequired>
+                <CommunityPage />
+              </AuthRequired>
+            }
+          />
+          <Route
+            path="/community/friends"
+            element={
+              <AuthRequired>
+                <FriendsPage />
+              </AuthRequired>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <AuthRequired>
+                <ProfilePage />
+              </AuthRequired>
+            }
+          />
 
-            {/* Assessment - requires login but NOT completed assessment */}
+          {/* Assessment - requires login but NOT completed assessment */}
+          <Route
+            path="/assessment"
+            element={
+              <AuthRequired>
+                <AssessmentPage />
+              </AuthRequired>
+            }
+          >
             <Route
-              path="/assessment"
-              element={
-                <AuthRequired>
-                  <AssessmentPage />
-                </AuthRequired>
-              }
-            >
-              <Route
-                index
-                element={<Navigate to="/assessment/language" replace />}
-              />
-              <Route path="language" element={<LanguageStep />} />
-              <Route path="pronunciation" element={<PronunciationStep />} />
-              <Route path="speaking" element={<SpeakingStep />} />
-              <Route path="grammar" element={<GrammarStep />} />
-              <Route path="reading" element={<ReadingStep />} />
-              <Route path="results" element={<ResultsStep />} />
-              <Route
-                path="pronunciation-details"
-                element={<PronunciationDetailsPage />}
-              />
-            </Route>
+              index
+              element={<Navigate to="/assessment/language" replace />}
+            />
+            <Route path="language" element={<LanguageStep />} />
+            <Route path="pronunciation" element={<PronunciationStep />} />
+            <Route path="speaking" element={<SpeakingStep />} />
+            <Route path="grammar" element={<GrammarStep />} />
+            <Route path="reading" element={<ReadingStep />} />
+            <Route path="results" element={<ResultsStep />} />
+            <Route
+              path="pronunciation-details"
+              element={<PronunciationDetailsPage />}
+            />
+          </Route>
 
-            {/* Catch all */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </main>
-        <Footer />
-      </BrowserRouter>
-    </AuthProvider>
+          {/* Catch all */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+      <Footer />
+    </>
   );
 }
