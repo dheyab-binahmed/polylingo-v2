@@ -5,6 +5,7 @@ import {
   startSpeakingAssessment,
   sendSpeakingAssessmentMessage,
   completeSpeakingAssessment,
+  generateSpeech,
 } from "../../services/api";
 
 const TOPICS = [
@@ -48,8 +49,11 @@ export default function SpeakingStep() {
   const [score, setScore] = useState(null);
   const [sessionStarted, setSessionStarted] = useState(false); // gates TTS behind user gesture
   const [sessionId, setSessionId] = useState(null);
+  const [completing, setCompleting] = useState(false);
 
   const bottomRef = useRef(null);
+  const chatRef = useRef(null);
+  const audioRef = useRef(null);
   const inputRef = useRef(null);
 
   // useRef keeps the initial prompt stable so the useEffect below has a proper dependency
@@ -58,9 +62,11 @@ export default function SpeakingStep() {
   );
   const initialPromptText = initialPromptRef.current;
 
-  // Scroll to bottom whenever messages change
+  // Scroll to bottom inside chat container whenever messages change
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (chatRef.current) {
+      chatRef.current.scrollTop = chatRef.current.scrollHeight;
+    }
   }, [messages]);
 
   // Show initial AI message on mount — initialPromptRef.current is stable (no re-renders)
@@ -98,52 +104,74 @@ export default function SpeakingStep() {
     }
   };
 
-  // TTS: AI speaks back to the user — waits for voices to load first, uses correct language
-  const speakText = (text) => {
+  // TTS: Use ElevenLabs API with browser fallback
+  const speakText = async (text) => {
+    // Stop any currently playing audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    // Also cancel browser TTS as fallback
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+
+    setAiSpeaking(true);
+
+    try {
+      const { audio, content_type } = await generateSpeech(text);
+      const audioData = `data:${content_type};base64,${audio}`;
+      const audioEl = new Audio(audioData);
+      audioRef.current = audioEl;
+      audioEl.onended = () => {
+        setAiSpeaking(false);
+        audioRef.current = null;
+      };
+      audioEl.onerror = () => {
+        setAiSpeaking(false);
+        audioRef.current = null;
+        // Fallback to browser TTS
+        fallbackSpeak(text);
+      };
+      await audioEl.play();
+    } catch (err) {
+      console.warn("ElevenLabs TTS failed, falling back to browser TTS:", err);
+      setAiSpeaking(false);
+      fallbackSpeak(text);
+    }
+  };
+
+  // Keep browser TTS as fallback
+  const fallbackSpeak = (text) => {
     if (!("speechSynthesis" in window)) return;
     window.speechSynthesis.cancel();
-
-    const doSpeak = () => {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = ttsLang;
-      utterance.rate = 0.92;
-      utterance.pitch = 1;
-      utterance.volume = 0.85;
-      const voices = window.speechSynthesis.getVoices();
-      const preferred =
-        voices.find((v) => v.lang === ttsLang) ||
-        voices.find((v) => v.lang.startsWith(ttsLang.split("-")[0])) ||
-        voices[0];
-      if (preferred) utterance.voice = preferred;
-      utterance.onstart = () => setAiSpeaking(true);
-      utterance.onend = () => setAiSpeaking(false);
-      utterance.onerror = () => setAiSpeaking(false);
-      window.speechSynthesis.speak(utterance);
-    };
-
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = ttsLang;
+    utterance.rate = 0.92;
+    utterance.pitch = 1.05;
+    utterance.volume = 0.9;
     const voices = window.speechSynthesis.getVoices();
-    if (voices.length > 0) {
-      // Voices already loaded — speak immediately, no listener needed
-      doSpeak();
-    } else {
-      // Voices not ready — attach listener but use a flag so it only fires once
-      let fired = false;
-      const handler = () => {
-        if (fired) return;
-        fired = true;
-        window.speechSynthesis.removeEventListener("voiceschanged", handler);
-        doSpeak();
-      };
-      window.speechSynthesis.addEventListener("voiceschanged", handler);
-      // Safety fallback: if voiceschanged never fires within 2s, try anyway
-      setTimeout(() => {
-        if (!fired) {
-          fired = true;
-          window.speechSynthesis.removeEventListener("voiceschanged", handler);
-          doSpeak();
-        }
-      }, 2000);
-    }
+    const femaleVoice =
+      voices.find(
+        (v) => v.lang === ttsLang && v.name.toLowerCase().includes("female"),
+      ) ||
+      voices.find(
+        (v) =>
+          v.lang === ttsLang &&
+          (v.name.includes("Samantha") ||
+            v.name.includes("Karen") ||
+            v.name.includes("Moira") ||
+            v.name.includes("Victoria") ||
+            v.name.includes("Google UK English Female") ||
+            v.name.includes("Microsoft Zira") ||
+            v.name.includes("Alice") ||
+            v.name.includes("Amelie")),
+      ) ||
+      voices.find((v) => v.lang === ttsLang) ||
+      voices[0];
+    if (femaleVoice) utterance.voice = femaleVoice;
+    utterance.onstart = () => setAiSpeaking(true);
+    utterance.onend = () => setAiSpeaking(false);
+    utterance.onerror = () => setAiSpeaking(false);
+    window.speechSynthesis.speak(utterance);
   };
 
   // Handle user message — typed or spoken
@@ -219,6 +247,8 @@ export default function SpeakingStep() {
   const handleContinue = async () => {
     const userCount = messages.filter((m) => m.role === "user").length;
     if (userCount === 0) return;
+
+    setCompleting(true);
 
     try {
       if (sessionId) {
@@ -424,6 +454,17 @@ export default function SpeakingStep() {
           transform: translateY(-2px); box-shadow: 0 8px 22px rgba(99,102,241,.45);
         }
         .sp-continue:disabled { opacity:.45; cursor:not-allowed; transform:none; }
+        .sp-spinner {
+          display: inline-block;
+          width: 14px; height: 14px;
+          border: 2px solid rgba(255,255,255,0.3);
+          border-top-color: white;
+          border-radius: 50%;
+          animation: sp-spin 0.7s linear infinite;
+          vertical-align: middle;
+          margin-left: 6px;
+        }
+        @keyframes sp-spin { to { transform: rotate(360deg); } }
 
         .sp-hint {
           display:flex; align-items:center; gap:.5rem;
@@ -480,7 +521,7 @@ export default function SpeakingStep() {
           </div>
 
           {/* Messages */}
-          <div className="sp-chat">
+          <div className="sp-chat" ref={chatRef}>
             {messages.map((msg) => (
               <div key={msg.id} className={`sp-row ${msg.role}`}>
                 <div className={`sp-ava ${msg.role}`}>
@@ -510,7 +551,6 @@ export default function SpeakingStep() {
                 </div>
               </div>
             )}
-            <div ref={bottomRef} />
           </div>
 
           <div className="sp-divider" />
@@ -629,9 +669,17 @@ export default function SpeakingStep() {
           <button
             className="sp-continue"
             onClick={handleContinue}
-            disabled={!canContinue}
+            disabled={!canContinue || completing}
           >
-            Continue <i className="fas fa-arrow-right" />
+            {completing ? (
+              <span>
+                Finishing up... <span className="sp-spinner" />
+              </span>
+            ) : (
+              <>
+                Continue <i className="fas fa-arrow-right" />
+              </>
+            )}
           </button>
         </div>
       </div>

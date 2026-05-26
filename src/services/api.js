@@ -169,11 +169,14 @@ export async function fetchCurrentUser() {
 export async function updateUserProfile(updates) {
   // Normalise to the snake_case field names the backend expects
   const payload = {};
-  if (updates.full_name          !== undefined) payload.full_name          = updates.full_name;
-  if (updates.name               !== undefined) payload.full_name          = updates.name;          // legacy camelCase
-  if (updates.preferred_language !== undefined) payload.preferred_language = updates.preferred_language;
-  if (updates.preferredLanguage  !== undefined) payload.preferred_language = updates.preferredLanguage; // legacy
-  if (updates.selected_level     !== undefined) payload.selected_level     = updates.selected_level;
+  if (updates.full_name !== undefined) payload.full_name = updates.full_name;
+  if (updates.name !== undefined) payload.full_name = updates.name; // legacy camelCase
+  if (updates.preferred_language !== undefined)
+    payload.preferred_language = updates.preferred_language;
+  if (updates.preferredLanguage !== undefined)
+    payload.preferred_language = updates.preferredLanguage; // legacy
+  if (updates.selected_level !== undefined)
+    payload.selected_level = updates.selected_level;
 
   try {
     const data = await apiFetch("/auth/profile", {
@@ -185,7 +188,9 @@ export async function updateUserProfile(updates) {
     return updated;
   } catch (err) {
     // Fallback: merge locally so the UI still reflects the change
-    const stored = JSON.parse(localStorage.getItem("polylingo_auth_user") || "{}");
+    const stored = JSON.parse(
+      localStorage.getItem("polylingo_auth_user") || "{}",
+    );
     const updated = { ...stored, ...payload, ...updates };
     localStorage.setItem("polylingo_auth_user", JSON.stringify(updated));
     return updated;
@@ -354,13 +359,16 @@ export async function uploadAudio(sessionId, audioBlob) {
   formData.append("audio", audioBlob, "recording.webm");
 
   try {
-    const response = await fetch(`${BASE_URL}/api/v1/sessions/${sessionId}/audio`, {
-      method: "POST",
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    const response = await fetch(
+      `${BASE_URL}/api/v1/sessions/${sessionId}/audio`,
+      {
+        method: "POST",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: formData,
       },
-      body: formData,
-    });
+    );
 
     if (!response.ok) {
       const error = await response.json();
@@ -425,11 +433,14 @@ export async function scorePronunciation(
   }
 
   // ─── REAL IMPLEMENTATION ──────────────────────────────────────
-  const response = await fetch(`${BASE_URL}/api/v1/assessment/pronunciation/score`, {
-    method: "POST",
-    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    body: formData, // Don't set Content-Type — browser sets multipart boundary automatically
-  });
+  const response = await fetch(
+    `${BASE_URL}/api/v1/assessment/pronunciation/score`,
+    {
+      method: "POST",
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: formData, // Don't set Content-Type — browser sets multipart boundary automatically
+    },
+  );
 
   if (!response.ok) {
     const error = await response
@@ -488,6 +499,24 @@ export async function getSpeakingReply({ message, history, language }) {
     };
   }
 }
+
+/**
+ * Convert text to speech using ElevenLabs API.
+ * POST /api/v1/assessment/tts
+ * Expected response: { audio: base64_string, content_type: "audio/mpeg" }
+ */
+export const generateSpeech = async (text) => {
+  const response = await fetch(`${BASE_URL}/api/v1/assessment/tts`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${localStorage.getItem("polylingo_token") || localStorage.getItem("access_token") || ""}`,
+    },
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) throw new Error("TTS failed");
+  return response.json();
+};
 
 // ═══════════════════════════════════════════════════════════════
 //  COMMUNITY
@@ -910,21 +939,27 @@ export async function chatWithTutor({ message, history, language, level }) {
  * }
  * @returns {AbortController} – call .abort() to cancel mid-stream
  */
-export function streamTutorChat({ message, history, language, level }, callbacks = {}) {
+export function streamTutorChat(
+  { message, history, language, level },
+  callbacks = {},
+) {
   const token = localStorage.getItem("polylingo_token");
   const controller = new AbortController();
 
   (async () => {
     try {
-      const response = await fetch(`${BASE_URL}/api/v1/practice/tutor/chat/stream`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      const response = await fetch(
+        `${BASE_URL}/api/v1/practice/tutor/chat/stream`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ message, history, language, level }),
+          signal: controller.signal,
         },
-        body: JSON.stringify({ message, history, language, level }),
-        signal: controller.signal,
-      });
+      );
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
