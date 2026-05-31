@@ -19,6 +19,7 @@ import {
   fetchPracticeProgress,
   savePracticeProgress,
   updateUserProfile,
+  transcribeAudio,
 } from "../services/api";
 import { formatErrorForDisplay, logError } from "../utils/errorHandler";
 import { getContent } from "../data/practiceContent";
@@ -330,6 +331,11 @@ export default function PracticePage() {
   const tutorStreamRef = useRef(null);  // AbortController for active SSE stream
   const ttsQueueRef = useRef([]);        // Sentences waiting for TTS playback
   const ttsBusyRef = useRef(false);      // Whether TTS is currently speaking
+  const tutorVoiceLoopRef = useRef(false); // Auto voice loop on/off
+  const tutorMicRecRef = useRef(null);   // Active MediaRecorder for voice loop
+  const tutorMicChunksRef = useRef([]);  // Audio chunks for voice loop
+  const [tutorVoiceLoop, setTutorVoiceLoop] = useState(false);
+  const [tutorTranscribing, setTutorTranscribing] = useState(false);
 
   // Reset exercise state when language changes
   useEffect(() => {
@@ -868,6 +874,10 @@ export default function PracticePage() {
       _drainTTSQueue();
     } else {
       setTutorSpeaking(false);
+      // Auto-restart mic if voice loop is on and not already recording
+      if (tutorVoiceLoopRef.current && !tutorMicRecRef.current) {
+        setTimeout(() => _startTutorMic(), 600);
+      }
     }
   };
 
@@ -987,38 +997,87 @@ export default function PracticePage() {
     tutorStreamRef.current = controller;
   };
 
-  const startVoiceInput = () => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setTutorError(
-        "Voice input is not supported in this browser. Please use Chrome or Edge.",
+  // ── Start mic recording for tutor (Whisper-based) ──────────────────────────
+  const _startTutorMic = async () => {
+    if (tutorMicRecRef.current) return; // already recording
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = (
+        MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" :
+        MediaRecorder.isTypeSupported("audio/webm")             ? "audio/webm" :
+        MediaRecorder.isTypeSupported("audio/mp4")              ? "audio/mp4" :
+        ""
       );
-      return;
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+      tutorMicChunksRef.current = [];
+      tutorMicRecRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) tutorMicChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        tutorMicRecRef.current = null;
+        setTutorListening(false);
+        setTutorTranscribing(true);
+
+        const blob = new Blob(tutorMicChunksRef.current, { type: mimeType || "audio/mp4" });
+        try {
+          const { transcript } = await transcribeAudio(blob, (ttsLang || "en").slice(0, 2));
+          setTutorTranscribing(false);
+          if (transcript?.trim()) {
+            setTutorInput(transcript.trim());
+            sendTutorChat(transcript.trim());
+          } else if (tutorVoiceLoopRef.current) {
+            // empty — restart mic
+            setTimeout(() => _startTutorMic(), 400);
+          }
+        } catch {
+          setTutorTranscribing(false);
+          // Fallback: browser STT
+          const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+          if (SR) {
+            const r = new SR();
+            r.lang = ttsLang;
+            r.interimResults = false;
+            r.onresult = (e) => { setTutorInput(e.results[0][0].transcript); sendTutorChat(e.results[0][0].transcript); };
+            r.start();
+          }
+        }
+      };
+
+      recorder.start();
+      setTutorListening(true);
+      setTutorError("");
+    } catch {
+      setTutorError("Microphone access denied. Please allow mic access and try again.");
     }
+  };
+
+  const _stopTutorMic = () => {
+    if (tutorMicRecRef.current) {
+      tutorMicRecRef.current.stop();
+    }
+  };
+
+  const startVoiceInput = () => {
+    if (tutorListening) { _stopTutorMic(); return; }
     window.speechSynthesis?.cancel();
     setTutorSpeaking(false);
+    ttsQueueRef.current = [];
+    ttsBusyRef.current = false;
+    _startTutorMic();
+  };
 
-    const rec = new SpeechRecognition();
-    rec.lang = ttsLang;
-    rec.interimResults = false;
-    rec.maxAlternatives = 1;
-
-    setTutorListening(true);
-    setTutorError("");
-
-    rec.onresult = (e) => {
-      const transcript = e.results[0][0].transcript;
-      setTutorListening(false);
-      setTutorInput(transcript);
-      sendTutorChat(transcript);
-    };
-    rec.onerror = () => {
-      setTutorListening(false);
-      setTutorError("Couldn't hear you. Please try again.");
-    };
-    rec.onend = () => setTutorListening(false);
-    rec.start();
+  const toggleTutorVoiceLoop = () => {
+    const next = !tutorVoiceLoop;
+    tutorVoiceLoopRef.current = next;
+    setTutorVoiceLoop(next);
+    if (next && !tutorListening && !tutorSpeaking) {
+      setTimeout(() => _startTutorMic(), 300);
+    }
+    if (!next && tutorListening) _stopTutorMic();
   };
 
   // ─────────────────────────────────────────────────────────────────
@@ -2399,12 +2458,37 @@ export default function PracticePage() {
                   </div>
                 )}
 
+                {/* Voice loop toggle */}
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"0.6rem", padding:"0.45rem 0.75rem", background:"rgba(99,102,241,0.05)", border:"1px solid rgba(99,102,241,0.12)", borderRadius:"10px" }}>
+                  <span style={{ fontSize:"0.8rem", fontWeight:600, color:"var(--text-base)", display:"flex", alignItems:"center", gap:"0.4rem" }}>
+                    <i className="fas fa-infinity" style={{ color:"#6366f1" }} />
+                    Auto voice loop
+                    <span style={{ fontSize:"0.72rem", color:"var(--text-muted)", fontWeight:400 }}>
+                      — mic restarts after AI speaks
+                    </span>
+                  </span>
+                  <button
+                    onClick={toggleTutorVoiceLoop}
+                    style={{ position:"relative", width:42, height:22, background: tutorVoiceLoop ? "#6366f1" : "#cbd5e1", borderRadius:"99px", border:"none", cursor:"pointer", transition:"background .25s", flexShrink:0 }}
+                  >
+                    <span style={{ position:"absolute", top:3, left: tutorVoiceLoop ? 23 : 3, width:16, height:16, background:"#fff", borderRadius:"50%", transition:"left .25s", boxShadow:"0 1px 4px rgba(0,0,0,.2)" }} />
+                  </button>
+                </div>
+
+                {/* Transcribing banner */}
+                {tutorTranscribing && (
+                  <div style={{ display:"flex", alignItems:"center", gap:"0.5rem", padding:"0.5rem 0.75rem", background:"rgba(124,58,237,0.08)", border:"1px solid rgba(124,58,237,0.2)", borderRadius:"10px", marginBottom:"0.5rem", fontSize:"0.82rem", color:"#7c3aed", fontWeight:600 }}>
+                    <span className="auth-spinner" style={{ width:12, height:12, borderWidth:2, borderColor:"rgba(124,58,237,0.3)", borderTopColor:"#7c3aed" }} />
+                    Transcribing your voice…
+                  </div>
+                )}
+
                 {/* Input area */}
                 <div style={{ display: "flex", gap: "0.6rem", alignItems: "flex-end" }}>
                   <textarea
                     rows={2}
-                    placeholder={tutorListening ? "🎤 Listening…" : "Type your message or use the mic…"}
-                    value={tutorListening ? "🎤 Listening…" : tutorInput}
+                    placeholder={tutorListening ? "🎤 Listening… tap mic to send" : tutorTranscribing ? "⏳ Transcribing…" : "Type your message or use the mic…"}
+                    value={tutorListening || tutorTranscribing ? "" : tutorInput}
                     onChange={(e) => setTutorInput(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
@@ -2412,7 +2496,7 @@ export default function PracticePage() {
                         sendTutorChat();
                       }
                     }}
-                    disabled={tutorLoading || tutorListening}
+                    disabled={tutorLoading || tutorListening || tutorTranscribing}
                     style={{
                       flex: 1,
                       padding: "0.75rem 1rem",
@@ -2431,8 +2515,8 @@ export default function PracticePage() {
                   {/* Mic button */}
                   <button
                     onClick={startVoiceInput}
-                    disabled={tutorLoading || tutorListening}
-                    title="Speak your message"
+                    disabled={tutorLoading || tutorTranscribing}
+                    title={tutorListening ? "Tap to stop" : "Speak your message"}
                     style={{
                       width: 46,
                       height: 46,
@@ -2440,13 +2524,14 @@ export default function PracticePage() {
                       border: "none",
                       background: tutorListening ? "#ef4444" : "rgba(99,102,241,0.12)",
                       color: tutorListening ? "#fff" : "var(--primary)",
-                      cursor: tutorLoading ? "not-allowed" : "pointer",
+                      cursor: tutorLoading || tutorTranscribing ? "not-allowed" : "pointer",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       fontSize: "1rem",
                       flexShrink: 0,
                       transition: "background 0.2s",
+                      animation: tutorListening ? "sp-pulse 1.2s infinite" : "none",
                     }}
                   >
                     <i className={`fas ${tutorListening ? "fa-stop" : "fa-microphone"}`} />

@@ -161,14 +161,8 @@ export default function ResultsStep() {
       ? +((data.readingScore / data.readingTotal) * 10).toFixed(1)
       : 0;
 
-  // writing: already stored as /10
-  const ws =
-    data.writingTotal > 0 && data.writingScore > 0
-      ? +((data.writingScore / data.writingTotal) * 10).toFixed(1)
-      : 0;
-
   // Overall = weighted average of all completed sections
-  const completedScores = [hasPronunciationResult ? ps : 0, fs, gs, rs, ws].filter(
+  const completedScores = [hasPronunciationResult ? ps : 0, fs, gs, rs].filter(
     (s) => s > 0,
   );
   const overall =
@@ -224,7 +218,6 @@ export default function ResultsStep() {
     },
     { label: "Grammar", value: gs, icon: "fa-book", color: "#f59e0b" },
     { label: "Reading", value: rs, icon: "fa-book-reader", color: "#3b82f6" },
-    ws > 0 ? { label: "Writing", value: ws, icon: "fa-pencil-alt", color: "#ec4899" } : null,
   ].filter(Boolean);
 
   // Language-specific recommendations from assessmentContent.js
@@ -239,7 +232,6 @@ export default function ResultsStep() {
       fluencyScore: fs,
       grammarScore: gs,
       readingScore: rs,
-      writingScore: ws,
       preferredLanguage: languageFullName, // ← persists chosen language to user profile
     };
 

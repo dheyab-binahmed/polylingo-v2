@@ -1126,6 +1126,44 @@ export async function changePassword(currentPassword, newPassword) {
   });
 }
 
+/**
+ * Save notification preferences.
+ * PUT /api/v1/auth/notification-preferences
+ */
+export async function saveNotificationPreferences(prefs) {
+  return apiFetch("/auth/notification-preferences", {
+    method: "PUT",
+    body: JSON.stringify(prefs),
+  });
+}
+
+/**
+ * Transcribe audio blob via backend Whisper.
+ * POST /api/v1/audio/transcribe
+ * Returns { transcript: string }
+ */
+export async function transcribeAudio(audioBlob, language = "en") {
+  const token = localStorage.getItem("polylingo_token");
+  // Pick extension that matches the actual blob type so backend accepts it
+  const ext = audioBlob.type.includes("mp4") ? "mp4"
+             : audioBlob.type.includes("ogg") ? "ogg"
+             : audioBlob.type.includes("m4a") ? "m4a"
+             : "webm";
+  const formData = new FormData();
+  formData.append("audio", audioBlob, `recording.${ext}`);
+  formData.append("language", language);
+  const res = await fetch(`${BASE_URL}/api/v1/audio/transcribe`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || "Transcription failed");
+  }
+  return res.json();
+}
+
 // Export for testing/debugging
 export const API = {
   BASE_URL,

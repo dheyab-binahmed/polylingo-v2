@@ -23,7 +23,6 @@ import PronunciationStep from "./pages/Assessment/PronunciationStep";
 import SpeakingStep from "./pages/Assessment/SpeakingStep";
 import GrammarStep from "./pages/Assessment/GrammarStep";
 import ReadingStep from "./pages/Assessment/ReadingStep";
-import WritingStep from "./pages/Assessment/WritingStep";
 import ResultsStep from "./pages/Assessment/ResultsStep";
 import PronunciationDetailsPage from "./pages/Assessment/PronunciationDetailsPage";
 import AuthRequired from "./components/AuthRequired";
@@ -228,7 +227,6 @@ function AppContent() {
             <Route path="speaking" element={<SpeakingStep />} />
             <Route path="grammar" element={<GrammarStep />} />
             <Route path="reading" element={<ReadingStep />} />
-            <Route path="writing" element={<WritingStep />} />
             <Route path="results" element={<ResultsStep />} />
             <Route
               path="pronunciation-details"

@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { fetchWeeklyActivity, fetchLeaderboard, fetchPracticeStats, fetchPracticeProgress } from "../services/api";
+import { fetchWeeklyActivity, fetchLeaderboard, fetchPracticeStats, fetchPracticeProgress, savePracticeProgress } from "../services/api";
 
 // Weekly chart data – ready for Recharts drop-in:
 // import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
@@ -106,6 +106,9 @@ export default function DashboardPage() {
   const [leaderboardData, setLeaderboardData] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [chartLoading, setChartLoading] = useState(true);
+  const [goalEditing, setGoalEditing] = useState(false);
+  const [goalInput, setGoalInput] = useState("");
+  const [goalSaving, setGoalSaving] = useState(false);
 
   // Derive display values (fall back gracefully while loading)
   const language   = practiceStats?.language  || user?.preferred_language || user?.preferredLanguage || "English";
@@ -221,6 +224,21 @@ export default function DashboardPage() {
   }, []);
 
   const [showRetakeConfirm, setShowRetakeConfirm] = useState(false);
+
+  const handleSaveGoal = async () => {
+    const mins = parseInt(goalInput);
+    if (!mins || mins < 1 || mins > 300) return;
+    setGoalSaving(true);
+    try {
+      await savePracticeProgress({ daily_goal_minutes: mins, language });
+      setPracticeStats((prev) => ({ ...prev, daily_goal_minutes: mins }));
+      setGoalEditing(false);
+    } catch (e) {
+      console.error("Failed to save goal:", e);
+    } finally {
+      setGoalSaving(false);
+    }
+  };
 
   const MEDALS = { 1: "🥇", 2: "🥈", 3: "🥉" };
   const displayedLeaderboard =
@@ -551,22 +569,19 @@ export default function DashboardPage() {
                   marginBottom: "0.5rem",
                 }}
               >
-                <span
-                  style={{
-                    fontWeight: 700,
-                    fontSize: "0.9rem",
-                    color: "var(--text-muted)",
-                  }}
-                >
-                  Daily Practice Goal
-                </span>
-                <span
-                  style={{
-                    fontSize: "0.8rem",
-                    color: goalPct >= 100 ? "#10b981" : "#6366f1",
-                    fontWeight: 700,
-                  }}
-                >
+                <div style={{ display:"flex", alignItems:"center", gap:"0.4rem" }}>
+                  <span style={{ fontWeight:700, fontSize:"0.9rem", color:"var(--text-muted)" }}>
+                    Daily Practice Goal
+                  </span>
+                  <button
+                    onClick={() => { setGoalInput(String(dailyGoal)); setGoalEditing(true); }}
+                    title="Edit goal"
+                    style={{ background:"none", border:"none", cursor:"pointer", color:"var(--text-muted)", fontSize:"0.75rem", padding:"0 2px", lineHeight:1 }}
+                  >
+                    <i className="fas fa-pen" />
+                  </button>
+                </div>
+                <span style={{ fontSize:"0.8rem", color: goalPct >= 100 ? "#10b981" : "#6366f1", fontWeight:700 }}>
                   {goalPct}%{goalPct >= 100 ? " ✓" : ""}
                 </span>
               </div>
@@ -600,6 +615,34 @@ export default function DashboardPage() {
                 {todayMins} of {dailyGoal} minutes completed today
                 {goalPct >= 100 && " 🎉"}
               </p>
+              {goalEditing && (
+                <div style={{ display:"flex", alignItems:"center", gap:"0.5rem", marginTop:"0.6rem" }}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={300}
+                    value={goalInput}
+                    onChange={(e) => setGoalInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSaveGoal()}
+                    autoFocus
+                    style={{ width:70, padding:"0.3rem 0.5rem", borderRadius:8, border:"1.5px solid #6366f1", fontSize:"0.85rem", outline:"none" }}
+                  />
+                  <span style={{ fontSize:"0.8rem", color:"var(--text-muted)" }}>min/day</span>
+                  <button
+                    onClick={handleSaveGoal}
+                    disabled={goalSaving}
+                    style={{ padding:"0.3rem 0.75rem", background:"#6366f1", color:"#fff", border:"none", borderRadius:8, fontSize:"0.82rem", fontWeight:700, cursor:"pointer" }}
+                  >
+                    {goalSaving ? "Saving…" : "Save"}
+                  </button>
+                  <button
+                    onClick={() => setGoalEditing(false)}
+                    style={{ padding:"0.3rem 0.6rem", background:"transparent", color:"var(--text-muted)", border:"1px solid var(--border)", borderRadius:8, fontSize:"0.82rem", cursor:"pointer" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Personalised activity suggestions */}

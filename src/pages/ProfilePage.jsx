@@ -15,7 +15,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { fetchPracticeStats, fetchPracticeProgress, changePassword } from '../services/api'
+import { fetchPracticeStats, fetchPracticeProgress, changePassword, saveNotificationPreferences } from '../services/api'
 
 // ─── Toggle component ─────────────────────────────────────────────────────────
 // FIX #7: Removed inner <div onClick={onChange}> — the outer <label> already handles
@@ -300,7 +300,14 @@ export default function ProfilePage() {
   const [settings, setSettings] = useState(() => {
     try {
       const saved = localStorage.getItem('polylingo_settings')
-      return saved ? JSON.parse(saved) : { email: true, reminders: true, dark: false }
+      const base = saved ? JSON.parse(saved) : { email: true, reminders: true, dark: false }
+      // Merge server prefs if available on the user object
+      const serverPrefs = user?.notification_preferences
+      if (serverPrefs) {
+        base.email     = serverPrefs.email     ?? base.email
+        base.reminders = serverPrefs.reminders ?? base.reminders
+      }
+      return base
     } catch {
       return { email: true, reminders: true, dark: false }
     }
@@ -409,6 +416,11 @@ export default function ProfilePage() {
     setSettings(s => {
       const next = { ...s, [key]: !s[key] }
       localStorage.setItem('polylingo_settings', JSON.stringify(next))
+      // Persist email/reminders prefs to backend
+      if (key === 'email' || key === 'reminders') {
+        saveNotificationPreferences({ email: next.email, reminders: next.reminders })
+          .catch(() => {}) // silent — localStorage already updated
+      }
       return next
     })
   }
