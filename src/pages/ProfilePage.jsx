@@ -15,6 +15,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { fetchPracticeStats, fetchPracticeProgress, changePassword } from '../services/api'
 
 // ─── Toggle component ─────────────────────────────────────────────────────────
 // FIX #7: Removed inner <div onClick={onChange}> — the outer <label> already handles
@@ -241,6 +242,61 @@ function ScoreBar({ label, value, color }) {
 export default function ProfilePage() {
   const { user, updateUser } = useAuth()
 
+  // Real stats loaded from backend — streak, totalMinutes, achievements
+  const [profileStats, setProfileStats] = useState({ streak: 0, totalMinutes: 0, achievementCount: 0 })
+  const [earnedAchievements, setEarnedAchievements] = useState(null) // null = loading
+
+  useEffect(() => {
+    let mounted = true
+    async function loadStats() {
+      try {
+        // Streak + today from PracticeStats endpoint
+        const stats = await fetchPracticeStats()
+        // Total minutes: sum all speaking + practice minutes from progress
+        const progress = await fetchPracticeProgress(
+          user?.preferred_language || user?.preferredLanguage || 'English'
+        )
+
+        const streak = stats?.streak ?? 0
+
+        // Compute total practice minutes from all tracked activity
+        let totalMinutes = 0
+        if (progress) {
+          totalMinutes += (progress.speaking?.minutes || 0)
+          // Each grammar/reading/listening correct answer ≈ 1 min, writing submission ≈ 5 min
+          totalMinutes += Math.round((progress.grammar?.totalCorrect  || 0) * 1)
+          totalMinutes += Math.round((progress.reading?.totalCorrect  || 0) * 1)
+          totalMinutes += Math.round((progress.listening?.totalCorrect || 0) * 1)
+          totalMinutes += (progress.writing?.submissions || 0) * 5
+          totalMinutes += (progress.flashcards?.sessions || 0) * 3
+        }
+
+        // Fetch earned achievements (list + count)
+        let achievementCount = 0
+        let achievementList = []
+        try {
+          const BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+          const token = localStorage.getItem('polylingo_token')
+          const res = await fetch(`${BASE}/api/v1/users/me/achievements`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+          })
+          if (res.ok) {
+            const data = await res.json()
+            achievementList = data.achievements || []
+            achievementCount = data.total ?? achievementList.length
+          }
+        } catch (_) {}
+
+        if (mounted) {
+          setProfileStats({ streak, totalMinutes, achievementCount })
+          setEarnedAchievements(achievementList)
+        }
+      } catch (_) {}
+    }
+    loadStats()
+    return () => { mounted = false }
+  }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const [settings, setSettings] = useState(() => {
     try {
       const saved = localStorage.getItem('polylingo_settings')
@@ -252,6 +308,35 @@ export default function ProfilePage() {
   const [editOpen, setEditOpen] = useState(false)
   const [saved,    setSaved]    = useState(false)
   const [saveErr,  setSaveErr]  = useState('')
+
+  // ── Change password form ────────────────────────────────────────────────────
+  const [pwOpen,        setPwOpen]        = useState(false)
+  const [pwCurrent,     setPwCurrent]     = useState('')
+  const [pwNew,         setPwNew]         = useState('')
+  const [pwConfirm,     setPwConfirm]     = useState('')
+  const [pwLoading,     setPwLoading]     = useState(false)
+  const [pwError,       setPwError]       = useState('')
+  const [pwSuccess,     setPwSuccess]     = useState(false)
+  const [showPwFields,  setShowPwFields]  = useState(false)
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault()
+    setPwError('')
+    if (!pwCurrent) { setPwError('Current password is required.'); return; }
+    if (pwNew.length < 6) { setPwError('New password must be at least 6 characters.'); return; }
+    if (pwNew !== pwConfirm) { setPwError("New passwords don't match."); return; }
+    setPwLoading(true)
+    try {
+      await changePassword(pwCurrent, pwNew)
+      setPwSuccess(true)
+      setPwCurrent(''); setPwNew(''); setPwConfirm('')
+      setTimeout(() => { setPwSuccess(false); setPwOpen(false); setShowPwFields(false) }, 2500)
+    } catch (err) {
+      setPwError(err?.message || 'Could not change password. Check your current password.')
+    } finally {
+      setPwLoading(false)
+    }
+  }
 
   // ── Derived display values ──────────────────────────────────────────────
   const displayName  = user?.full_name         || 'Learner'
@@ -267,31 +352,37 @@ export default function ProfilePage() {
     .toUpperCase()
     .slice(0, 2) || '?'
 
-  // FIX #5: compute total practice time from real user data
-  const totalMinutes = user?.totalMinutes ?? 0
+  // Real stats from backend (streak, totalMinutes, achievementCount)
+  const totalMinutes = profileStats.totalMinutes
   const practiceLabel = totalMinutes >= 60
     ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60 > 0 ? `${totalMinutes % 60}m` : ''}`.trim()
     : `${totalMinutes}m`
 
-  // FIX #4 + #5: progress derived from assessment overall (0-10 scale → percent)
+  // Progress derived from assessment overall (0-10 scale → percent)
   const progressPct = Math.min(100, Math.round((overall / 10) * 100))
 
-  // FIX #9: streak and achievements fallback to 0 (number), not '14' (string)
   const stats = [
-    { value: practiceLabel,        label: 'Total Practice', icon: 'fa-clock',          color: '#6366f1' },
-    { value: user?.streak ?? 0,    label: 'Day Streak',     icon: 'fa-fire',            color: '#10b981' },
-    { value: user?.achievements ?? 0, label: 'Achievements', icon: 'fa-star',           color: '#f59e0b' },
-    { value: level,                label: 'Current Level',  icon: 'fa-graduation-cap',  color: '#3b82f6' },
+    { value: practiceLabel,                    label: 'Total Practice', icon: 'fa-clock',          color: '#6366f1' },
+    { value: profileStats.streak,              label: 'Day Streak',     icon: 'fa-fire',            color: '#10b981' },
+    { value: profileStats.achievementCount,    label: 'Achievements',   icon: 'fa-star',            color: '#f59e0b' },
+    { value: level,                            label: 'Current Level',  icon: 'fa-graduation-cap',  color: '#3b82f6' },
   ]
 
-  const achievements = [
-    { icon: 'fa-trophy',     label: 'First Lesson',  color: '#fbbf24', bg: '#fef3c7' },
-    { icon: 'fa-fire',       label: '7-Day Streak',  color: '#f97316', bg: '#ffedd5' },
-    { icon: 'fa-star',       label: 'Top Scorer',    color: '#8b5cf6', bg: '#ede9fe' },
-    { icon: 'fa-comments',   label: '10 Convos',     color: '#10b981', bg: '#d1fae5' },
-    { icon: 'fa-book',       label: 'Grammar Pro',   color: '#3b82f6', bg: '#dbeafe' },
-    { icon: 'fa-microphone', label: 'Vocal Star',    color: '#ec4899', bg: '#fce7f3' },
-  ]
+  // Map achievement titles/descriptions to icons and colours
+  const ACH_ICON_MAP = {
+    'First Step':          { icon: 'fa-rocket',      color: '#6366f1', bg: 'rgba(99,102,241,0.12)' },
+    'Practice Makes Perfect': { icon: 'fa-dumbbell', color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
+    '3-Day Streak':        { icon: 'fa-fire',        color: '#f97316', bg: 'rgba(249,115,22,0.12)' },
+    'Week Warrior':        { icon: 'fa-fire',        color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
+    'Monthly Master':      { icon: 'fa-crown',       color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
+    'Intermediate':        { icon: 'fa-graduation-cap', color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)' },
+    'Upper Intermediate':  { icon: 'fa-graduation-cap', color: '#6366f1', bg: 'rgba(99,102,241,0.12)' },
+    'Advanced':            { icon: 'fa-star',        color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
+    'Vocabulary Builder':  { icon: 'fa-book',        color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
+    'Writer':              { icon: 'fa-pencil-alt',  color: '#ec4899', bg: 'rgba(236,72,153,0.12)' },
+    'Conversationalist':   { icon: 'fa-comments',    color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
+  }
+  const DEFAULT_ACH_STYLE = { icon: 'fa-trophy', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' }
 
   // ── Save profile ────────────────────────────────────────────────────────
   const handleSaveProfile = async (form) => {
@@ -469,22 +560,63 @@ export default function ProfilePage() {
               background: 'var(--bg-card)', borderRadius: '20px', padding: '1.75rem',
               boxShadow: '0 2px 12px rgba(0,0,0,.06)',
             }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-base)', marginBottom: '1.25rem' }}>Achievements</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '0.875rem' }}>
-                {achievements.map(a => (
-                  <div key={a.label} style={{ textAlign: 'center' }}>
-                    <div style={{
-                      width: '54px', height: '54px', borderRadius: '14px',
-                      background: a.bg, color: a.color,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '1.3rem', margin: '0 auto 0.4rem',
-                    }}>
-                      <i className={`fas ${a.icon}`} />
-                    </div>
-                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>{a.label}</div>
-                  </div>
-                ))}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-base)', margin: 0 }}>Achievements</h3>
+                {earnedAchievements && earnedAchievements.length > 0 && (
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '0.2rem 0.7rem', borderRadius: 99 }}>
+                    {earnedAchievements.length} earned
+                  </span>
+                )}
               </div>
+
+              {/* Loading */}
+              {earnedAchievements === null && (
+                <div style={{ display: 'flex', gap: '0.875rem', flexWrap: 'wrap' }}>
+                  {[1,2,3].map(i => (
+                    <div key={i} style={{ width: 80, textAlign: 'center' }}>
+                      <div style={{ width: 54, height: 54, borderRadius: 14, background: 'var(--bg-subtle)', margin: '0 auto 0.4rem', animation: 'pulse 1.5s ease-in-out infinite' }} />
+                      <div style={{ height: 10, borderRadius: 4, background: 'var(--bg-subtle)', animation: 'pulse 1.5s ease-in-out infinite' }} />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Empty state */}
+              {earnedAchievements !== null && earnedAchievements.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '1.5rem 0' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🏆</div>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', margin: 0 }}>
+                    Complete your assessment and practice sessions to earn achievements!
+                  </p>
+                </div>
+              )}
+
+              {/* Real achievements */}
+              {earnedAchievements !== null && earnedAchievements.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '0.875rem' }}>
+                  {earnedAchievements.map(a => {
+                    const style = ACH_ICON_MAP[a.title] || DEFAULT_ACH_STYLE
+                    return (
+                      <div key={a.id} title={a.description || a.title} style={{ textAlign: 'center', cursor: 'default' }}>
+                        <div style={{
+                          width: 54, height: 54, borderRadius: 14,
+                          background: style.bg, color: style.color,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '1.3rem', margin: '0 auto 0.4rem',
+                          boxShadow: `0 4px 12px ${style.bg}`,
+                          transition: 'transform 0.15s',
+                        }}
+                          onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
+                          onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                        >
+                          <i className={`fas ${style.icon}`} />
+                        </div>
+                        <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.3 }}>{a.title}</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Assessment Results — only shown if user has completed the assessment */}
@@ -514,6 +646,92 @@ export default function ProfilePage() {
                 <Toggle checked={settings.email}     onChange={() => toggleSetting('email')}     label="📧 Email Notifications" />
                 <Toggle checked={settings.reminders} onChange={() => toggleSetting('reminders')} label="⏰ Practice Reminders"  />
                 <Toggle checked={settings.dark}      onChange={() => toggleSetting('dark')}      label="🌙 Dark Mode"           />
+
+                {/* ── Change Password ── */}
+                <div style={{ marginTop: '0.5rem' }}>
+                  <button
+                    onClick={() => { setShowPwFields((v) => !v); setPwError(''); setPwSuccess(false) }}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      width: '100%', padding: '0.95rem 1.1rem',
+                      background: 'var(--bg-subtle)', borderRadius: '12px',
+                      border: 'none', cursor: 'pointer', fontWeight: 700,
+                      fontSize: '0.9rem', color: 'var(--text-base)',
+                    }}
+                  >
+                    <span>🔑 Change Password</span>
+                    <i className={`fas fa-chevron-${showPwFields ? 'up' : 'down'}`} style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }} />
+                  </button>
+
+                  {showPwFields && (
+                    <form onSubmit={handleChangePassword} style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+                      {pwError && (
+                        <div style={{
+                          padding: '0.7rem 1rem', borderRadius: '10px',
+                          background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
+                          color: '#b91c1c', fontSize: '0.85rem', fontWeight: 600,
+                          display: 'flex', alignItems: 'center', gap: '0.5rem',
+                        }}>
+                          <i className="fas fa-exclamation-circle" />
+                          {pwError}
+                        </div>
+                      )}
+                      {pwSuccess && (
+                        <div style={{
+                          padding: '0.7rem 1rem', borderRadius: '10px',
+                          background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)',
+                          color: '#065f46', fontSize: '0.85rem', fontWeight: 600,
+                          display: 'flex', alignItems: 'center', gap: '0.5rem',
+                        }}>
+                          <i className="fas fa-check-circle" />
+                          Password changed successfully!
+                        </div>
+                      )}
+                      {['Current password', 'New password', 'Confirm new password'].map((placeholder, idx) => {
+                        const val   = [pwCurrent, pwNew, pwConfirm][idx]
+                        const setVal = [setPwCurrent, setPwNew, setPwConfirm][idx]
+                        return (
+                          <div key={placeholder} style={{ position: 'relative' }}>
+                            <i className="fas fa-lock" style={{
+                              position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)',
+                              color: 'var(--text-faint)', fontSize: '0.8rem',
+                            }} />
+                            <input
+                              type="password"
+                              placeholder={placeholder}
+                              value={val}
+                              onChange={(e) => { setVal(e.target.value); setPwError('') }}
+                              disabled={pwLoading}
+                              style={{
+                                width: '100%', boxSizing: 'border-box',
+                                padding: '0.75rem 0.875rem 0.75rem 2.25rem',
+                                borderRadius: '10px', border: '1.5px solid var(--border)',
+                                background: 'var(--bg-input, var(--bg-subtle))',
+                                color: 'var(--text-base)', fontSize: '0.9rem',
+                              }}
+                            />
+                          </div>
+                        )
+                      })}
+                      <button
+                        type="submit"
+                        disabled={pwLoading}
+                        style={{
+                          padding: '0.75rem', borderRadius: '10px', border: 'none',
+                          background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+                          color: 'white', fontWeight: 700, fontSize: '0.9rem',
+                          cursor: pwLoading ? 'default' : 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                        }}
+                      >
+                        {pwLoading
+                          ? <><span className="auth-spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Saving…</>
+                          : <><i className="fas fa-key" /> Update Password</>
+                        }
+                      </button>
+                    </form>
+                  )}
+                </div>
               </div>
             </div>
 

@@ -8,6 +8,7 @@ const STEPS = [
   { path: "speaking", label: "Speaking" },
   { path: "grammar", label: "Grammar" },
   { path: "reading", label: "Reading" },
+  { path: "writing", label: "Writing" },
   { path: "results", label: "Results" },
 ];
 
@@ -28,6 +29,8 @@ const DEFAULT_DATA = {
   grammarTotal: 6,
   readingScore: 0,
   readingTotal: 3,
+  writingScore: 0,
+  writingTotal: 10,
 };
 
 export default function AssessmentPage() {

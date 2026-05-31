@@ -63,6 +63,17 @@ export function AuthProvider({ children }) {
     restore();
   }, []);
 
+  // ── Login with pre-fetched data (post-email-verification) ───
+  const loginWithData = (data) => {
+    // data = { access_token, refresh_token, user }
+    localStorage.setItem("polylingo_token", data.access_token);
+    if (data.refresh_token) localStorage.setItem("polylingo_refresh_token", data.refresh_token);
+    localStorage.setItem("polylingo_auth_user", JSON.stringify(data.user));
+    setUser(data.user);
+    requestNotificationPermission();
+    connectSocket(data.access_token);
+  };
+
   // ── Login ────────────────────────────────────────────────────
   const login = async (email, password) => {
     try {
@@ -103,12 +114,6 @@ export function AuthProvider({ children }) {
         password,
         preferredLanguage,
       });
-      // Keep accounts map for mock duplicate-check (remove when real backend exists)
-      const accounts = JSON.parse(
-        localStorage.getItem("polylingo_accounts") || "{}",
-      );
-      accounts[email.toLowerCase()] = userData;
-      localStorage.setItem("polylingo_accounts", JSON.stringify(accounts));
       localStorage.setItem("polylingo_auth_user", JSON.stringify(userData));
       setUser(userData);
       requestNotificationPermission();
@@ -155,18 +160,6 @@ export function AuthProvider({ children }) {
 
     setUser(updated);
     localStorage.setItem("polylingo_auth_user", JSON.stringify(updated));
-
-    // Keep mock accounts store in sync
-    const storedAccounts = JSON.parse(
-      localStorage.getItem("polylingo_accounts") || "{}",
-    );
-    if (user?.email && storedAccounts[user.email.toLowerCase()]) {
-      storedAccounts[user.email.toLowerCase()] = updated;
-      localStorage.setItem(
-        "polylingo_accounts",
-        JSON.stringify(storedAccounts),
-      );
-    }
 
     // 👉 BACKEND: persist results to DB — fire-and-forget, non-blocking
     try {
@@ -222,6 +215,7 @@ export function AuthProvider({ children }) {
       value={{
         user,
         login,
+        loginWithData,
         register,
         logout,
         loading,

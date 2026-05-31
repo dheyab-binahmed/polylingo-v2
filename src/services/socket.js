@@ -4,6 +4,37 @@ const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
 
 let socket = null;
 
+/**
+ * Pending listeners: registered before connectSocket() is called.
+ * Map<eventName, Set<callback>>
+ */
+const pendingListeners = new Map();
+
+function _addListener(event, cb) {
+  if (socket) {
+    socket.on(event, cb);
+  } else {
+    if (!pendingListeners.has(event)) pendingListeners.set(event, new Set());
+    pendingListeners.get(event).add(cb);
+  }
+  // Return cleanup function
+  return () => _removeListener(event, cb);
+}
+
+function _removeListener(event, cb) {
+  socket?.off(event, cb);
+  pendingListeners.get(event)?.delete(cb);
+}
+
+function _flushPendingListeners() {
+  for (const [event, callbacks] of pendingListeners.entries()) {
+    for (const cb of callbacks) {
+      socket.on(event, cb);
+    }
+  }
+  pendingListeners.clear();
+}
+
 export function connectSocket(token) {
   if (socket?.connected) return socket;
 
@@ -14,6 +45,8 @@ export function connectSocket(token) {
 
   socket.on("connect", () => {
     socket.emit("authenticate", { token });
+    // Attach any listeners that were registered before the socket existed
+    _flushPendingListeners();
   });
 
   return socket;
@@ -35,8 +68,7 @@ export function sendDM(to, text, tempId) {
 }
 
 export function onDmMessage(cb) {
-  socket?.on("dm:message", cb);
-  return () => socket?.off("dm:message", cb);
+  return _addListener("dm:message", cb);
 }
 
 export function sendCallOffer(to, offer, callType) {
@@ -56,30 +88,25 @@ export function endCall(to) {
 }
 
 export function onCallIncoming(cb) {
-  socket?.on("call:incoming", cb);
-  return () => socket?.off("call:incoming", cb);
+  return _addListener("call:incoming", cb);
 }
 
 export function offCallIncoming(cb) {
-  socket?.off("call:incoming", cb);
+  _removeListener("call:incoming", cb);
 }
 
 export function onCallAnswered(cb) {
-  socket?.on("call:answered", cb);
-  return () => socket?.off("call:answered", cb);
+  return _addListener("call:answered", cb);
 }
 
 export function onCallIce(cb) {
-  socket?.on("call:ice", cb);
-  return () => socket?.off("call:ice", cb);
+  return _addListener("call:ice", cb);
 }
 
 export function onCallEnded(cb) {
-  socket?.on("call:ended", cb);
-  return () => socket?.off("call:ended", cb);
+  return _addListener("call:ended", cb);
 }
 
 export function onPresenceUpdate(cb) {
-  socket?.on("presence:update", cb);
-  return () => socket?.off("presence:update", cb);
+  return _addListener("presence:update", cb);
 }

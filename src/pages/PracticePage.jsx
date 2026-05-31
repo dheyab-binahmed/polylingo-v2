@@ -18,6 +18,7 @@ import {
   checkWritingGrammar,
   fetchPracticeProgress,
   savePracticeProgress,
+  updateUserProfile,
 } from "../services/api";
 import { formatErrorForDisplay, logError } from "../utils/errorHandler";
 import { getContent } from "../data/practiceContent";
@@ -101,25 +102,31 @@ export default function PracticePage() {
   const { user, updateUser } = useAuth();
 
   // Award minutes and update user stats after a completed practice session
-  // 👉 BACKEND: logPracticeSession() calls POST /api/practice/session when backend is ready
   const awardPracticeMinutes = async (type, minutes = 5) => {
-    const newTotal = (user?.totalMinutes || 0) + minutes;
+    // 1. Increment todayMinutes in local stats state + persist
+    setPracticeStats((prev) => {
+      const next = { ...prev, todayMinutes: (prev.todayMinutes || 0) + minutes };
+      try { localStorage.setItem(`polylingo_stats_${user?.id || "guest"}`, JSON.stringify(next)); } catch (_) {}
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => {
+        savePracticeProgress({ language: lang, ...next });
+      }, 1500);
+      return next;
+    });
+    // 2. Log session to backend (non-critical)
     try {
-      await updateUser({ totalMinutes: newTotal });
       await logPracticeSession({
         type,
-        language: content?.language || "en",
+        language: lang,
         durationMinutes: minutes,
         score: 7,
       });
-    } catch (_) {
-      /* non-critical — don't block UI */
-    }
+    } catch (_) { /* non-critical — don't block UI */ }
   };
 
   // Get content for the user's chosen language (falls back to English)
   // BACKEND INTEGRATION: Replace getContent() with API calls per tab
-  const lang = user?.preferredLanguage || "English";
+  const lang = user?.preferred_language || user?.preferredLanguage || "English";
   const content = getContent(lang);
   const ttsLang = content.ttsLang;
 
@@ -183,6 +190,19 @@ export default function PracticePage() {
     };
     loadProgress();
   }, [lang]); // reload when user switches language
+
+  // Flush pending save immediately when user closes/navigates away
+  useEffect(() => {
+    const flushOnUnload = () => {
+      clearTimeout(saveTimerRef.current);
+      try {
+        const stored = JSON.parse(localStorage.getItem(STATS_KEY));
+        if (stored) savePracticeProgress({ language: lang, ...stored });
+      } catch (_) {}
+    };
+    window.addEventListener("beforeunload", flushOnUnload);
+    return () => window.removeEventListener("beforeunload", flushOnUnload);
+  }, [lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const fmtPct  = (correct, total) => total > 0 ? `${Math.round((correct / total) * 100)}%` : "—";
   const fmtAvg  = (total, count)   => count  > 0 ? (total  / count).toFixed(1) : "—";
 
@@ -209,6 +229,7 @@ export default function PracticePage() {
   const [dynamicReading, setDynamicReading] = useState(null);
   const [dynamicListening, setDynamicListening] = useState(null);
   const [tabLoading, setTabLoading] = useState(false);
+  const [tabError, setTabError] = useState("");
 
   // ── Dynamic writing prompt & speaking phrases (AI-generated) ──
   const [dynamicWritingPrompt, setDynamicWritingPrompt] = useState(null);
@@ -397,6 +418,7 @@ export default function PracticePage() {
 
   // Fetch AI-generated content when a tab is first opened (cached until reset)
   useEffect(() => {
+    setTabError(""); // clear error when switching tabs or refreshing
     const loadTabContent = async () => {
       if (activeTab === "flashcards" && !dynamicFlashcards) {
         updateStat("flashcards", (s) => ({ ...s, sessions: s.sessions + 1 }));
@@ -404,42 +426,48 @@ export default function PracticePage() {
         try {
           const data = await fetchPracticeFlashcards({ language: lang, level: practiceLevel });
           if (data?.flashcards?.length) setDynamicFlashcards(data.flashcards);
-        } catch (_) { /* fall back to static content */ }
+          else setTabError("AI couldn't generate flashcards — showing built-in content instead.");
+        } catch (_) { setTabError("AI content generation failed — showing built-in content instead."); }
         finally { setTabLoading(false); }
       } else if (activeTab === "grammar" && !dynamicGrammar) {
         setTabLoading(true);
         try {
           const data = await fetchPracticeGrammar({ language: lang, level: practiceLevel });
           if (data?.exercises?.length) setDynamicGrammar(data.exercises);
-        } catch (_) { /* fall back to static content */ }
+          else setTabError("AI couldn't generate grammar exercises — showing built-in content instead.");
+        } catch (_) { setTabError("AI content generation failed — showing built-in content instead."); }
         finally { setTabLoading(false); }
       } else if (activeTab === "reading" && !dynamicReading) {
         setTabLoading(true);
         try {
           const data = await fetchPracticeReading({ language: lang, level: practiceLevel });
           if (data?.title) setDynamicReading(data);
-        } catch (_) { /* fall back to static content */ }
+          else setTabError("AI couldn't generate a reading passage — showing built-in content instead.");
+        } catch (_) { setTabError("AI content generation failed — showing built-in content instead."); }
         finally { setTabLoading(false); }
       } else if (activeTab === "listening" && !dynamicListening) {
         setTabLoading(true);
         try {
           const data = await fetchPracticeListening({ language: lang, level: practiceLevel });
           if (data?.question) setDynamicListening(data);
-        } catch (_) { /* fall back to static content */ }
+          else setTabError("AI couldn't generate a listening exercise — showing built-in content instead.");
+        } catch (_) { setTabError("AI content generation failed — showing built-in content instead."); }
         finally { setTabLoading(false); }
       } else if (activeTab === "writing" && !dynamicWritingPrompt) {
         setTabLoading(true);
         try {
           const data = await fetchPracticeWritingPrompt({ language: lang, level: practiceLevel });
           if (data?.prompt) setDynamicWritingPrompt(data.prompt);
-        } catch (_) { /* fall back to static content */ }
+          else setTabError("AI couldn't generate a writing prompt — showing built-in content instead.");
+        } catch (_) { setTabError("AI content generation failed — showing built-in content instead."); }
         finally { setTabLoading(false); }
       } else if (activeTab === "speaking" && !dynamicSpeakingPhrases) {
         setTabLoading(true);
         try {
           const data = await fetchPracticeSpeaking({ language: lang, level: practiceLevel });
           if (data?.phrases?.length) setDynamicSpeakingPhrases(data.phrases);
-        } catch (_) { /* fall back to static content */ }
+          else setTabError("AI couldn't generate speaking phrases — showing built-in content instead.");
+        } catch (_) { setTabError("AI content generation failed — showing built-in content instead."); }
         finally { setTabLoading(false); }
       }
     };
@@ -584,21 +612,45 @@ export default function PracticePage() {
   };
 
   // ── Listening handlers ────────────────────────────────────────────────────
-  const playListeningAudio = () => {
+  const listeningAudioRef = useRef(null);
+
+  const playListeningAudio = async () => {
     if (audioPlaying) {
+      if (listeningAudioRef.current) {
+        listeningAudioRef.current.pause();
+        listeningAudioRef.current = null;
+      }
       window.speechSynthesis.cancel();
       setAudioPlaying(false);
       return;
     }
+
     const fullText = LISTENING_EXERCISE.transcript
       .map((l) => `${l.speaker}: ${l.line}`)
       .join(". ");
-    speakTTS(
-      fullText,
-      ttsLang,
-      () => setAudioPlaying(true),
-      () => setAudioPlaying(false),
-    );
+
+    setAudioPlaying(true);
+    // Try ElevenLabs first via backend proxy
+    try {
+      const { audioBase64 } = await fetchTTS(fullText);
+      if (audioBase64) {
+        const audio = new Audio(`data:audio/mp3;base64,${audioBase64}`);
+        listeningAudioRef.current = audio;
+        audio.onended = () => { listeningAudioRef.current = null; setAudioPlaying(false); };
+        audio.onerror = () => {
+          listeningAudioRef.current = null;
+          speakTTS(fullText, ttsLang, () => {}, () => setAudioPlaying(false));
+        };
+        audio.play().catch(() => {
+          listeningAudioRef.current = null;
+          speakTTS(fullText, ttsLang, () => {}, () => setAudioPlaying(false));
+        });
+        return;
+      }
+    } catch (_) {}
+
+    // Browser TTS fallback
+    speakTTS(fullText, ttsLang, () => {}, () => setAudioPlaying(false));
   };
   const checkListeningAnswer = () => {
     if (listeningAnswer === null) return;
@@ -995,7 +1047,8 @@ export default function PracticePage() {
             <select
               value={practiceLevel}
               onChange={(e) => {
-                setPracticeLevel(e.target.value);
+                const newLevel = e.target.value;
+                setPracticeLevel(newLevel);
                 // Clear cached AI content so next tab-open re-fetches at new level
                 setDynamicFlashcards(null);
                 setDynamicGrammar(null);
@@ -1003,6 +1056,8 @@ export default function PracticePage() {
                 setDynamicListening(null);
                 setDynamicWritingPrompt(null);
                 setDynamicSpeakingPhrases(null);
+                // Persist chosen level to user profile
+                updateUserProfile({ selected_level: newLevel }).catch(() => {});
               }}
               style={{
                 background: "rgba(99,102,241,0.08)",
@@ -1128,6 +1183,40 @@ export default function PracticePage() {
             >
               <span className="auth-spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
               Generating AI content for you…
+            </div>
+          )}
+
+          {/* ════════════════════════════════
+              AI ERROR BANNER (shared across tabs)
+          ════════════════════════════════ */}
+          {!tabLoading && tabError && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "0.75rem",
+                padding: "0.75rem 1.25rem",
+                background: "rgba(245,158,11,0.08)",
+                border: "1px solid rgba(245,158,11,0.25)",
+                borderRadius: "var(--border-radius)",
+                marginBottom: "1.5rem",
+                color: "#92400e",
+                fontSize: "0.875rem",
+                fontWeight: 600,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                <i className="fas fa-exclamation-triangle" style={{ color: "#f59e0b", flexShrink: 0 }} />
+                <span>{tabError}</span>
+              </div>
+              <button
+                onClick={() => setTabError("")}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#92400e", padding: "0 0.25rem", fontSize: "0.85rem" }}
+                title="Dismiss"
+              >
+                <i className="fas fa-times" />
+              </button>
             </div>
           )}
 
@@ -1270,47 +1359,54 @@ export default function PracticePage() {
                   </p>
                 </div>
 
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "1rem",
-                    marginBottom: "1.5rem",
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                  }}
-                >
+                <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1.5rem", flexWrap: "wrap", alignItems: "center" }}>
+                  {/* Play/Stop button */}
                   <button
-                    className={`btn ${audioPlaying ? "btn-primary" : "btn-outline"}`}
                     onClick={playListeningAudio}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: "0.6rem",
+                      padding: "0.65rem 1.4rem",
+                      borderRadius: 99,
+                      border: "none",
+                      cursor: "pointer",
+                      fontWeight: 700,
+                      fontSize: "0.92rem",
+                      fontFamily: "inherit",
+                      transition: "all 0.2s",
+                      background: audioPlaying
+                        ? "linear-gradient(135deg,#ef4444,#f87171)"
+                        : "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                      color: "white",
+                      boxShadow: audioPlaying
+                        ? "0 4px 14px rgba(239,68,68,0.35)"
+                        : "0 4px 14px rgba(99,102,241,0.35)",
+                    }}
                   >
-                    <i
-                      className={`fas ${audioPlaying ? "fa-stop" : "fa-play"}`}
-                    />
-                    {audioPlaying ? " Stop" : " Play Audio"}
+                    <span style={{
+                      width: 28, height: 28, borderRadius: "50%",
+                      background: "rgba(255,255,255,0.2)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      <i className={`fas ${audioPlaying ? "fa-stop" : "fa-play"}`} style={{ fontSize: "0.75rem" }} />
+                    </span>
+                    {audioPlaying ? "Stop Audio" : "Play Audio"}
+                    {audioPlaying && (
+                      <span style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 16 }}>
+                        {[0.4, 0.7, 1, 0.7, 0.4].map((h, i) => (
+                          <span key={i} style={{ width: 3, height: `${h * 100}%`, background: "rgba(255,255,255,0.8)", borderRadius: 2, animation: `soundWave 0.6s ${i * 0.1}s ease-in-out infinite alternate` }} />
+                        ))}
+                      </span>
+                    )}
                   </button>
+
+                  {/* Transcript toggle */}
                   <button
-                    className="btn btn-outline"
+                    className="btn btn-outline btn-sm"
                     onClick={() => setShowTranscript((s) => !s)}
                   >
-                    <i
-                      className={`fas ${showTranscript ? "fa-eye-slash" : "fa-eye"}`}
-                    />
-                    {showTranscript ? " Hide Transcript" : " Show Transcript"}
+                    <i className={`fas ${showTranscript ? "fa-eye-slash" : "fa-file-alt"}`} />
+                    {showTranscript ? "Hide Transcript" : "Show Transcript"}
                   </button>
-                  {audioPlaying && (
-                    <span
-                      style={{
-                        color: "var(--primary)",
-                        fontSize: "0.88rem",
-                        fontWeight: 600,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.4rem",
-                      }}
-                    >
-                      <i className="fas fa-volume-up" /> Playing…
-                    </span>
-                  )}
                 </div>
 
                 {showTranscript && (
@@ -1380,7 +1476,7 @@ export default function PracticePage() {
                   </button>
                   {listeningResult && (
                     <button
-                      className="btn btn-outline"
+                      className="btn btn-outline btn-sm"
                       onClick={() => {
                         setListeningAnswer(null);
                         setListeningResult("");
@@ -1390,7 +1486,7 @@ export default function PracticePage() {
                         setDynamicListening(null); // triggers fresh AI exercise
                       }}
                     >
-                      <i className="fas fa-sync-alt" /> Try Again (New Exercise)
+                      <i className="fas fa-sync-alt" /> New Exercise
                     </button>
                   )}
                 </div>

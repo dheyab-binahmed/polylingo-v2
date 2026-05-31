@@ -796,26 +796,42 @@ export async function deletePost(postId) {
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Log a completed practice session.
- * POST /api/v1/practice/session
- * Expected body: { type, language, durationMinutes, score }
+ * Log a completed practice session by bumping the relevant counter
+ * in the user's PracticeProgress row via PUT /api/v1/practice/progress.
+ * (POST /practice/session never existed — this is the correct endpoint.)
  */
 export async function logPracticeSession({
   type,
   language,
-  durationMinutes,
-  score,
+  durationMinutes = 5,
 }) {
   try {
-    return await apiFetch("/practice/session", {
-      method: "POST",
-      body: JSON.stringify({
-        type,
-        language,
-        duration_minutes: durationMinutes,
-        score,
-      }),
-    });
+    // Map session type to the progress field it increments
+    const typeMap = {
+      speaking:   { speaking:   { sessions: 1, minutes: durationMinutes } },
+      writing:    { writing:    { submissions: 1 } },
+      grammar:    { grammar:    { exercises: 1 } },
+      reading:    { reading:    { articles: 1 } },
+      listening:  { listening:  { exercises: 1 } },
+      flashcards: { flashcards: { sessions: 1 } },
+    };
+
+    // Fetch current progress first so we can add to it (not overwrite)
+    const current = await fetchPracticeProgress(language).catch(() => null);
+    if (!current) return { success: false };
+
+    const increment = typeMap[type] || {};
+    const merged = { language };
+
+    // Merge increments into current values
+    for (const [section, fields] of Object.entries(increment)) {
+      merged[section] = { ...(current[section] || {}) };
+      for (const [key, delta] of Object.entries(fields)) {
+        merged[section][key] = (merged[section][key] || 0) + delta;
+      }
+    }
+
+    return await savePracticeProgress({ ...current, ...merged, language });
   } catch (err) {
     console.error("Failed to log practice session:", err);
     return { success: false };
@@ -1042,6 +1058,72 @@ export async function savePracticeProgress(stats) {
   } catch (_) {
     return null; // non-critical — localStorage is the fallback
   }
+}
+
+/**
+ * Request a password reset email.
+ * POST /api/v1/auth/forgot-password
+ */
+export async function forgotPassword(email) {
+  return apiFetch("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+/**
+ * Verify email address using the token from the verification email link.
+ * POST /api/v1/auth/verify-email
+ */
+export async function verifyEmail(token) {
+  return apiFetch("/auth/verify-email", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
+}
+
+/**
+ * Verify the 6-digit code sent after registration.
+ * POST /api/v1/auth/verify-code
+ */
+export async function verifyEmailCode(email, code) {
+  return apiFetch("/auth/verify-code", {
+    method: "POST",
+    body: JSON.stringify({ email, code }),
+  });
+}
+
+/**
+ * Resend the 6-digit verification code.
+ * POST /api/v1/auth/resend-code
+ */
+export async function resendVerificationCode(email) {
+  return apiFetch("/auth/resend-code", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+/**
+ * Reset password using the token from the email.
+ * POST /api/v1/auth/reset-password
+ */
+export async function resetPassword(token, newPassword) {
+  return apiFetch("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+}
+
+/**
+ * Change the current user's password.
+ * POST /api/v1/auth/change-password
+ */
+export async function changePassword(currentPassword, newPassword) {
+  return apiFetch("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
 }
 
 // Export for testing/debugging

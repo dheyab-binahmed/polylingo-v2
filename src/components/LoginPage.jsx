@@ -46,9 +46,18 @@ const LoginPage = () => {
       await login(email, password);
       navigate(from, { replace: true });
     } catch (err) {
-      // Use utility function to format error message
-      const errorMessage = formatErrorForDisplay(err, err.status);
-      setError(errorMessage);
+      // Detect network / server-down errors and show a clear message
+      const msg = err?.message || String(err);
+      const isNetworkErr =
+        msg.toLowerCase().includes("load failed") ||
+        msg.toLowerCase().includes("failed to fetch") ||
+        msg.toLowerCase().includes("network") ||
+        msg.toLowerCase().includes("fetch");
+      if (isNetworkErr) {
+        setError("Cannot reach the server. Make sure the backend is running on port 5000.");
+      } else {
+        setError(formatErrorForDisplay(err, err.status));
+      }
       logError(err, "LoginPage.handleSubmit");
     } finally {
       setIsLoading(false);
@@ -126,6 +135,12 @@ const LoginPage = () => {
                 />
               </button>
             </div>
+          </div>
+
+          <div style={{ textAlign: "right", marginTop: "-0.25rem", marginBottom: "0.25rem" }}>
+            <Link to="/forgot-password" className="auth-link" style={{ fontSize: "0.85rem" }}>
+              Forgot password?
+            </Link>
           </div>
 
           <button type="submit" className="auth-submit" disabled={isLoading}>
