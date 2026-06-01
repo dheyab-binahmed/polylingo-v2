@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { verifyEmail } from "../services/api";
+import { applyFirebaseActionCode } from "../services/firebase";
 
 export default function VerifyEmailPage() {
   const [searchParams] = useSearchParams();
@@ -8,14 +8,14 @@ export default function VerifyEmailPage() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    const token = searchParams.get("token");
+    const token = searchParams.get("oobCode") || searchParams.get("token");
     if (!token) {
       setStatus("error");
       setMessage("No verification token found. Please use the link from your email.");
       return;
     }
 
-    verifyEmail(token)
+    applyFirebaseActionCode(token)
       .then(() => setStatus("success"))
       .catch((err) => {
         setStatus("error");

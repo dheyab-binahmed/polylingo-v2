@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { resetPassword } from "../services/api";
+import {
+  confirmFirebasePasswordReset,
+  verifyFirebasePasswordResetCode,
+} from "../services/firebase";
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
@@ -13,10 +16,16 @@ export default function ResetPasswordPage() {
   const [status, setStatus] = useState("idle"); // idle | loading | success | error
   const [message, setMessage] = useState("");
 
-  // Read token from URL ?token=xxx (set by the reset email link)
+  // Read Firebase action code from URL (?oobCode=xxx) with legacy ?token fallback.
   useEffect(() => {
-    const t = searchParams.get("token") || "";
+    const t = searchParams.get("oobCode") || searchParams.get("token") || "";
     setToken(t);
+    if (t) {
+      verifyFirebasePasswordResetCode(t).catch(() => {
+        setStatus("error");
+        setMessage("Invalid or expired reset link.");
+      });
+    }
   }, [searchParams]);
 
   const handleSubmit = async (e) => {
@@ -41,7 +50,7 @@ export default function ResetPasswordPage() {
 
     setStatus("loading");
     try {
-      await resetPassword(token.trim(), password);
+      await confirmFirebasePasswordReset(token.trim(), password);
       setStatus("success");
       setMessage("Your password has been reset. You can now sign in.");
       setTimeout(() => navigate("/login"), 2500);
@@ -101,7 +110,7 @@ export default function ResetPasswordPage() {
         ) : (
           <form onSubmit={handleSubmit} className="auth-form">
             {/* Manual token field — shown only when token is missing from URL */}
-            {!searchParams.get("token") && (
+            {!searchParams.get("oobCode") && !searchParams.get("token") && (
               <div className="auth-field">
                 <label className="auth-field__label">Reset Token</label>
                 <div className="auth-field__input-wrap">

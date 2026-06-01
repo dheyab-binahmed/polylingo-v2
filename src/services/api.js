@@ -120,7 +120,7 @@ export async function registerUser({
   password,
   preferredLanguage,
 }) {
-  const data = await apiFetch("/auth/register", {
+  return apiFetch("/auth/register", {
     method: "POST",
     body: JSON.stringify({
       email,
@@ -128,6 +128,29 @@ export async function registerUser({
       full_name: name,
       selected_level: "A1",
       preferred_language: preferredLanguage,
+    }),
+  });
+}
+
+/**
+ * Sign in with Google using Firebase ID token.
+ * POST /api/v1/auth/firebase/login
+ * Expected response: { access_token, refresh_token, user }
+ */
+export async function loginWithFirebase({
+  idToken,
+  user: firebaseUser,
+  preferredLanguage,
+  selectedLevel,
+}) {
+  const data = await apiFetch("/auth/firebase/login", {
+    method: "POST",
+    body: JSON.stringify({
+      id_token: idToken,
+      full_name: firebaseUser.displayName,
+      photo_url: firebaseUser.photoURL,
+      preferred_language: preferredLanguage,
+      selected_level: selectedLevel,
     }),
   });
 

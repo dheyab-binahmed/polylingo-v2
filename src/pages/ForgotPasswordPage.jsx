@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { forgotPassword } from "../services/api";
+import { sendFirebasePasswordReset } from "../services/firebase";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -19,7 +19,8 @@ export default function ForgotPasswordPage() {
     setMessage("");
 
     try {
-      const data = await forgotPassword(email.trim());
+      await sendFirebasePasswordReset(email.trim());
+      const data = null;
       setStatus("success");
       // In dev mode the backend may return the token directly — show a helpful message either way
       if (data?.reset_token) {

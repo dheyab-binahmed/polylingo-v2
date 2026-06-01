@@ -19,7 +19,7 @@ import {
   joinGroup as apiJoinGroup,
   leaveGroup as apiLeaveGroup,
 } from "../services/api";
-import { onDmMessage } from "../services/socket";
+import { off, on, onDmMessage } from "../services/socket";
 import MessageToast from "../components/common/MessageToast";
 import ToastContainer from "../components/components/ui/ToastContainer";
 import Section from "../components/components/ui/Section";
@@ -51,6 +51,8 @@ const PARTNER_LANGS = [
 ];
 const LEVEL_FILTERS = ["All Levels", "Beginner", "Intermediate", "Advanced"];
 const GROUPS_PAGE_SZ = 5; // groups shown per page
+const asText = (value) => String(value ?? "").toLowerCase();
+const asList = (value) => (Array.isArray(value) ? value : []);
 
 export default function CommunityPage() {
   const navigate = useNavigate();
@@ -182,8 +184,6 @@ export default function CommunityPage() {
 
   // ── Listen for presence updates (online/offline status of partners) ────
   useEffect(() => {
-    const { on, off } = require("../services/socket");
-
     const handlePresence = (data) => {
       setPartners((prev) =>
         prev.map((p) =>
@@ -200,8 +200,6 @@ export default function CommunityPage() {
 
   // ── Listen for authenticated event to refresh partners list ────
   useEffect(() => {
-    const { on, off } = require("../services/socket");
-
     const handleAuthenticated = async () => {
       try {
         const data = await apiFetchPartners();
@@ -691,37 +689,43 @@ export default function CommunityPage() {
 
   // ── Filtered data ─────────────────────────────────────────────────────
   const filteredPosts = posts.filter(
-    (p) =>
-      !feedSearch.trim() ||
-      p.content.toLowerCase().includes(feedSearch.toLowerCase()) ||
-      p.author.toLowerCase().includes(feedSearch.toLowerCase()) ||
-      (p.tags || []).some((t) => t.includes(feedSearch.toLowerCase())),
+    (p) => {
+      const query = asText(feedSearch.trim());
+      if (!query) return true;
+      return (
+        asText(p.content).includes(query) ||
+        asText(p.author || p.author_name || p.user_name).includes(query) ||
+        asList(p.tags).some((t) => asText(t).includes(query))
+      );
+    },
   );
 
   const filteredPartners = partners.filter((p) => {
     if (p.status === "pending" && p.request_direction === "incoming") {
       return false;
     }
+    const query = asText(partnerSearch.trim());
     const matchLang =
       partnerFilter === "All" ||
-      p.languages.some((l) =>
-        l.toLowerCase().includes(partnerFilter.toLowerCase()),
+      asList(p.languages).some((l) =>
+        asText(l).includes(asText(partnerFilter)),
       );
     const matchSearch =
-      !partnerSearch.trim() ||
-      p.name.toLowerCase().includes(partnerSearch.toLowerCase()) ||
-      p.country.toLowerCase().includes(partnerSearch.toLowerCase());
+      !query ||
+      asText(p.name || p.full_name || p.email).includes(query) ||
+      asText(p.country).includes(query);
     return matchLang && matchSearch;
   });
 
   const filteredGroups = groups.filter((g) => {
+    const query = asText(groupSearch.trim());
     const matchSearch =
-      !groupSearch.trim() ||
-      g.name.toLowerCase().includes(groupSearch.toLowerCase()) ||
-      g.description.toLowerCase().includes(groupSearch.toLowerCase()) ||
-      g.language.toLowerCase().includes(groupSearch.toLowerCase());
+      !query ||
+      asText(g.name).includes(query) ||
+      asText(g.description).includes(query) ||
+      asText(g.language).includes(query);
     const matchLevel =
-      groupLevel === "All Levels" || g.level === groupLevel.toLowerCase();
+      groupLevel === "All Levels" || asText(g.level) === asText(groupLevel);
     return matchSearch && matchLevel;
   });
   const visibleGroups = filteredGroups.slice(0, groupsShown);

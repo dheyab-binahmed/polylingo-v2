@@ -16,13 +16,19 @@
 //      Navbar, RegisterPage, and ProfilePage.
 import { createContext, useState, useContext, useEffect } from "react";
 import {
+  fetchCurrentUser,
   loginUser,
   registerUser,
-  fetchCurrentUser,
   updateUserProfile,
   saveAssessmentResults,
+  loginWithFirebase,
 } from "../services/api";
 import { connectSocket, disconnectSocket } from "../services/socket";
+import {
+  firebaseSignOut,
+  getCurrentFirebaseSession,
+  signInWithGoogle,
+} from "../services/firebase";
 
 const AuthContext = createContext(null);
 
@@ -43,19 +49,30 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const restore = async () => {
       try {
-        // fetchCurrentUser() checks localStorage in mock mode,
-        // or hits GET /api/auth/me when the real backend is ready.
-        const restored = await fetchCurrentUser();
+        let restored = null;
+        const token = localStorage.getItem("polylingo_token");
+
+        if (token) {
+          restored = await fetchCurrentUser();
+        }
+
+        if (!restored) {
+          const firebaseSession = await getCurrentFirebaseSession();
+          if (firebaseSession) {
+            restored = await loginWithFirebase(firebaseSession);
+          }
+        }
         if (restored) {
           setUser(restored);
           requestNotificationPermission();
-          const token = localStorage.getItem("polylingo_token");
-          if (token) connectSocket(token);
+          const appToken = localStorage.getItem("polylingo_token");
+          if (appToken) connectSocket(appToken);
         }
       } catch (_) {
         // Token expired or invalid — stay logged out
         localStorage.removeItem("polylingo_auth_user");
         localStorage.removeItem("polylingo_token");
+        localStorage.removeItem("polylingo_refresh_token");
       } finally {
         setLoading(false);
       }
@@ -67,7 +84,8 @@ export function AuthProvider({ children }) {
   const loginWithData = (data) => {
     // data = { access_token, refresh_token, user }
     localStorage.setItem("polylingo_token", data.access_token);
-    if (data.refresh_token) localStorage.setItem("polylingo_refresh_token", data.refresh_token);
+    if (data.refresh_token)
+      localStorage.setItem("polylingo_refresh_token", data.refresh_token);
     localStorage.setItem("polylingo_auth_user", JSON.stringify(data.user));
     setUser(data.user);
     requestNotificationPermission();
@@ -102,18 +120,33 @@ export function AuthProvider({ children }) {
   const register = async ({
     name,
     email,
-    age,
     password,
     preferredLanguage,
   }) => {
     try {
-      const userData = await registerUser({
+      return await registerUser({
         name,
-        email,
-        age,
         password,
         preferredLanguage,
+        email,
       });
+    } catch (err) {
+      // Re-throw with better error message
+      if (err instanceof Error) {
+        throw err;
+      }
+      throw new Error(String(err) || "Registration failed");
+    }
+  };
+
+  // ── Login with Google (Firebase) ─────────────────────────────
+  const loginWithGoogleAuth = async () => {
+    try {
+      // Sign in with Firebase Google
+      const firebaseResult = await signInWithGoogle();
+
+      // Exchange Firebase token for JWT
+      const userData = await loginWithFirebase(firebaseResult);
       localStorage.setItem("polylingo_auth_user", JSON.stringify(userData));
       setUser(userData);
       requestNotificationPermission();
@@ -130,16 +163,23 @@ export function AuthProvider({ children }) {
       if (err instanceof Error) {
         throw err;
       }
-      throw new Error(String(err) || "Registration failed");
+      throw new Error(String(err) || "Google sign-in failed");
     }
   };
 
   // ── Logout ───────────────────────────────────────────────────
-  const logout = () => {
+  const logout = async () => {
     setUser(null);
     localStorage.removeItem("polylingo_auth_user");
     localStorage.removeItem("polylingo_token");
     localStorage.removeItem("polylingo_refresh_token");
+
+    // Sign out from Firebase too
+    try {
+      await firebaseSignOut();
+    } catch (err) {
+      console.warn("Firebase sign out error:", err);
+    }
 
     // Disconnect WebSocket
     disconnectSocket();
@@ -187,7 +227,10 @@ export function AuthProvider({ children }) {
         }
       }
     } catch (err) {
-      console.warn("Could not sync assessment language/level to profile:", err.message);
+      console.warn(
+        "Could not sync assessment language/level to profile:",
+        err.message,
+      );
     }
   };
 
@@ -217,6 +260,7 @@ export function AuthProvider({ children }) {
         login,
         loginWithData,
         register,
+        loginWithGoogleAuth,
         logout,
         loading,
         completeAssessment,
