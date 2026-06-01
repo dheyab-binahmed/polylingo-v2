@@ -110,3 +110,27 @@ export function onCallEnded(cb) {
 export function onPresenceUpdate(cb) {
   return _addListener("presence:update", cb);
 }
+
+export function joinGroupRoom(groupId) {
+  socket?.emit("group:join", { group_id: groupId });
+}
+
+export function leaveGroupRoom(groupId) {
+  socket?.emit("group:leave_room", { group_id: groupId });
+}
+
+export function sendGroupMessage(groupId, text, tempId) {
+  socket?.emit("group:message", { group_id: groupId, text, temp_id: tempId });
+}
+
+export function sendGroupTyping(groupId, typing) {
+  socket?.emit("group:typing", { group_id: groupId, typing });
+}
+
+export function on(event, cb) {
+  return _addListener(event, cb);
+}
+
+export function off(event, cb) {
+  _removeListener(event, cb);
+}

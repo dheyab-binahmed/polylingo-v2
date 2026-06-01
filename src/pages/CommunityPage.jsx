@@ -132,18 +132,37 @@ export default function CommunityPage() {
     return () => (mounted = false);
   }, [notify]);
 
-  // ── Auto-open DM when incoming call arrives and partners loaded ────────
+  // ── Auto-open DM when incoming call arrives ────────────────────────────
   useEffect(() => {
-    if (!pendingIncomingCall || !partners.length) return;
+    if (!pendingIncomingCall) return;
 
-    const caller = partners.find(
+    // Try to find caller in partners list
+    let caller = partners.find(
       (p) => String(p.id) === String(pendingIncomingCall.from),
     );
 
     if (caller) {
       setDmPartner(caller);
       setActiveGroup(null);
-      // Clear pending call after opening DM
+      setPendingIncomingCall(null);
+      sessionStorage.removeItem("pendingIncomingCall");
+      return;
+    }
+
+    // Caller not in partners list — create a minimal partner object from call data
+    if (pendingIncomingCall.callerName) {
+      const minimalPartner = {
+        id: pendingIncomingCall.from,
+        name: pendingIncomingCall.callerName,
+        initials:
+          pendingIncomingCall.callerName?.slice(0, 2)?.toUpperCase() || "??",
+        online: true,
+        color: "#8b5cf6",
+        languages: [],
+        connected: true,
+      };
+      setDmPartner(minimalPartner);
+      setActiveGroup(null);
       setPendingIncomingCall(null);
       sessionStorage.removeItem("pendingIncomingCall");
     }
@@ -157,8 +176,43 @@ export default function CommunityPage() {
       } catch (_) {
         // keep last known list if polling fails
       }
-    }, 30000);
+    }, 10000);
     return () => clearInterval(interval);
+  }, []);
+
+  // ── Listen for presence updates (online/offline status of partners) ────
+  useEffect(() => {
+    const { on, off } = require("../services/socket");
+
+    const handlePresence = (data) => {
+      setPartners((prev) =>
+        prev.map((p) =>
+          String(p.id) === String(data.user_id)
+            ? { ...p, online: data.status === "online" }
+            : p,
+        ),
+      );
+    };
+
+    on("presence:update", handlePresence);
+    return () => off("presence:update", handlePresence);
+  }, []);
+
+  // ── Listen for authenticated event to refresh partners list ────
+  useEffect(() => {
+    const { on, off } = require("../services/socket");
+
+    const handleAuthenticated = async () => {
+      try {
+        const data = await apiFetchPartners();
+        setPartners((data && data.partners) || []);
+      } catch (_) {
+        // ignore
+      }
+    };
+
+    on("authenticated", handleAuthenticated);
+    return () => off("authenticated", handleAuthenticated);
   }, []);
 
   useEffect(() => {

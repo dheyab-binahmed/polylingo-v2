@@ -201,6 +201,26 @@ export default function DMModal({
     }, 1000);
   }, [stopTimer]);
 
+  // ── Connection timeout — if ICE never reaches "connected" after 15 seconds ──
+  useEffect(() => {
+    if (!callActive) return;
+    const timeout = setTimeout(() => {
+      if (
+        pc.current &&
+        pc.current.iceConnectionState !== "connected" &&
+        pc.current.iceConnectionState !== "completed"
+      ) {
+        console.warn("Call connection timed out");
+        const notify = typeof window !== "undefined" && window.Notification;
+        if (notify) {
+          alert("Call connection failed. Please try again.");
+        }
+        hangUp();
+      }
+    }, 15000);
+    return () => clearTimeout(timeout);
+  }, [callActive, hangUp]);
+
   const stopRinging = useCallback(() => {
     if (!ringingRef.current) return;
 

@@ -746,6 +746,52 @@ export async function postGroupMessage(groupId, text) {
   }
 }
 
+export async function updateGroup(groupId, data) {
+  try {
+    return await apiFetch(`/community/groups/${groupId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  } catch (err) {
+    console.error("Failed to update group:", err);
+    throw err;
+  }
+}
+
+export async function deleteGroup(groupId) {
+  try {
+    return await apiFetch(`/community/groups/${groupId}`, {
+      method: "DELETE",
+    });
+  } catch (err) {
+    console.error("Failed to delete group:", err);
+    throw err;
+  }
+}
+
+export async function searchGroupUsers(groupId, query) {
+  try {
+    return await apiFetch(
+      `/community/groups/${groupId}/search-users?q=${encodeURIComponent(query)}`,
+    );
+  } catch (err) {
+    console.error("Failed to search group users:", err);
+    return { users: [] };
+  }
+}
+
+export async function inviteToGroup(groupId, userId) {
+  try {
+    return await apiFetch(`/community/groups/${groupId}/invite`, {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId }),
+    });
+  } catch (err) {
+    console.error("Failed to invite user to group:", err);
+    throw err;
+  }
+}
+
 /** Post interactions */
 export async function postComment(postId, text) {
   try {
@@ -808,11 +854,11 @@ export async function logPracticeSession({
   try {
     // Map session type to the progress field it increments
     const typeMap = {
-      speaking:   { speaking:   { sessions: 1, minutes: durationMinutes } },
-      writing:    { writing:    { submissions: 1 } },
-      grammar:    { grammar:    { exercises: 1 } },
-      reading:    { reading:    { articles: 1 } },
-      listening:  { listening:  { exercises: 1 } },
+      speaking: { speaking: { sessions: 1, minutes: durationMinutes } },
+      writing: { writing: { submissions: 1 } },
+      grammar: { grammar: { exercises: 1 } },
+      reading: { reading: { articles: 1 } },
+      listening: { listening: { exercises: 1 } },
       flashcards: { flashcards: { sessions: 1 } },
     };
 
@@ -1122,7 +1168,10 @@ export async function resetPassword(token, newPassword) {
 export async function changePassword(currentPassword, newPassword) {
   return apiFetch("/auth/change-password", {
     method: "POST",
-    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
   });
 }
 
@@ -1145,10 +1194,13 @@ export async function saveNotificationPreferences(prefs) {
 export async function transcribeAudio(audioBlob, language = "en") {
   const token = localStorage.getItem("polylingo_token");
   // Pick extension that matches the actual blob type so backend accepts it
-  const ext = audioBlob.type.includes("mp4") ? "mp4"
-             : audioBlob.type.includes("ogg") ? "ogg"
-             : audioBlob.type.includes("m4a") ? "m4a"
-             : "webm";
+  const ext = audioBlob.type.includes("mp4")
+    ? "mp4"
+    : audioBlob.type.includes("ogg")
+      ? "ogg"
+      : audioBlob.type.includes("m4a")
+        ? "m4a"
+        : "webm";
   const formData = new FormData();
   formData.append("audio", audioBlob, `recording.${ext}`);
   formData.append("language", language);
