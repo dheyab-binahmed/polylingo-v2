@@ -4,6 +4,37 @@ const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
 
 let socket = null;
 
+/**
+ * Pending listeners: registered before connectSocket() is called.
+ * Map<eventName, Set<callback>>
+ */
+const pendingListeners = new Map();
+
+function _addListener(event, cb) {
+  if (socket) {
+    socket.on(event, cb);
+  } else {
+    if (!pendingListeners.has(event)) pendingListeners.set(event, new Set());
+    pendingListeners.get(event).add(cb);
+  }
+  // Return cleanup function
+  return () => _removeListener(event, cb);
+}
+
+function _removeListener(event, cb) {
+  socket?.off(event, cb);
+  pendingListeners.get(event)?.delete(cb);
+}
+
+function _flushPendingListeners() {
+  for (const [event, callbacks] of pendingListeners.entries()) {
+    for (const cb of callbacks) {
+      socket.on(event, cb);
+    }
+  }
+  pendingListeners.clear();
+}
+
 export function connectSocket(token) {
   if (socket?.connected) return socket;
 
@@ -14,6 +45,8 @@ export function connectSocket(token) {
 
   socket.on("connect", () => {
     socket.emit("authenticate", { token });
+    // Attach any listeners that were registered before the socket existed
+    _flushPendingListeners();
   });
 
   return socket;
@@ -35,8 +68,7 @@ export function sendDM(to, text, tempId) {
 }
 
 export function onDmMessage(cb) {
-  socket?.on("dm:message", cb);
-  return () => socket?.off("dm:message", cb);
+  return _addListener("dm:message", cb);
 }
 
 export function sendCallOffer(to, offer, callType) {
@@ -56,30 +88,88 @@ export function endCall(to) {
 }
 
 export function onCallIncoming(cb) {
-  socket?.on("call:incoming", cb);
-  return () => socket?.off("call:incoming", cb);
+  return _addListener("call:incoming", cb);
 }
 
 export function offCallIncoming(cb) {
-  socket?.off("call:incoming", cb);
+  _removeListener("call:incoming", cb);
 }
 
 export function onCallAnswered(cb) {
-  socket?.on("call:answered", cb);
-  return () => socket?.off("call:answered", cb);
+  return _addListener("call:answered", cb);
 }
 
 export function onCallIce(cb) {
-  socket?.on("call:ice", cb);
-  return () => socket?.off("call:ice", cb);
+  return _addListener("call:ice", cb);
 }
 
 export function onCallEnded(cb) {
-  socket?.on("call:ended", cb);
-  return () => socket?.off("call:ended", cb);
+  return _addListener("call:ended", cb);
 }
 
 export function onPresenceUpdate(cb) {
-  socket?.on("presence:update", cb);
-  return () => socket?.off("presence:update", cb);
+  return _addListener("presence:update", cb);
+}
+
+export function joinGroupRoom(groupId) {
+  socket?.emit("group:join", { group_id: groupId });
+}
+
+export function leaveGroupRoom(groupId) {
+  socket?.emit("group:leave_room", { group_id: groupId });
+}
+
+export function sendGroupMessage(groupId, text, tempId) {
+  socket?.emit("group:message", { group_id: groupId, text, temp_id: tempId });
+}
+
+export function sendGroupTyping(groupId, typing) {
+  socket?.emit("group:typing", { group_id: groupId, typing });
+}
+
+// ── Group video call signaling ────────────────────────────────────────────────
+
+export function sendGroupCallJoin(groupId) {
+  socket?.emit("group:call:join", { group_id: groupId });
+}
+
+export function sendGroupCallLeave(groupId) {
+  socket?.emit("group:call:leave", { group_id: groupId });
+}
+
+export function sendGroupCallOffer(groupId, toUserId, offer) {
+  socket?.emit("group:call:offer", { group_id: groupId, to: toUserId, offer });
+}
+
+export function sendGroupCallAnswer(toUserId, answer) {
+  socket?.emit("group:call:answer", { to: toUserId, answer });
+}
+
+export function sendGroupCallIce(toUserId, candidate) {
+  socket?.emit("group:call:ice", { to: toUserId, candidate });
+}
+
+export function onGroupCallPeerJoined(cb) { return _addListener("group:call:peer_joined", cb); }
+export function offGroupCallPeerJoined(cb) { _removeListener("group:call:peer_joined", cb); }
+
+export function onGroupCallPeerLeft(cb) { return _addListener("group:call:peer_left", cb); }
+export function offGroupCallPeerLeft(cb) { _removeListener("group:call:peer_left", cb); }
+
+export function onGroupCallOffer(cb) { return _addListener("group:call:offer", cb); }
+export function offGroupCallOffer(cb) { _removeListener("group:call:offer", cb); }
+
+export function onGroupCallAnswer(cb) { return _addListener("group:call:answer", cb); }
+export function offGroupCallAnswer(cb) { _removeListener("group:call:answer", cb); }
+
+export function onGroupCallIce(cb) { return _addListener("group:call:ice", cb); }
+export function offGroupCallIce(cb) { _removeListener("group:call:ice", cb); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function on(event, cb) {
+  return _addListener(event, cb);
+}
+
+export function off(event, cb) {
+  _removeListener(event, cb);
 }

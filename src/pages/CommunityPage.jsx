@@ -19,8 +19,9 @@ import {
   joinGroup as apiJoinGroup,
   leaveGroup as apiLeaveGroup,
 } from "../services/api";
-import { onDmMessage } from "../services/socket";
+import { off, on, onDmMessage } from "../services/socket";
 import MessageToast from "../components/common/MessageToast";
+import ErrorBoundary from "../components/common/ErrorBoundary";
 import ToastContainer from "../components/components/ui/ToastContainer";
 import Section from "../components/components/ui/Section";
 import Hero from "../components/components/Hero";
@@ -51,6 +52,8 @@ const PARTNER_LANGS = [
 ];
 const LEVEL_FILTERS = ["All Levels", "Beginner", "Intermediate", "Advanced"];
 const GROUPS_PAGE_SZ = 5; // groups shown per page
+const asText = (value) => String(value ?? "").toLowerCase();
+const asList = (value) => (Array.isArray(value) ? value : []);
 
 export default function CommunityPage() {
   const navigate = useNavigate();
@@ -132,18 +135,37 @@ export default function CommunityPage() {
     return () => (mounted = false);
   }, [notify]);
 
-  // ── Auto-open DM when incoming call arrives and partners loaded ────────
+  // ── Auto-open DM when incoming call arrives ────────────────────────────
   useEffect(() => {
-    if (!pendingIncomingCall || !partners.length) return;
+    if (!pendingIncomingCall) return;
 
-    const caller = partners.find(
+    // Try to find caller in partners list
+    let caller = partners.find(
       (p) => String(p.id) === String(pendingIncomingCall.from),
     );
 
     if (caller) {
       setDmPartner(caller);
       setActiveGroup(null);
-      // Clear pending call after opening DM
+      setPendingIncomingCall(null);
+      sessionStorage.removeItem("pendingIncomingCall");
+      return;
+    }
+
+    // Caller not in partners list — create a minimal partner object from call data
+    if (pendingIncomingCall.callerName) {
+      const minimalPartner = {
+        id: pendingIncomingCall.from,
+        name: pendingIncomingCall.callerName,
+        initials:
+          pendingIncomingCall.callerName?.slice(0, 2)?.toUpperCase() || "??",
+        online: true,
+        color: "#8b5cf6",
+        languages: [],
+        connected: true,
+      };
+      setDmPartner(minimalPartner);
+      setActiveGroup(null);
       setPendingIncomingCall(null);
       sessionStorage.removeItem("pendingIncomingCall");
     }
@@ -157,8 +179,39 @@ export default function CommunityPage() {
       } catch (_) {
         // keep last known list if polling fails
       }
-    }, 30000);
+    }, 10000);
     return () => clearInterval(interval);
+  }, []);
+
+  // ── Listen for presence updates (online/offline status of partners) ────
+  useEffect(() => {
+    const handlePresence = (data) => {
+      setPartners((prev) =>
+        prev.map((p) =>
+          String(p.id) === String(data.user_id)
+            ? { ...p, online: data.status === "online" }
+            : p,
+        ),
+      );
+    };
+
+    on("presence:update", handlePresence);
+    return () => off("presence:update", handlePresence);
+  }, []);
+
+  // ── Listen for authenticated event to refresh partners list ────
+  useEffect(() => {
+    const handleAuthenticated = async () => {
+      try {
+        const data = await apiFetchPartners();
+        setPartners((data && data.partners) || []);
+      } catch (_) {
+        // ignore
+      }
+    };
+
+    on("authenticated", handleAuthenticated);
+    return () => off("authenticated", handleAuthenticated);
   }, []);
 
   useEffect(() => {
@@ -591,19 +644,26 @@ export default function CommunityPage() {
 
   const handleJoinGroup = (id) => {
     (async () => {
-      setGroups((g) =>
-        g.map((gr) =>
-          gr.id === id
-            ? { ...gr, joined: true, members: (gr.members || 0) + 1 }
-            : gr,
-        ),
-      );
       try {
-        await apiJoinGroup(id);
-        notify(
-          `Joined "${groups.find((g) => g.id === id)?.name}"! 🎉`,
-          "success",
-        );
+        const res = await apiJoinGroup(id);
+        const groupName = groups.find((g) => g.id === id)?.name;
+        if (res?.status === "pending") {
+          setGroups((g) =>
+            g.map((gr) =>
+              gr.id === id ? { ...gr, pendingRequest: true } : gr,
+            ),
+          );
+          notify(`Join request sent to "${groupName}". Waiting for admin approval. ⏳`, "info");
+        } else {
+          setGroups((g) =>
+            g.map((gr) =>
+              gr.id === id
+                ? { ...gr, joined: true, pendingRequest: false, members: (gr.members || 0) + 1 }
+                : gr,
+            ),
+          );
+          notify(`Joined "${groupName}"! 🎉`, "success");
+        }
       } catch (err) {
         notify("Failed to join group", "danger");
       }
@@ -637,37 +697,43 @@ export default function CommunityPage() {
 
   // ── Filtered data ─────────────────────────────────────────────────────
   const filteredPosts = posts.filter(
-    (p) =>
-      !feedSearch.trim() ||
-      p.content.toLowerCase().includes(feedSearch.toLowerCase()) ||
-      p.author.toLowerCase().includes(feedSearch.toLowerCase()) ||
-      (p.tags || []).some((t) => t.includes(feedSearch.toLowerCase())),
+    (p) => {
+      const query = asText(feedSearch.trim());
+      if (!query) return true;
+      return (
+        asText(p.content).includes(query) ||
+        asText(p.author || p.author_name || p.user_name).includes(query) ||
+        asList(p.tags).some((t) => asText(t).includes(query))
+      );
+    },
   );
 
   const filteredPartners = partners.filter((p) => {
     if (p.status === "pending" && p.request_direction === "incoming") {
       return false;
     }
+    const query = asText(partnerSearch.trim());
     const matchLang =
       partnerFilter === "All" ||
-      p.languages.some((l) =>
-        l.toLowerCase().includes(partnerFilter.toLowerCase()),
+      asList(p.languages).some((l) =>
+        asText(l).includes(asText(partnerFilter)),
       );
     const matchSearch =
-      !partnerSearch.trim() ||
-      p.name.toLowerCase().includes(partnerSearch.toLowerCase()) ||
-      p.country.toLowerCase().includes(partnerSearch.toLowerCase());
+      !query ||
+      asText(p.name || p.full_name || p.email).includes(query) ||
+      asText(p.country).includes(query);
     return matchLang && matchSearch;
   });
 
   const filteredGroups = groups.filter((g) => {
+    const query = asText(groupSearch.trim());
     const matchSearch =
-      !groupSearch.trim() ||
-      g.name.toLowerCase().includes(groupSearch.toLowerCase()) ||
-      g.description.toLowerCase().includes(groupSearch.toLowerCase()) ||
-      g.language.toLowerCase().includes(groupSearch.toLowerCase());
+      !query ||
+      asText(g.name).includes(query) ||
+      asText(g.description).includes(query) ||
+      asText(g.language).includes(query);
     const matchLevel =
-      groupLevel === "All Levels" || g.level === groupLevel.toLowerCase();
+      groupLevel === "All Levels" || asText(g.level) === asText(groupLevel);
     return matchSearch && matchLevel;
   });
   const visibleGroups = filteredGroups.slice(0, groupsShown);
@@ -692,7 +758,7 @@ export default function CommunityPage() {
         }
       />
 
-      <main style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 24px" }}>
+      <main className="plg-main">
         <Hero
           onCreateGroup={() => setShowCreateGroup(true)}
           onFindPartners={() => scrollTo("partners")}
@@ -1076,13 +1142,7 @@ export default function CommunityPage() {
             )}
             {/* BACKEND INTEGRATION: GET /api/community/partners?lang=&search=&page= */}
             {filteredPartners.length > 0 ? (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(230px,1fr))",
-                  gap: 16,
-                }}
-              >
+              <div className="partner-grid">
                 {filteredPartners.map((p) =>
                   p.status === "pending" &&
                   p.request_direction === "outgoing" ? (
@@ -1357,30 +1417,35 @@ export default function CommunityPage() {
       </button>
 
       {/* Modals */}
-      {showCreateGroup && (
-        <CreateGroupModel
-          onClose={() => setShowCreateGroup(false)}
-          onCreate={handleCreateGroup}
-        />
-      )}
-      {activeGroup && (
-        <GroupInterface
-          group={activeGroup}
-          onClose={() => setActiveGroup(null)}
-          notify={notify}
-          onOpenDM={openDM}
-          onLeaveGroup={handleLeaveGroup}
-          onDeleteGroup={handleDeleteGroup}
-        />
-      )}
-      {dmPartner && (
-        <DMModal
-          partner={dmPartner}
-          onClose={() => setDmPartner(null)}
-          onCall={handleCall}
-          pendingIncomingCall={pendingIncomingCall}
-        />
-      )}
+      <ErrorBoundary>
+        {showCreateGroup && (
+          <CreateGroupModel
+            onClose={() => setShowCreateGroup(false)}
+            onCreate={handleCreateGroup}
+          />
+        )}
+      </ErrorBoundary>
+      <ErrorBoundary>
+        {activeGroup && (
+          <GroupInterface
+            group={activeGroup}
+            onClose={() => setActiveGroup(null)}
+            notify={notify}
+            onOpenDM={openDM}
+            onLeaveGroup={handleLeaveGroup}
+            onDeleteGroup={handleDeleteGroup}
+          />
+        )}
+      </ErrorBoundary>
+      <ErrorBoundary>
+        {dmPartner && (
+          <DMModal
+            partner={dmPartner}
+            onClose={() => setDmPartner(null)}
+            pendingIncomingCall={pendingIncomingCall}
+          />
+        )}
+      </ErrorBoundary>
     </div>
   );
 }

@@ -3773,3 +3773,14 @@ textarea:focus:not(:focus-visible) {
 [data-dark="true"] .pstat-label                 { color: var(--text-muted); }
 [data-dark="true"] .lesson-progress             { background: var(--border); }
 [data-dark="true"] .community-header            { background: var(--bg-hover); }
+
+/* ── Sound wave bars animation (listening audio player) ── */
+@keyframes soundWave {
+  from { transform: scaleY(0.4); opacity: 0.6; }
+  to   { transform: scaleY(1.3); opacity: 1; }
+}
+
+@keyframes skeletonShimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

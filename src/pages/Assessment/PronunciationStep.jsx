@@ -103,7 +103,7 @@ export default function PronunciationStep() {
       timerRef.current = setInterval(() => {
         s++;
         setTime(s);
-        if (s >= 30) stopRecording();
+        if (s >= 120) stopRecording();
       }, 1000);
     } catch (err) {
       if (err.name === "NotAllowedError")

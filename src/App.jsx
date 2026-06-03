@@ -6,7 +6,7 @@ import {
   Navigate,
   useNavigate,
 } from "react-router-dom";
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import { updatePresence } from "./services/api";
 import { onCallIncoming, offCallIncoming, endCall } from "./services/socket";
 import Navbar from "./components/Navbar";
@@ -28,7 +28,18 @@ import PronunciationDetailsPage from "./pages/Assessment/PronunciationDetailsPag
 import AuthRequired from "./components/AuthRequired";
 import LoginPage from "./components/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
+import VerifyEmailPage from "./pages/VerifyEmailPage";
 import IncomingCallModal from "./components/components/partners/IncomingCallModal";
+
+// Redirect logged-in users away from the homepage to the dashboard
+function HomeRoute() {
+  const { user, loading } = useAuth();
+  if (loading) return null; // avoid flash while session restores
+  if (user) return <Navigate to="/dashboard" replace />;
+  return <HomePage />;
+}
 
 export default function App() {
   return (
@@ -149,9 +160,12 @@ function AppContent() {
       <main className="main-content">
         <Routes>
           {/* Public Routes */}
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<HomeRoute />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
 
           {/* Protected Routes - Assessment gate removed, users can access directly */}
           <Route

@@ -18,6 +18,8 @@ import {
   checkWritingGrammar,
   fetchPracticeProgress,
   savePracticeProgress,
+  updateUserProfile,
+  transcribeAudio,
 } from "../services/api";
 import { formatErrorForDisplay, logError } from "../utils/errorHandler";
 import { getContent } from "../data/practiceContent";
@@ -101,25 +103,31 @@ export default function PracticePage() {
   const { user, updateUser } = useAuth();
 
   // Award minutes and update user stats after a completed practice session
-  // 👉 BACKEND: logPracticeSession() calls POST /api/practice/session when backend is ready
   const awardPracticeMinutes = async (type, minutes = 5) => {
-    const newTotal = (user?.totalMinutes || 0) + minutes;
+    // 1. Increment todayMinutes in local stats state + persist
+    setPracticeStats((prev) => {
+      const next = { ...prev, todayMinutes: (prev.todayMinutes || 0) + minutes };
+      try { localStorage.setItem(`polylingo_stats_${user?.id || "guest"}`, JSON.stringify(next)); } catch (_) {}
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => {
+        savePracticeProgress({ language: lang, ...next });
+      }, 1500);
+      return next;
+    });
+    // 2. Log session to backend (non-critical)
     try {
-      await updateUser({ totalMinutes: newTotal });
       await logPracticeSession({
         type,
-        language: content?.language || "en",
+        language: lang,
         durationMinutes: minutes,
         score: 7,
       });
-    } catch (_) {
-      /* non-critical — don't block UI */
-    }
+    } catch (_) { /* non-critical — don't block UI */ }
   };
 
   // Get content for the user's chosen language (falls back to English)
   // BACKEND INTEGRATION: Replace getContent() with API calls per tab
-  const lang = user?.preferredLanguage || "English";
+  const lang = user?.preferred_language || user?.preferredLanguage || "English";
   const content = getContent(lang);
   const ttsLang = content.ttsLang;
 
@@ -183,6 +191,19 @@ export default function PracticePage() {
     };
     loadProgress();
   }, [lang]); // reload when user switches language
+
+  // Flush pending save immediately when user closes/navigates away
+  useEffect(() => {
+    const flushOnUnload = () => {
+      clearTimeout(saveTimerRef.current);
+      try {
+        const stored = JSON.parse(localStorage.getItem(STATS_KEY));
+        if (stored) savePracticeProgress({ language: lang, ...stored });
+      } catch (_) {}
+    };
+    window.addEventListener("beforeunload", flushOnUnload);
+    return () => window.removeEventListener("beforeunload", flushOnUnload);
+  }, [lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const fmtPct  = (correct, total) => total > 0 ? `${Math.round((correct / total) * 100)}%` : "—";
   const fmtAvg  = (total, count)   => count  > 0 ? (total  / count).toFixed(1) : "—";
 
@@ -209,6 +230,7 @@ export default function PracticePage() {
   const [dynamicReading, setDynamicReading] = useState(null);
   const [dynamicListening, setDynamicListening] = useState(null);
   const [tabLoading, setTabLoading] = useState(false);
+  const [tabError, setTabError] = useState("");
 
   // ── Dynamic writing prompt & speaking phrases (AI-generated) ──
   const [dynamicWritingPrompt, setDynamicWritingPrompt] = useState(null);
@@ -309,6 +331,11 @@ export default function PracticePage() {
   const tutorStreamRef = useRef(null);  // AbortController for active SSE stream
   const ttsQueueRef = useRef([]);        // Sentences waiting for TTS playback
   const ttsBusyRef = useRef(false);      // Whether TTS is currently speaking
+  const tutorVoiceLoopRef = useRef(false); // Auto voice loop on/off
+  const tutorMicRecRef = useRef(null);   // Active MediaRecorder for voice loop
+  const tutorMicChunksRef = useRef([]);  // Audio chunks for voice loop
+  const [tutorVoiceLoop, setTutorVoiceLoop] = useState(false);
+  const [tutorTranscribing, setTutorTranscribing] = useState(false);
 
   // Reset exercise state when language changes
   useEffect(() => {
@@ -397,6 +424,7 @@ export default function PracticePage() {
 
   // Fetch AI-generated content when a tab is first opened (cached until reset)
   useEffect(() => {
+    setTabError(""); // clear error when switching tabs or refreshing
     const loadTabContent = async () => {
       if (activeTab === "flashcards" && !dynamicFlashcards) {
         updateStat("flashcards", (s) => ({ ...s, sessions: s.sessions + 1 }));
@@ -404,42 +432,48 @@ export default function PracticePage() {
         try {
           const data = await fetchPracticeFlashcards({ language: lang, level: practiceLevel });
           if (data?.flashcards?.length) setDynamicFlashcards(data.flashcards);
-        } catch (_) { /* fall back to static content */ }
+          else setTabError("AI couldn't generate flashcards — showing built-in content instead.");
+        } catch (_) { setTabError("AI content generation failed — showing built-in content instead."); }
         finally { setTabLoading(false); }
       } else if (activeTab === "grammar" && !dynamicGrammar) {
         setTabLoading(true);
         try {
           const data = await fetchPracticeGrammar({ language: lang, level: practiceLevel });
           if (data?.exercises?.length) setDynamicGrammar(data.exercises);
-        } catch (_) { /* fall back to static content */ }
+          else setTabError("AI couldn't generate grammar exercises — showing built-in content instead.");
+        } catch (_) { setTabError("AI content generation failed — showing built-in content instead."); }
         finally { setTabLoading(false); }
       } else if (activeTab === "reading" && !dynamicReading) {
         setTabLoading(true);
         try {
           const data = await fetchPracticeReading({ language: lang, level: practiceLevel });
           if (data?.title) setDynamicReading(data);
-        } catch (_) { /* fall back to static content */ }
+          else setTabError("AI couldn't generate a reading passage — showing built-in content instead.");
+        } catch (_) { setTabError("AI content generation failed — showing built-in content instead."); }
         finally { setTabLoading(false); }
       } else if (activeTab === "listening" && !dynamicListening) {
         setTabLoading(true);
         try {
           const data = await fetchPracticeListening({ language: lang, level: practiceLevel });
           if (data?.question) setDynamicListening(data);
-        } catch (_) { /* fall back to static content */ }
+          else setTabError("AI couldn't generate a listening exercise — showing built-in content instead.");
+        } catch (_) { setTabError("AI content generation failed — showing built-in content instead."); }
         finally { setTabLoading(false); }
       } else if (activeTab === "writing" && !dynamicWritingPrompt) {
         setTabLoading(true);
         try {
           const data = await fetchPracticeWritingPrompt({ language: lang, level: practiceLevel });
           if (data?.prompt) setDynamicWritingPrompt(data.prompt);
-        } catch (_) { /* fall back to static content */ }
+          else setTabError("AI couldn't generate a writing prompt — showing built-in content instead.");
+        } catch (_) { setTabError("AI content generation failed — showing built-in content instead."); }
         finally { setTabLoading(false); }
       } else if (activeTab === "speaking" && !dynamicSpeakingPhrases) {
         setTabLoading(true);
         try {
           const data = await fetchPracticeSpeaking({ language: lang, level: practiceLevel });
           if (data?.phrases?.length) setDynamicSpeakingPhrases(data.phrases);
-        } catch (_) { /* fall back to static content */ }
+          else setTabError("AI couldn't generate speaking phrases — showing built-in content instead.");
+        } catch (_) { setTabError("AI content generation failed — showing built-in content instead."); }
         finally { setTabLoading(false); }
       }
     };
@@ -584,21 +618,45 @@ export default function PracticePage() {
   };
 
   // ── Listening handlers ────────────────────────────────────────────────────
-  const playListeningAudio = () => {
+  const listeningAudioRef = useRef(null);
+
+  const playListeningAudio = async () => {
     if (audioPlaying) {
+      if (listeningAudioRef.current) {
+        listeningAudioRef.current.pause();
+        listeningAudioRef.current = null;
+      }
       window.speechSynthesis.cancel();
       setAudioPlaying(false);
       return;
     }
+
     const fullText = LISTENING_EXERCISE.transcript
       .map((l) => `${l.speaker}: ${l.line}`)
       .join(". ");
-    speakTTS(
-      fullText,
-      ttsLang,
-      () => setAudioPlaying(true),
-      () => setAudioPlaying(false),
-    );
+
+    setAudioPlaying(true);
+    // Try ElevenLabs first via backend proxy
+    try {
+      const { audioBase64 } = await fetchTTS(fullText);
+      if (audioBase64) {
+        const audio = new Audio(`data:audio/mp3;base64,${audioBase64}`);
+        listeningAudioRef.current = audio;
+        audio.onended = () => { listeningAudioRef.current = null; setAudioPlaying(false); };
+        audio.onerror = () => {
+          listeningAudioRef.current = null;
+          speakTTS(fullText, ttsLang, () => {}, () => setAudioPlaying(false));
+        };
+        audio.play().catch(() => {
+          listeningAudioRef.current = null;
+          speakTTS(fullText, ttsLang, () => {}, () => setAudioPlaying(false));
+        });
+        return;
+      }
+    } catch (_) {}
+
+    // Browser TTS fallback
+    speakTTS(fullText, ttsLang, () => {}, () => setAudioPlaying(false));
   };
   const checkListeningAnswer = () => {
     if (listeningAnswer === null) return;
@@ -816,6 +874,10 @@ export default function PracticePage() {
       _drainTTSQueue();
     } else {
       setTutorSpeaking(false);
+      // Auto-restart mic if voice loop is on and not already recording
+      if (tutorVoiceLoopRef.current && !tutorMicRecRef.current) {
+        setTimeout(() => _startTutorMic(), 600);
+      }
     }
   };
 
@@ -935,38 +997,87 @@ export default function PracticePage() {
     tutorStreamRef.current = controller;
   };
 
-  const startVoiceInput = () => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setTutorError(
-        "Voice input is not supported in this browser. Please use Chrome or Edge.",
+  // ── Start mic recording for tutor (Whisper-based) ──────────────────────────
+  const _startTutorMic = async () => {
+    if (tutorMicRecRef.current) return; // already recording
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = (
+        MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" :
+        MediaRecorder.isTypeSupported("audio/webm")             ? "audio/webm" :
+        MediaRecorder.isTypeSupported("audio/mp4")              ? "audio/mp4" :
+        ""
       );
-      return;
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+      tutorMicChunksRef.current = [];
+      tutorMicRecRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) tutorMicChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        tutorMicRecRef.current = null;
+        setTutorListening(false);
+        setTutorTranscribing(true);
+
+        const blob = new Blob(tutorMicChunksRef.current, { type: mimeType || "audio/mp4" });
+        try {
+          const { transcript } = await transcribeAudio(blob, (ttsLang || "en").slice(0, 2));
+          setTutorTranscribing(false);
+          if (transcript?.trim()) {
+            setTutorInput(transcript.trim());
+            sendTutorChat(transcript.trim());
+          } else if (tutorVoiceLoopRef.current) {
+            // empty — restart mic
+            setTimeout(() => _startTutorMic(), 400);
+          }
+        } catch {
+          setTutorTranscribing(false);
+          // Fallback: browser STT
+          const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+          if (SR) {
+            const r = new SR();
+            r.lang = ttsLang;
+            r.interimResults = false;
+            r.onresult = (e) => { setTutorInput(e.results[0][0].transcript); sendTutorChat(e.results[0][0].transcript); };
+            r.start();
+          }
+        }
+      };
+
+      recorder.start();
+      setTutorListening(true);
+      setTutorError("");
+    } catch {
+      setTutorError("Microphone access denied. Please allow mic access and try again.");
     }
+  };
+
+  const _stopTutorMic = () => {
+    if (tutorMicRecRef.current) {
+      tutorMicRecRef.current.stop();
+    }
+  };
+
+  const startVoiceInput = () => {
+    if (tutorListening) { _stopTutorMic(); return; }
     window.speechSynthesis?.cancel();
     setTutorSpeaking(false);
+    ttsQueueRef.current = [];
+    ttsBusyRef.current = false;
+    _startTutorMic();
+  };
 
-    const rec = new SpeechRecognition();
-    rec.lang = ttsLang;
-    rec.interimResults = false;
-    rec.maxAlternatives = 1;
-
-    setTutorListening(true);
-    setTutorError("");
-
-    rec.onresult = (e) => {
-      const transcript = e.results[0][0].transcript;
-      setTutorListening(false);
-      setTutorInput(transcript);
-      sendTutorChat(transcript);
-    };
-    rec.onerror = () => {
-      setTutorListening(false);
-      setTutorError("Couldn't hear you. Please try again.");
-    };
-    rec.onend = () => setTutorListening(false);
-    rec.start();
+  const toggleTutorVoiceLoop = () => {
+    const next = !tutorVoiceLoop;
+    tutorVoiceLoopRef.current = next;
+    setTutorVoiceLoop(next);
+    if (next && !tutorListening && !tutorSpeaking) {
+      setTimeout(() => _startTutorMic(), 300);
+    }
+    if (!next && tutorListening) _stopTutorMic();
   };
 
   // ─────────────────────────────────────────────────────────────────
@@ -995,7 +1106,8 @@ export default function PracticePage() {
             <select
               value={practiceLevel}
               onChange={(e) => {
-                setPracticeLevel(e.target.value);
+                const newLevel = e.target.value;
+                setPracticeLevel(newLevel);
                 // Clear cached AI content so next tab-open re-fetches at new level
                 setDynamicFlashcards(null);
                 setDynamicGrammar(null);
@@ -1003,6 +1115,8 @@ export default function PracticePage() {
                 setDynamicListening(null);
                 setDynamicWritingPrompt(null);
                 setDynamicSpeakingPhrases(null);
+                // Persist chosen level to user profile
+                updateUserProfile({ selected_level: newLevel }).catch(() => {});
               }}
               style={{
                 background: "rgba(99,102,241,0.08)",
@@ -1128,6 +1242,40 @@ export default function PracticePage() {
             >
               <span className="auth-spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
               Generating AI content for you…
+            </div>
+          )}
+
+          {/* ════════════════════════════════
+              AI ERROR BANNER (shared across tabs)
+          ════════════════════════════════ */}
+          {!tabLoading && tabError && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "0.75rem",
+                padding: "0.75rem 1.25rem",
+                background: "rgba(245,158,11,0.08)",
+                border: "1px solid rgba(245,158,11,0.25)",
+                borderRadius: "var(--border-radius)",
+                marginBottom: "1.5rem",
+                color: "#92400e",
+                fontSize: "0.875rem",
+                fontWeight: 600,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                <i className="fas fa-exclamation-triangle" style={{ color: "#f59e0b", flexShrink: 0 }} />
+                <span>{tabError}</span>
+              </div>
+              <button
+                onClick={() => setTabError("")}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#92400e", padding: "0 0.25rem", fontSize: "0.85rem" }}
+                title="Dismiss"
+              >
+                <i className="fas fa-times" />
+              </button>
             </div>
           )}
 
@@ -1270,47 +1418,54 @@ export default function PracticePage() {
                   </p>
                 </div>
 
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "1rem",
-                    marginBottom: "1.5rem",
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                  }}
-                >
+                <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1.5rem", flexWrap: "wrap", alignItems: "center" }}>
+                  {/* Play/Stop button */}
                   <button
-                    className={`btn ${audioPlaying ? "btn-primary" : "btn-outline"}`}
                     onClick={playListeningAudio}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: "0.6rem",
+                      padding: "0.65rem 1.4rem",
+                      borderRadius: 99,
+                      border: "none",
+                      cursor: "pointer",
+                      fontWeight: 700,
+                      fontSize: "0.92rem",
+                      fontFamily: "inherit",
+                      transition: "all 0.2s",
+                      background: audioPlaying
+                        ? "linear-gradient(135deg,#ef4444,#f87171)"
+                        : "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                      color: "white",
+                      boxShadow: audioPlaying
+                        ? "0 4px 14px rgba(239,68,68,0.35)"
+                        : "0 4px 14px rgba(99,102,241,0.35)",
+                    }}
                   >
-                    <i
-                      className={`fas ${audioPlaying ? "fa-stop" : "fa-play"}`}
-                    />
-                    {audioPlaying ? " Stop" : " Play Audio"}
+                    <span style={{
+                      width: 28, height: 28, borderRadius: "50%",
+                      background: "rgba(255,255,255,0.2)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      <i className={`fas ${audioPlaying ? "fa-stop" : "fa-play"}`} style={{ fontSize: "0.75rem" }} />
+                    </span>
+                    {audioPlaying ? "Stop Audio" : "Play Audio"}
+                    {audioPlaying && (
+                      <span style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 16 }}>
+                        {[0.4, 0.7, 1, 0.7, 0.4].map((h, i) => (
+                          <span key={i} style={{ width: 3, height: `${h * 100}%`, background: "rgba(255,255,255,0.8)", borderRadius: 2, animation: `soundWave 0.6s ${i * 0.1}s ease-in-out infinite alternate` }} />
+                        ))}
+                      </span>
+                    )}
                   </button>
+
+                  {/* Transcript toggle */}
                   <button
-                    className="btn btn-outline"
+                    className="btn btn-outline btn-sm"
                     onClick={() => setShowTranscript((s) => !s)}
                   >
-                    <i
-                      className={`fas ${showTranscript ? "fa-eye-slash" : "fa-eye"}`}
-                    />
-                    {showTranscript ? " Hide Transcript" : " Show Transcript"}
+                    <i className={`fas ${showTranscript ? "fa-eye-slash" : "fa-file-alt"}`} />
+                    {showTranscript ? "Hide Transcript" : "Show Transcript"}
                   </button>
-                  {audioPlaying && (
-                    <span
-                      style={{
-                        color: "var(--primary)",
-                        fontSize: "0.88rem",
-                        fontWeight: 600,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.4rem",
-                      }}
-                    >
-                      <i className="fas fa-volume-up" /> Playing…
-                    </span>
-                  )}
                 </div>
 
                 {showTranscript && (
@@ -1380,7 +1535,7 @@ export default function PracticePage() {
                   </button>
                   {listeningResult && (
                     <button
-                      className="btn btn-outline"
+                      className="btn btn-outline btn-sm"
                       onClick={() => {
                         setListeningAnswer(null);
                         setListeningResult("");
@@ -1390,7 +1545,7 @@ export default function PracticePage() {
                         setDynamicListening(null); // triggers fresh AI exercise
                       }}
                     >
-                      <i className="fas fa-sync-alt" /> Try Again (New Exercise)
+                      <i className="fas fa-sync-alt" /> New Exercise
                     </button>
                   )}
                 </div>
@@ -2303,12 +2458,37 @@ export default function PracticePage() {
                   </div>
                 )}
 
+                {/* Voice loop toggle */}
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"0.6rem", padding:"0.45rem 0.75rem", background:"rgba(99,102,241,0.05)", border:"1px solid rgba(99,102,241,0.12)", borderRadius:"10px" }}>
+                  <span style={{ fontSize:"0.8rem", fontWeight:600, color:"var(--text-base)", display:"flex", alignItems:"center", gap:"0.4rem" }}>
+                    <i className="fas fa-infinity" style={{ color:"#6366f1" }} />
+                    Auto voice loop
+                    <span style={{ fontSize:"0.72rem", color:"var(--text-muted)", fontWeight:400 }}>
+                      — mic restarts after AI speaks
+                    </span>
+                  </span>
+                  <button
+                    onClick={toggleTutorVoiceLoop}
+                    style={{ position:"relative", width:42, height:22, background: tutorVoiceLoop ? "#6366f1" : "#cbd5e1", borderRadius:"99px", border:"none", cursor:"pointer", transition:"background .25s", flexShrink:0 }}
+                  >
+                    <span style={{ position:"absolute", top:3, left: tutorVoiceLoop ? 23 : 3, width:16, height:16, background:"#fff", borderRadius:"50%", transition:"left .25s", boxShadow:"0 1px 4px rgba(0,0,0,.2)" }} />
+                  </button>
+                </div>
+
+                {/* Transcribing banner */}
+                {tutorTranscribing && (
+                  <div style={{ display:"flex", alignItems:"center", gap:"0.5rem", padding:"0.5rem 0.75rem", background:"rgba(124,58,237,0.08)", border:"1px solid rgba(124,58,237,0.2)", borderRadius:"10px", marginBottom:"0.5rem", fontSize:"0.82rem", color:"#7c3aed", fontWeight:600 }}>
+                    <span className="auth-spinner" style={{ width:12, height:12, borderWidth:2, borderColor:"rgba(124,58,237,0.3)", borderTopColor:"#7c3aed" }} />
+                    Transcribing your voice…
+                  </div>
+                )}
+
                 {/* Input area */}
                 <div style={{ display: "flex", gap: "0.6rem", alignItems: "flex-end" }}>
                   <textarea
                     rows={2}
-                    placeholder={tutorListening ? "🎤 Listening…" : "Type your message or use the mic…"}
-                    value={tutorListening ? "🎤 Listening…" : tutorInput}
+                    placeholder={tutorListening ? "🎤 Listening… tap mic to send" : tutorTranscribing ? "⏳ Transcribing…" : "Type your message or use the mic…"}
+                    value={tutorListening || tutorTranscribing ? "" : tutorInput}
                     onChange={(e) => setTutorInput(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
@@ -2316,7 +2496,7 @@ export default function PracticePage() {
                         sendTutorChat();
                       }
                     }}
-                    disabled={tutorLoading || tutorListening}
+                    disabled={tutorLoading || tutorListening || tutorTranscribing}
                     style={{
                       flex: 1,
                       padding: "0.75rem 1rem",
@@ -2335,8 +2515,8 @@ export default function PracticePage() {
                   {/* Mic button */}
                   <button
                     onClick={startVoiceInput}
-                    disabled={tutorLoading || tutorListening}
-                    title="Speak your message"
+                    disabled={tutorLoading || tutorTranscribing}
+                    title={tutorListening ? "Tap to stop" : "Speak your message"}
                     style={{
                       width: 46,
                       height: 46,
@@ -2344,13 +2524,14 @@ export default function PracticePage() {
                       border: "none",
                       background: tutorListening ? "#ef4444" : "rgba(99,102,241,0.12)",
                       color: tutorListening ? "#fff" : "var(--primary)",
-                      cursor: tutorLoading ? "not-allowed" : "pointer",
+                      cursor: tutorLoading || tutorTranscribing ? "not-allowed" : "pointer",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       fontSize: "1rem",
                       flexShrink: 0,
                       transition: "background 0.2s",
+                      animation: tutorListening ? "sp-pulse 1.2s infinite" : "none",
                     }}
                   >
                     <i className={`fas ${tutorListening ? "fa-stop" : "fa-microphone"}`} />

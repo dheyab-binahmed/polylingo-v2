@@ -120,7 +120,7 @@ export async function registerUser({
   password,
   preferredLanguage,
 }) {
-  const data = await apiFetch("/auth/register", {
+  return apiFetch("/auth/register", {
     method: "POST",
     body: JSON.stringify({
       email,
@@ -128,6 +128,29 @@ export async function registerUser({
       full_name: name,
       selected_level: "A1",
       preferred_language: preferredLanguage,
+    }),
+  });
+}
+
+/**
+ * Sign in with Google using Firebase ID token.
+ * POST /api/v1/auth/firebase/login
+ * Expected response: { access_token, refresh_token, user }
+ */
+export async function loginWithFirebase({
+  idToken,
+  user: firebaseUser,
+  preferredLanguage,
+  selectedLevel,
+}) {
+  const data = await apiFetch("/auth/firebase/login", {
+    method: "POST",
+    body: JSON.stringify({
+      id_token: idToken,
+      full_name: firebaseUser.displayName,
+      photo_url: firebaseUser.photoURL,
+      preferred_language: preferredLanguage,
+      selected_level: selectedLevel,
     }),
   });
 
@@ -169,11 +192,14 @@ export async function fetchCurrentUser() {
 export async function updateUserProfile(updates) {
   // Normalise to the snake_case field names the backend expects
   const payload = {};
-  if (updates.full_name          !== undefined) payload.full_name          = updates.full_name;
-  if (updates.name               !== undefined) payload.full_name          = updates.name;          // legacy camelCase
-  if (updates.preferred_language !== undefined) payload.preferred_language = updates.preferred_language;
-  if (updates.preferredLanguage  !== undefined) payload.preferred_language = updates.preferredLanguage; // legacy
-  if (updates.selected_level     !== undefined) payload.selected_level     = updates.selected_level;
+  if (updates.full_name !== undefined) payload.full_name = updates.full_name;
+  if (updates.name !== undefined) payload.full_name = updates.name; // legacy camelCase
+  if (updates.preferred_language !== undefined)
+    payload.preferred_language = updates.preferred_language;
+  if (updates.preferredLanguage !== undefined)
+    payload.preferred_language = updates.preferredLanguage; // legacy
+  if (updates.selected_level !== undefined)
+    payload.selected_level = updates.selected_level;
 
   try {
     const data = await apiFetch("/auth/profile", {
@@ -185,7 +211,9 @@ export async function updateUserProfile(updates) {
     return updated;
   } catch (err) {
     // Fallback: merge locally so the UI still reflects the change
-    const stored = JSON.parse(localStorage.getItem("polylingo_auth_user") || "{}");
+    const stored = JSON.parse(
+      localStorage.getItem("polylingo_auth_user") || "{}",
+    );
     const updated = { ...stored, ...payload, ...updates };
     localStorage.setItem("polylingo_auth_user", JSON.stringify(updated));
     return updated;
@@ -354,13 +382,16 @@ export async function uploadAudio(sessionId, audioBlob) {
   formData.append("audio", audioBlob, "recording.webm");
 
   try {
-    const response = await fetch(`${BASE_URL}/api/v1/sessions/${sessionId}/audio`, {
-      method: "POST",
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    const response = await fetch(
+      `${BASE_URL}/api/v1/sessions/${sessionId}/audio`,
+      {
+        method: "POST",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: formData,
       },
-      body: formData,
-    });
+    );
 
     if (!response.ok) {
       const error = await response.json();
@@ -425,11 +456,14 @@ export async function scorePronunciation(
   }
 
   // ─── REAL IMPLEMENTATION ──────────────────────────────────────
-  const response = await fetch(`${BASE_URL}/api/v1/assessment/pronunciation/score`, {
-    method: "POST",
-    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    body: formData, // Don't set Content-Type — browser sets multipart boundary automatically
-  });
+  const response = await fetch(
+    `${BASE_URL}/api/v1/assessment/pronunciation/score`,
+    {
+      method: "POST",
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: formData, // Don't set Content-Type — browser sets multipart boundary automatically
+    },
+  );
 
   if (!response.ok) {
     const error = await response
@@ -488,6 +522,24 @@ export async function getSpeakingReply({ message, history, language }) {
     };
   }
 }
+
+/**
+ * Convert text to speech using ElevenLabs API.
+ * POST /api/v1/assessment/tts
+ * Expected response: { audio: base64_string, content_type: "audio/mpeg" }
+ */
+export const generateSpeech = async (text) => {
+  const response = await fetch(`${BASE_URL}/api/v1/assessment/tts`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${localStorage.getItem("polylingo_token") || localStorage.getItem("access_token") || ""}`,
+    },
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) throw new Error("TTS failed");
+  return response.json();
+};
 
 // ═══════════════════════════════════════════════════════════════
 //  COMMUNITY
@@ -717,6 +769,117 @@ export async function postGroupMessage(groupId, text) {
   }
 }
 
+export async function updateGroup(groupId, data) {
+  try {
+    return await apiFetch(`/community/groups/${groupId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  } catch (err) {
+    console.error("Failed to update group:", err);
+    throw err;
+  }
+}
+
+export async function deleteGroup(groupId) {
+  try {
+    return await apiFetch(`/community/groups/${groupId}`, {
+      method: "DELETE",
+    });
+  } catch (err) {
+    console.error("Failed to delete group:", err);
+    throw err;
+  }
+}
+
+export async function searchGroupUsers(groupId, query) {
+  try {
+    return await apiFetch(
+      `/community/groups/${groupId}/search-users?q=${encodeURIComponent(query)}`,
+    );
+  } catch (err) {
+    console.error("Failed to search group users:", err);
+    return { users: [] };
+  }
+}
+
+export async function inviteToGroup(groupId, userId) {
+  try {
+    return await apiFetch(`/community/groups/${groupId}/invite`, {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId }),
+    });
+  } catch (err) {
+    console.error("Failed to invite user to group:", err);
+    throw err;
+  }
+}
+
+export async function getGroupMembers(groupId) {
+  try {
+    return await apiFetch(`/community/groups/${groupId}/members`);
+  } catch (err) {
+    console.error("Failed to get group members:", err);
+    return { members: [] };
+  }
+}
+
+export async function removeGroupMember(groupId, userId) {
+  try {
+    return await apiFetch(`/community/groups/${groupId}/members/${userId}`, {
+      method: "DELETE",
+    });
+  } catch (err) {
+    console.error("Failed to remove group member:", err);
+    throw err;
+  }
+}
+
+export async function toggleGroupAdmin(groupId, userId, isAdmin) {
+  try {
+    return await apiFetch(`/community/groups/${groupId}/members/${userId}/admin`, {
+      method: "PATCH",
+      body: JSON.stringify({ is_admin: isAdmin }),
+    });
+  } catch (err) {
+    console.error("Failed to toggle group admin:", err);
+    throw err;
+  }
+}
+
+export async function getGroupJoinRequests(groupId) {
+  try {
+    return await apiFetch(`/community/groups/${groupId}/join-requests`);
+  } catch (err) {
+    console.error("Failed to get join requests:", err);
+    return { requests: [] };
+  }
+}
+
+export async function approveGroupJoinRequest(groupId, userId) {
+  try {
+    return await apiFetch(
+      `/community/groups/${groupId}/join-requests/${userId}/approve`,
+      { method: "POST" },
+    );
+  } catch (err) {
+    console.error("Failed to approve join request:", err);
+    throw err;
+  }
+}
+
+export async function rejectGroupJoinRequest(groupId, userId) {
+  try {
+    return await apiFetch(
+      `/community/groups/${groupId}/join-requests/${userId}/reject`,
+      { method: "POST" },
+    );
+  } catch (err) {
+    console.error("Failed to reject join request:", err);
+    throw err;
+  }
+}
+
 /** Post interactions */
 export async function postComment(postId, text) {
   try {
@@ -767,26 +930,42 @@ export async function deletePost(postId) {
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Log a completed practice session.
- * POST /api/v1/practice/session
- * Expected body: { type, language, durationMinutes, score }
+ * Log a completed practice session by bumping the relevant counter
+ * in the user's PracticeProgress row via PUT /api/v1/practice/progress.
+ * (POST /practice/session never existed — this is the correct endpoint.)
  */
 export async function logPracticeSession({
   type,
   language,
-  durationMinutes,
-  score,
+  durationMinutes = 5,
 }) {
   try {
-    return await apiFetch("/practice/session", {
-      method: "POST",
-      body: JSON.stringify({
-        type,
-        language,
-        duration_minutes: durationMinutes,
-        score,
-      }),
-    });
+    // Map session type to the progress field it increments
+    const typeMap = {
+      speaking: { speaking: { sessions: 1, minutes: durationMinutes } },
+      writing: { writing: { submissions: 1 } },
+      grammar: { grammar: { exercises: 1 } },
+      reading: { reading: { articles: 1 } },
+      listening: { listening: { exercises: 1 } },
+      flashcards: { flashcards: { sessions: 1 } },
+    };
+
+    // Fetch current progress first so we can add to it (not overwrite)
+    const current = await fetchPracticeProgress(language).catch(() => null);
+    if (!current) return { success: false };
+
+    const increment = typeMap[type] || {};
+    const merged = { language };
+
+    // Merge increments into current values
+    for (const [section, fields] of Object.entries(increment)) {
+      merged[section] = { ...(current[section] || {}) };
+      for (const [key, delta] of Object.entries(fields)) {
+        merged[section][key] = (merged[section][key] || 0) + delta;
+      }
+    }
+
+    return await savePracticeProgress({ ...current, ...merged, language });
   } catch (err) {
     console.error("Failed to log practice session:", err);
     return { success: false };
@@ -910,21 +1089,27 @@ export async function chatWithTutor({ message, history, language, level }) {
  * }
  * @returns {AbortController} – call .abort() to cancel mid-stream
  */
-export function streamTutorChat({ message, history, language, level }, callbacks = {}) {
+export function streamTutorChat(
+  { message, history, language, level },
+  callbacks = {},
+) {
   const token = localStorage.getItem("polylingo_token");
   const controller = new AbortController();
 
   (async () => {
     try {
-      const response = await fetch(`${BASE_URL}/api/v1/practice/tutor/chat/stream`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      const response = await fetch(
+        `${BASE_URL}/api/v1/practice/tutor/chat/stream`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ message, history, language, level }),
+          signal: controller.signal,
         },
-        body: JSON.stringify({ message, history, language, level }),
-        signal: controller.signal,
-      });
+      );
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -1007,6 +1192,116 @@ export async function savePracticeProgress(stats) {
   } catch (_) {
     return null; // non-critical — localStorage is the fallback
   }
+}
+
+/**
+ * Request a password reset email.
+ * POST /api/v1/auth/forgot-password
+ */
+export async function forgotPassword(email) {
+  return apiFetch("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+/**
+ * Verify email address using the token from the verification email link.
+ * POST /api/v1/auth/verify-email
+ */
+export async function verifyEmail(token) {
+  return apiFetch("/auth/verify-email", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
+}
+
+/**
+ * Verify the 6-digit code sent after registration.
+ * POST /api/v1/auth/verify-code
+ */
+export async function verifyEmailCode(email, code) {
+  return apiFetch("/auth/verify-code", {
+    method: "POST",
+    body: JSON.stringify({ email, code }),
+  });
+}
+
+/**
+ * Resend the 6-digit verification code.
+ * POST /api/v1/auth/resend-code
+ */
+export async function resendVerificationCode(email) {
+  return apiFetch("/auth/resend-code", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+/**
+ * Reset password using the token from the email.
+ * POST /api/v1/auth/reset-password
+ */
+export async function resetPassword(token, newPassword) {
+  return apiFetch("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+}
+
+/**
+ * Change the current user's password.
+ * POST /api/v1/auth/change-password
+ */
+export async function changePassword(currentPassword, newPassword) {
+  return apiFetch("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+}
+
+/**
+ * Save notification preferences.
+ * PUT /api/v1/auth/notification-preferences
+ */
+export async function saveNotificationPreferences(prefs) {
+  return apiFetch("/auth/notification-preferences", {
+    method: "PUT",
+    body: JSON.stringify(prefs),
+  });
+}
+
+/**
+ * Transcribe audio blob via backend Whisper.
+ * POST /api/v1/audio/transcribe
+ * Returns { transcript: string }
+ */
+export async function transcribeAudio(audioBlob, language = "en") {
+  const token = localStorage.getItem("polylingo_token");
+  // Pick extension that matches the actual blob type so backend accepts it
+  const ext = audioBlob.type.includes("mp4")
+    ? "mp4"
+    : audioBlob.type.includes("ogg")
+      ? "ogg"
+      : audioBlob.type.includes("m4a")
+        ? "m4a"
+        : "webm";
+  const formData = new FormData();
+  formData.append("audio", audioBlob, `recording.${ext}`);
+  formData.append("language", language);
+  const res = await fetch(`${BASE_URL}/api/v1/audio/transcribe`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || "Transcription failed");
+  }
+  return res.json();
 }
 
 // Export for testing/debugging

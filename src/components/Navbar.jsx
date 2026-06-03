@@ -98,7 +98,7 @@ export default function Navbar() {
             <div className="mobile-sidebar__profile">
               <div className="mobile-sidebar__avatar">{initials}</div>
               <div>
-                <div className="mobile-sidebar__name">{user.name || 'Learner'}</div>
+                <div className="mobile-sidebar__name">{user.full_name || user.name || 'Learner'}</div>
                 <div className="mobile-sidebar__email">{user.email}</div>
               </div>
             </div>
@@ -141,10 +141,10 @@ export default function Navbar() {
             )}
           </nav>
 
-          {user?.preferredLanguage && (
+          {(user?.preferred_language || user?.preferredLanguage) && (
             <div className="mobile-sidebar__lang">
               <i className="fas fa-language" />
-              <span>Learning: <strong>{user.preferredLanguage}</strong></span>
+              <span>Learning: <strong>{user.preferred_language || user.preferredLanguage}</strong></span>
             </div>
           )}
         </div>

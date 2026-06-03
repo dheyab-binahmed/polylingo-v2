@@ -294,7 +294,7 @@ export default function ResultsStep() {
             margin: "0 auto",
           }}
         >
-          Based on your performance across all 4 assessment areas
+          Based on your performance across all assessment areas
         </p>
         {!hasPronunciationResult && (
           <p
