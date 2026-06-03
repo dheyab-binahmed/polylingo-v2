@@ -173,3 +173,11 @@ export function on(event, cb) {
 export function off(event, cb) {
   _removeListener(event, cb);
 }
+
+export function onFriendRequest(cb) {
+  return _addListener("friend:request", cb);
+}
+
+export function offFriendRequest(cb) {
+  _removeListener("friend:request", cb);
+}

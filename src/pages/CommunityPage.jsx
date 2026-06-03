@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import CommunityStyles from "../styles/CommunityStyles";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import {
   fetchCommunityPosts,
   createPost as apiCreatePost,
@@ -58,6 +59,7 @@ const asList = (value) => (Array.isArray(value) ? value : []);
 export default function CommunityPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const [posts, setPosts] = useState([]);
   const [groups, setGroups] = useState([]);
   const [partners, setPartners] = useState([]);
@@ -100,6 +102,30 @@ export default function CommunityPage() {
     // Check for pending call in navigation state
     if (location.state?.pendingCall) {
       setPendingIncomingCall(location.state.pendingCall);
+    }
+
+    // Open DM when navigated from FriendsPage with openDM state
+    if (location.state?.openDM) {
+      setDmPartner(location.state.openDM);
+      setActiveGroup(null);
+    }
+
+    // Open DM and trigger call when navigated from FriendsPage with startCall state
+    if (location.state?.startCall) {
+      const sc = location.state.startCall;
+      const name = sc.name || "";
+      setDmPartner({
+        id: sc.id,
+        name,
+        initials: name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) || "??",
+        online: true,
+        color: "#8b5cf6",
+        languages: [],
+        connected: true,
+        autoCall: true,
+        autoCallType: sc.callType || "video",
+      });
+      setActiveGroup(null);
     }
 
     // Also check sessionStorage as fallback
@@ -1434,6 +1460,7 @@ export default function CommunityPage() {
             onOpenDM={openDM}
             onLeaveGroup={handleLeaveGroup}
             onDeleteGroup={handleDeleteGroup}
+            currentUserId={user?.id}
           />
         )}
       </ErrorBoundary>
@@ -1443,6 +1470,8 @@ export default function CommunityPage() {
             partner={dmPartner}
             onClose={() => setDmPartner(null)}
             pendingIncomingCall={pendingIncomingCall}
+            autoCall={dmPartner.autoCall || false}
+            autoCallType={dmPartner.autoCallType || "video"}
           />
         )}
       </ErrorBoundary>

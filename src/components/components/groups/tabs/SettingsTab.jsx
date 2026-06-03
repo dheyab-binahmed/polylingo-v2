@@ -145,7 +145,7 @@ const SettingsTab = ({ group, notify, onUpdate, onLeave, onDelete }) => {
       )}
 
       {/* ── Delete Group (owner only) ── */}
-      <div style={{ background:"rgba(239,68,68,.05)", borderRadius:16, padding:20, border:"1.5px solid rgba(239,68,68,.2)" }}>
+      {group.isOwner && <div style={{ background:"rgba(239,68,68,.05)", borderRadius:16, padding:20, border:"1.5px solid rgba(239,68,68,.2)" }}>
         <div style={{ fontWeight:700, fontSize:15, color:"#ef4444", marginBottom:8 }}>🗑 Delete Group</div>
         <div style={{ fontSize:13, color:"var(--text-muted)", marginBottom:14 }}>
           Permanently delete this group and all its messages, resources, and events. This cannot be undone.
@@ -169,7 +169,7 @@ const SettingsTab = ({ group, notify, onUpdate, onLeave, onDelete }) => {
             </div>
           </div>
         )}
-      </div>
+      </div>}
 
     </div>
   );

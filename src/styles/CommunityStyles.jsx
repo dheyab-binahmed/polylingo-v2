@@ -263,6 +263,12 @@ const CommunityStyles = () => (
       .plg-main { padding: 10px 8px; }
       .partner-grid { grid-template-columns: 1fr; }
     }
+
+    /* ── Hero stats: 2×2 on mobile ── */
+    @media (max-width: 480px) {
+      .stats-row { display: grid !important; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .feed-search { width: 100% !important; }
+    }
   `}</style>
 );
 

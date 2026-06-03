@@ -281,6 +281,18 @@ export async function acceptFriendRequest(request_id) {
   }
 }
 
+export async function rejectFriendRequest(request_id) {
+  try {
+    return await apiFetch("/friends/reject", {
+      method: "POST",
+      body: JSON.stringify({ request_id }),
+    });
+  } catch (err) {
+    console.error("Failed to reject friend request:", err);
+    throw err;
+  }
+}
+
 export async function fetchFriends() {
   try {
     return await apiFetch("/friends/list");

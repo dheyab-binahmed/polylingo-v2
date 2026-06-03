@@ -7,8 +7,8 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import { updatePresence } from "./services/api";
-import { onCallIncoming, offCallIncoming, endCall } from "./services/socket";
+import { updatePresence, fetchFriendRequests } from "./services/api";
+import { onCallIncoming, offCallIncoming, endCall, onFriendRequest, offFriendRequest } from "./services/socket";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import HomePage from "./pages/HomePage";
@@ -53,8 +53,10 @@ export default function App() {
 
 function AppContent() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [globalIncomingCall, setGlobalIncomingCall] = useState(null);
   const globalRingRef = useRef(null);
+  const [friendRequestCount, setFriendRequestCount] = useState(0);
 
   // ── Restore dark mode preference on first load ───────────────────────
   useEffect(() => {
@@ -80,6 +82,29 @@ function AppContent() {
     return () => {
       updatePresence(false).catch(() => {});
     };
+  }, []);
+
+  // ── Friend request count — fetch on login + poll every 30s ───────────
+  useEffect(() => {
+    if (!user) return;
+    const load = async () => {
+      try {
+        const data = await fetchFriendRequests();
+        setFriendRequestCount(data?.incoming?.length || 0);
+      } catch (_) {}
+    };
+    load();
+    const interval = setInterval(load, 30000);
+    return () => clearInterval(interval);
+  }, [user]);
+
+  // ── Real-time friend request notifications ─────────────────────────────
+  useEffect(() => {
+    const handleFriendRequest = () => {
+      setFriendRequestCount((c) => c + 1);
+    };
+    onFriendRequest(handleFriendRequest);
+    return () => offFriendRequest(handleFriendRequest);
   }, []);
 
   // ── Global incoming call listener ────────────────────────────────────
@@ -156,7 +181,10 @@ function AppContent() {
           onDecline={handleDeclineGlobalCall}
         />
       )}
-      <Navbar />
+      <Navbar
+        friendRequestCount={friendRequestCount}
+        onResetFriendCount={() => setFriendRequestCount(0)}
+      />
       <main className="main-content">
         <Routes>
           {/* Public Routes */}

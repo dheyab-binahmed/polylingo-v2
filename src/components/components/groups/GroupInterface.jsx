@@ -14,7 +14,7 @@ import { updateGroup, deleteGroup } from "../../../services/api";
 // Delete group : DELETE /api/community/groups/:id
 // ─────────────────────────────────────────────────────────────────────────────
 
-const TABS = [
+const ALL_TABS = [
   { id: "chat", icon: "💬", label: "Chat" },
   { id: "members", icon: "👥", label: "Members" },
   { id: "video", icon: "📹", label: "Video Room" },
@@ -30,12 +30,20 @@ const GroupInterface = ({
   onOpenDM,
   onLeaveGroup,
   onDeleteGroup,
+  currentUserId: currentUserIdProp,
 }) => {
   const [tab, setTab] = useState("chat");
   const [unread, setUnread] = useState(0);
   const [groupData, setGroupData] = useState(group);
 
-  const currentUserId = (() => {
+  const isOwner = groupData.isOwner;
+  const isAdmin = groupData.isAdmin || isOwner;
+  const canAccessGroup = groupData.joined || isOwner || isAdmin;
+
+  // Only show Settings tab to admins/owners
+  const TABS = ALL_TABS.filter((t) => t.id !== "settings" || isOwner || isAdmin);
+
+  const currentUserId = currentUserIdProp ?? (() => {
     try {
       return JSON.parse(localStorage.getItem("polylingo_auth_user") || "{}").id;
     } catch (_) {
@@ -302,50 +310,92 @@ const GroupInterface = ({
             position: "relative",
           }}
         >
-          {tab === "chat" && (
-            <ChatTab
-              group={groupData}
-              notify={notify}
-              onOpenDM={onOpenDM}
-              onStartCall={startCall}
-              onNewMessage={handleNewMessage}
-            />
-          )}
-          {tab === "members" && (
-            <MembersTab
-              group={groupData}
-              notify={notify}
-              onOpenDM={onOpenDM}
-              currentUserId={currentUserId}
-            />
-          )}
-          {tab === "video" && (
-            <VideoTab
-              group={groupData}
-              onLeave={() => {
-                setTab("chat");
-                notify("You left the call.", "info");
+          {/* Private group guard — show pending message instead of tabs */}
+          {groupData.is_private && !canAccessGroup ? (
+            <div
+              style={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "40px 24px",
+                textAlign: "center",
+                gap: 14,
               }}
-            />
-          )}
-          {tab === "resources" && (
-            <ResourcesTab group={groupData} notify={notify} />
-          )}
-          {tab === "events" && (
-            <EventsTab
-              group={groupData}
-              notify={notify}
-              onStartCall={startCall}
-            />
-          )}
-          {tab === "settings" && (
-            <SettingsTab
-              group={groupData}
-              notify={notify}
-              onUpdate={handleUpdate}
-              onLeave={handleLeave}
-              onDelete={handleDelete}
-            />
+            >
+              <div style={{ fontSize: 48 }}>🔒</div>
+              <div style={{ fontWeight: 800, fontSize: 18, color: "var(--text-base)" }}>
+                Private Group
+              </div>
+              <div style={{ fontSize: 14, color: "var(--text-muted)", maxWidth: 320, lineHeight: 1.6 }}>
+                {groupData.pendingRequest
+                  ? "Your join request is pending approval from a group admin."
+                  : "This is a private group. Request to join to access the content."}
+              </div>
+              {groupData.pendingRequest && (
+                <span
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 700,
+                    background: "#fef3c7",
+                    color: "#92400e",
+                    padding: "6px 16px",
+                    borderRadius: 20,
+                  }}
+                >
+                  ⏳ Pending Approval
+                </span>
+              )}
+            </div>
+          ) : (
+            <>
+              {tab === "chat" && (
+                <ChatTab
+                  group={groupData}
+                  notify={notify}
+                  onOpenDM={onOpenDM}
+                  onStartCall={startCall}
+                  onNewMessage={handleNewMessage}
+                />
+              )}
+              {tab === "members" && (
+                <MembersTab
+                  group={groupData}
+                  notify={notify}
+                  onOpenDM={onOpenDM}
+                  currentUserId={currentUserId}
+                />
+              )}
+              {tab === "video" && (
+                <VideoTab
+                  group={groupData}
+                  onLeave={() => {
+                    setTab("chat");
+                    notify("You left the call.", "info");
+                  }}
+                />
+              )}
+              {tab === "resources" && (
+                <ResourcesTab group={groupData} notify={notify} />
+              )}
+              {tab === "events" && (
+                <EventsTab
+                  group={groupData}
+                  notify={notify}
+                  onStartCall={startCall}
+                />
+              )}
+              {(tab === "settings" && (isOwner || isAdmin)) && (
+                <SettingsTab
+                  group={groupData}
+                  notify={notify}
+                  onUpdate={handleUpdate}
+                  onLeave={handleLeave}
+                  onDelete={handleDelete}
+                />
+              )}
+            </>
           )}
         </div>
       </div>

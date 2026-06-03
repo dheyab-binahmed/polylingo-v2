@@ -139,11 +139,23 @@ const MembersTab = ({ group, notify, onOpenDM, currentUserId }) => {
       id: m.id,
       name: m.name,
       initials: m.initials,
-      color: group.color,
       online: m.status === "online",
-      bio: "",
+      color: "#8b5cf6",
       languages: [],
       connected: true,
+    });
+  };
+
+  const handleCallMember = (m) => {
+    onOpenDM?.({
+      id: m.id,
+      name: m.name,
+      initials: m.initials,
+      online: m.status === "online",
+      color: "#8b5cf6",
+      languages: [],
+      connected: true,
+      autoCall: true,
     });
   };
 
@@ -452,6 +464,14 @@ const MembersTab = ({ group, notify, onOpenDM, currentUserId }) => {
                       title={`Message ${m.name}`}
                     >
                       💬
+                    </button>
+                    <button
+                      className="btn-ghost"
+                      style={{ padding: "5px 9px", fontSize: 12, borderColor: "#10b981", color: "#10b981" }}
+                      onClick={() => handleCallMember(m)}
+                      title={`Call ${m.name}`}
+                    >
+                      📞
                     </button>
                     {/* Promote/demote admin — only group owner can do this */}
                     {group.isOwner && !isOwner && (

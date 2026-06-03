@@ -73,6 +73,8 @@ export default function DMModal({
   currentUser: currentUserProp,
   onClose,
   pendingIncomingCall,
+  autoCall = false,
+  autoCallType = "video",
 }) {
   const auth = useContext(AuthContext);
   const currentUser = currentUserProp || auth?.user || getStoredUser();
@@ -262,6 +264,17 @@ export default function DMModal({
   useEffect(() => {
     cleanupCallRef.current = cleanupCall;
   }, [cleanupCall]);
+
+  // ── Auto-start outbound call when opened from FriendsPage "Call" button ──
+  useEffect(() => {
+    if (!autoCall) return;
+    const timer = setTimeout(() => {
+      startCall(autoCallType);
+    }, 500);
+    return () => clearTimeout(timer);
+    // Only fires once on mount — intentional empty-dep array
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Auto-accept pending incoming call ──────────────────────────────────
   useEffect(() => {

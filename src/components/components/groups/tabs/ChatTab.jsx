@@ -47,14 +47,20 @@ const ChatTab = ({ group, notify, onOpenDM, onStartCall, onNewMessage }) => {
   const fileRef = useRef(null);
   const inputRef = useRef(null);
   const currentUserIdRef = useRef(null);
+  const currentUserInitialsRef = useRef("ME");
 
-  // Get current user ID from localStorage on mount
+  // Get current user ID and initials from localStorage on mount
   useEffect(() => {
     try {
       const authUser = JSON.parse(
         localStorage.getItem("polylingo_auth_user") || "{}",
       );
       currentUserIdRef.current = authUser.id;
+      const name = authUser.full_name || authUser.name || authUser.email || "";
+      if (name) {
+        currentUserInitialsRef.current =
+          name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) || "ME";
+      }
     } catch (_) {
       // ignore
     }
@@ -151,7 +157,7 @@ const ChatTab = ({ group, notify, onOpenDM, onStartCall, onNewMessage }) => {
       id: tempId,
       tempId,
       sender: "You",
-      initials: "ME",
+      initials: currentUserInitialsRef.current || "ME",
       text: text || null,
       image: imagePreview || null,
       time: now,
