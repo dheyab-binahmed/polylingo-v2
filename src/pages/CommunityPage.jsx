@@ -21,6 +21,7 @@ import {
 } from "../services/api";
 import { off, on, onDmMessage } from "../services/socket";
 import MessageToast from "../components/common/MessageToast";
+import ErrorBoundary from "../components/common/ErrorBoundary";
 import ToastContainer from "../components/components/ui/ToastContainer";
 import Section from "../components/components/ui/Section";
 import Hero from "../components/components/Hero";
@@ -643,19 +644,26 @@ export default function CommunityPage() {
 
   const handleJoinGroup = (id) => {
     (async () => {
-      setGroups((g) =>
-        g.map((gr) =>
-          gr.id === id
-            ? { ...gr, joined: true, members: (gr.members || 0) + 1 }
-            : gr,
-        ),
-      );
       try {
-        await apiJoinGroup(id);
-        notify(
-          `Joined "${groups.find((g) => g.id === id)?.name}"! 🎉`,
-          "success",
-        );
+        const res = await apiJoinGroup(id);
+        const groupName = groups.find((g) => g.id === id)?.name;
+        if (res?.status === "pending") {
+          setGroups((g) =>
+            g.map((gr) =>
+              gr.id === id ? { ...gr, pendingRequest: true } : gr,
+            ),
+          );
+          notify(`Join request sent to "${groupName}". Waiting for admin approval. ⏳`, "info");
+        } else {
+          setGroups((g) =>
+            g.map((gr) =>
+              gr.id === id
+                ? { ...gr, joined: true, pendingRequest: false, members: (gr.members || 0) + 1 }
+                : gr,
+            ),
+          );
+          notify(`Joined "${groupName}"! 🎉`, "success");
+        }
       } catch (err) {
         notify("Failed to join group", "danger");
       }
@@ -750,7 +758,7 @@ export default function CommunityPage() {
         }
       />
 
-      <main style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 24px" }}>
+      <main className="plg-main">
         <Hero
           onCreateGroup={() => setShowCreateGroup(true)}
           onFindPartners={() => scrollTo("partners")}
@@ -1134,13 +1142,7 @@ export default function CommunityPage() {
             )}
             {/* BACKEND INTEGRATION: GET /api/community/partners?lang=&search=&page= */}
             {filteredPartners.length > 0 ? (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(230px,1fr))",
-                  gap: 16,
-                }}
-              >
+              <div className="partner-grid">
                 {filteredPartners.map((p) =>
                   p.status === "pending" &&
                   p.request_direction === "outgoing" ? (
@@ -1415,30 +1417,35 @@ export default function CommunityPage() {
       </button>
 
       {/* Modals */}
-      {showCreateGroup && (
-        <CreateGroupModel
-          onClose={() => setShowCreateGroup(false)}
-          onCreate={handleCreateGroup}
-        />
-      )}
-      {activeGroup && (
-        <GroupInterface
-          group={activeGroup}
-          onClose={() => setActiveGroup(null)}
-          notify={notify}
-          onOpenDM={openDM}
-          onLeaveGroup={handleLeaveGroup}
-          onDeleteGroup={handleDeleteGroup}
-        />
-      )}
-      {dmPartner && (
-        <DMModal
-          partner={dmPartner}
-          onClose={() => setDmPartner(null)}
-          onCall={handleCall}
-          pendingIncomingCall={pendingIncomingCall}
-        />
-      )}
+      <ErrorBoundary>
+        {showCreateGroup && (
+          <CreateGroupModel
+            onClose={() => setShowCreateGroup(false)}
+            onCreate={handleCreateGroup}
+          />
+        )}
+      </ErrorBoundary>
+      <ErrorBoundary>
+        {activeGroup && (
+          <GroupInterface
+            group={activeGroup}
+            onClose={() => setActiveGroup(null)}
+            notify={notify}
+            onOpenDM={openDM}
+            onLeaveGroup={handleLeaveGroup}
+            onDeleteGroup={handleDeleteGroup}
+          />
+        )}
+      </ErrorBoundary>
+      <ErrorBoundary>
+        {dmPartner && (
+          <DMModal
+            partner={dmPartner}
+            onClose={() => setDmPartner(null)}
+            pendingIncomingCall={pendingIncomingCall}
+          />
+        )}
+      </ErrorBoundary>
     </div>
   );
 }

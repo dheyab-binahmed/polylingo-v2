@@ -203,8 +203,9 @@ const ChatTab = ({ group, notify, onOpenDM, onStartCall, onNewMessage }) => {
 
   return (
     <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-      {/* ── Members sidebar ── */}
+      {/* ── Members sidebar (hidden on mobile via .chat-sidebar media query) ── */}
       <div
+        className="chat-sidebar"
         style={{
           width: 196,
           borderRight: "1px solid var(--border)",

@@ -815,6 +815,71 @@ export async function inviteToGroup(groupId, userId) {
   }
 }
 
+export async function getGroupMembers(groupId) {
+  try {
+    return await apiFetch(`/community/groups/${groupId}/members`);
+  } catch (err) {
+    console.error("Failed to get group members:", err);
+    return { members: [] };
+  }
+}
+
+export async function removeGroupMember(groupId, userId) {
+  try {
+    return await apiFetch(`/community/groups/${groupId}/members/${userId}`, {
+      method: "DELETE",
+    });
+  } catch (err) {
+    console.error("Failed to remove group member:", err);
+    throw err;
+  }
+}
+
+export async function toggleGroupAdmin(groupId, userId, isAdmin) {
+  try {
+    return await apiFetch(`/community/groups/${groupId}/members/${userId}/admin`, {
+      method: "PATCH",
+      body: JSON.stringify({ is_admin: isAdmin }),
+    });
+  } catch (err) {
+    console.error("Failed to toggle group admin:", err);
+    throw err;
+  }
+}
+
+export async function getGroupJoinRequests(groupId) {
+  try {
+    return await apiFetch(`/community/groups/${groupId}/join-requests`);
+  } catch (err) {
+    console.error("Failed to get join requests:", err);
+    return { requests: [] };
+  }
+}
+
+export async function approveGroupJoinRequest(groupId, userId) {
+  try {
+    return await apiFetch(
+      `/community/groups/${groupId}/join-requests/${userId}/approve`,
+      { method: "POST" },
+    );
+  } catch (err) {
+    console.error("Failed to approve join request:", err);
+    throw err;
+  }
+}
+
+export async function rejectGroupJoinRequest(groupId, userId) {
+  try {
+    return await apiFetch(
+      `/community/groups/${groupId}/join-requests/${userId}/reject`,
+      { method: "POST" },
+    );
+  } catch (err) {
+    console.error("Failed to reject join request:", err);
+    throw err;
+  }
+}
+
 /** Post interactions */
 export async function postComment(postId, text) {
   try {

@@ -202,6 +202,8 @@ export default function DMModal({
   }, [stopTimer]);
 
   // ── Connection timeout — if ICE never reaches "connected" after 15 seconds ──
+  // NOTE: uses cleanupCallRef (a stable ref) to avoid accessing hangUp before
+  // it is declared further down in the component body.
   useEffect(() => {
     if (!callActive) return;
     const timeout = setTimeout(() => {
@@ -211,15 +213,12 @@ export default function DMModal({
         pc.current.iceConnectionState !== "completed"
       ) {
         console.warn("Call connection timed out");
-        const notify = typeof window !== "undefined" && window.Notification;
-        if (notify) {
-          alert("Call connection failed. Please try again.");
-        }
-        hangUp();
+        alert("Call connection failed. Please try again.");
+        cleanupCallRef.current?.({ notify: true });
       }
     }, 15000);
     return () => clearTimeout(timeout);
-  }, [callActive, hangUp]);
+  }, [callActive]);
 
   const stopRinging = useCallback(() => {
     if (!ringingRef.current) return;

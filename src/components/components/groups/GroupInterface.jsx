@@ -35,6 +35,14 @@ const GroupInterface = ({
   const [unread, setUnread] = useState(0);
   const [groupData, setGroupData] = useState(group);
 
+  const currentUserId = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("polylingo_auth_user") || "{}").id;
+    } catch (_) {
+      return null;
+    }
+  })();
+
   // Track current tab in a ref so handleNewMessage always sees latest value
   const tabRef = useRef(tab);
   useEffect(() => {
@@ -243,8 +251,9 @@ const GroupInterface = ({
               className={`gtab ${tab === t.id ? "active" : ""}`}
               onClick={() => handleTabChange(t.id)}
               style={{ position: "relative" }}
+              title={t.label}
             >
-              {t.icon} {t.label}
+              {t.icon} <span className="gtab-label">{t.label}</span>
               {t.id === "chat" && unread > 0 && (
                 <span
                   style={{
@@ -303,7 +312,12 @@ const GroupInterface = ({
             />
           )}
           {tab === "members" && (
-            <MembersTab group={groupData} notify={notify} onOpenDM={onOpenDM} />
+            <MembersTab
+              group={groupData}
+              notify={notify}
+              onOpenDM={onOpenDM}
+              currentUserId={currentUserId}
+            />
           )}
           {tab === "video" && (
             <VideoTab

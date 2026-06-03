@@ -127,6 +127,45 @@ export function sendGroupTyping(groupId, typing) {
   socket?.emit("group:typing", { group_id: groupId, typing });
 }
 
+// ── Group video call signaling ────────────────────────────────────────────────
+
+export function sendGroupCallJoin(groupId) {
+  socket?.emit("group:call:join", { group_id: groupId });
+}
+
+export function sendGroupCallLeave(groupId) {
+  socket?.emit("group:call:leave", { group_id: groupId });
+}
+
+export function sendGroupCallOffer(groupId, toUserId, offer) {
+  socket?.emit("group:call:offer", { group_id: groupId, to: toUserId, offer });
+}
+
+export function sendGroupCallAnswer(toUserId, answer) {
+  socket?.emit("group:call:answer", { to: toUserId, answer });
+}
+
+export function sendGroupCallIce(toUserId, candidate) {
+  socket?.emit("group:call:ice", { to: toUserId, candidate });
+}
+
+export function onGroupCallPeerJoined(cb) { return _addListener("group:call:peer_joined", cb); }
+export function offGroupCallPeerJoined(cb) { _removeListener("group:call:peer_joined", cb); }
+
+export function onGroupCallPeerLeft(cb) { return _addListener("group:call:peer_left", cb); }
+export function offGroupCallPeerLeft(cb) { _removeListener("group:call:peer_left", cb); }
+
+export function onGroupCallOffer(cb) { return _addListener("group:call:offer", cb); }
+export function offGroupCallOffer(cb) { _removeListener("group:call:offer", cb); }
+
+export function onGroupCallAnswer(cb) { return _addListener("group:call:answer", cb); }
+export function offGroupCallAnswer(cb) { _removeListener("group:call:answer", cb); }
+
+export function onGroupCallIce(cb) { return _addListener("group:call:ice", cb); }
+export function offGroupCallIce(cb) { _removeListener("group:call:ice", cb); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function on(event, cb) {
   return _addListener(event, cb);
 }
