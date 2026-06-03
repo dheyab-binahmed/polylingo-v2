@@ -3,7 +3,8 @@ import {
   getAuth,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   signOut,
   onAuthStateChanged,
@@ -85,15 +86,24 @@ export const createEmailAccount = async ({
 };
 
 /**
- * Sign in with Google
- * Returns: { idToken, user: { uid, email, displayName, photoURL } }
+ * Initiate Google sign-in via redirect.
+ * The page will navigate away; call getGoogleRedirectResult() on return.
  */
-export const signInWithGoogle = async () => {
+export const signInWithGoogle = () => {
+  return signInWithRedirect(auth, googleProvider);
+};
+
+/**
+ * Call on app load to pick up the result of a Google redirect sign-in.
+ * Returns: { idToken, user } or null if no redirect was pending.
+ */
+export const getGoogleRedirectResult = async () => {
   try {
-    const result = await signInWithPopup(auth, googleProvider);
+    const result = await getRedirectResult(auth);
+    if (!result) return null;
     return buildFirebaseSession(result.user);
   } catch (error) {
-    console.error("Google sign-in error:", error);
+    console.error("Google redirect result error:", error);
     throw error;
   }
 };
