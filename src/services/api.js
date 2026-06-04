@@ -1,6 +1,6 @@
 /**
  * ─────────────────────────────────────────────────────────────
- *  PolyLingo API Service Layer - Connected to Backend
+ *  Fluax API Service Layer - Connected to Backend
  *  All HTTP calls live here. Components / contexts import
  *  named functions — never write fetch() directly in a component.
  * ─────────────────────────────────────────────────────────────

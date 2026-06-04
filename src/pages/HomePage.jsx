@@ -12,7 +12,7 @@ export default function HomePage() {
             <div className="hero-text">
               <h1 className="animate-fadeInUp">Step Into A New Era of Language Learning</h1>
               <p className="animate-fadeInUp animation-delay-1">
-                PolyLingo combines AI-powered technology with proven language learning methods to help you achieve fluency faster than ever before.
+                Fluax combines AI-powered technology with proven language learning methods to help you achieve fluency faster than ever before.
               </p>
               <div className="hero-features animate-fadeInUp animation-delay-2">
                 <div className="hero-feature"><i className="fas fa-comments" /><span>Practice real-world conversations with AI</span></div>
@@ -47,7 +47,7 @@ export default function HomePage() {
       <section style={{ padding: '5rem 0', background: 'white' }}>
         <div className="container">
           <div className="section-title" style={{ textAlign: 'center', marginBottom: '3rem' }}>
-            <h2>Why Choose PolyLingo?</h2>
+            <h2>Why Choose Fluax?</h2>
             <p>Our unique approach combines cutting-edge technology with proven learning methods</p>
           </div>
           <div className="dashboard-sections">

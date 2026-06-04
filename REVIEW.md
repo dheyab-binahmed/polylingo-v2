@@ -1,7 +1,7 @@
-# PolyLingo v2 — Senior Frontend Code Review
+# Fluax v2 — Senior Frontend Code Review
 
 > Reviewed by: Claude (Senior Frontend Developer)
-> Project: `polylingo-v2` — React 19 + Vite + React Router 7
+> Project: `fluax-v2` — React 19 + Vite + React Router 7
 
 ---
 
@@ -256,7 +256,7 @@ const { execute: submitLogin, loading, error } = useAsync(login);
 ## 6. File Structure After Review
 
 ```
-polylingo-v2/
+fluax-v2/
 ├── .env.example                   ← NEW — copy to .env.local
 ├── src/
 │   ├── services/

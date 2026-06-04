@@ -6,7 +6,7 @@ export default function Footer() {
           <div>
             <a href="#" className="logo" style={{ color: 'white', marginBottom: '1.5rem', display: 'inline-flex' }}>
               <div className="logo-icon"><i className="fas fa-language" /></div>
-              <span>PolyLingo</span>
+              <span>Fluax</span>
             </a>
             <p style={{ color: 'var(--gray-light)', marginBottom: '1.5rem' }}>The future of language learning, powered by AI.</p>
             <div className="social-links">
@@ -26,7 +26,7 @@ export default function Footer() {
           </div>
         </div>
         <div className="footer-bottom">
-          <p>&copy; {new Date().getFullYear()} PolyLingo. All rights reserved. | CMSE 405 - Group 13 Project</p>
+          <p>&copy; {new Date().getFullYear()} Fluax. All rights reserved. | CMSE 405 - Group 13 Project</p>
         </div>
       </div>
     </footer>
