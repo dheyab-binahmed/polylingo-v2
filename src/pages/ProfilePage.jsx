@@ -518,7 +518,7 @@ export default function ProfilePage() {
                 <div style={{ fontSize: '0.73rem', color: 'var(--text-faint)', fontWeight: 500 }}>Progress</div>
               </div>
               <div style={{ background: 'var(--bg-subtle)', borderRadius: '12px', padding: '0.75rem', textAlign: 'center' }}>
-                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#10b981' }}>{user?.streak ?? 0}</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#10b981' }}>{profileStats.streak ?? user?.streak ?? 0}</div>
                 <div style={{ fontSize: '0.73rem', color: 'var(--text-faint)', fontWeight: 500 }}>Streak</div>
               </div>
             </div>

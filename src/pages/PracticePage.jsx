@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import {
   logPracticeSession,
@@ -32,15 +33,39 @@ const fmt = (s) =>
     .toString()
     .padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
 
-function speakTTS(text, lang, onStart, onEnd) {
-  // BACKEND INTEGRATION: Replace with pre-recorded audioUrl from API
-  // const audio = new Audio(phrase.audioUrl); audio.play()
-  if (!("speechSynthesis" in window)) {
-    onEnd?.();
-    return;
-  }
-  window.speechSynthesis.cancel();
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
+async function speakTTS(text, lang, onStart, onEnd) {
+  // Try ElevenLabs via backend first, fall back to browser TTS
+  try {
+    const token = localStorage.getItem("polylingo_token");
+    const res = await fetch(`${BASE_URL}/api/v1/practice/tts`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ text }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.audioBase64) {
+        const audio = new Audio(`data:audio/mp3;base64,${data.audioBase64}`);
+        onStart?.();
+        audio.onended = () => onEnd?.();
+        audio.onerror = () => { _browserSpeak(text, lang, onStart, onEnd); };
+        await audio.play();
+        return;
+      }
+    }
+  } catch (_) {}
+  // Browser TTS fallback
+  _browserSpeak(text, lang, onStart, onEnd);
+}
+
+function _browserSpeak(text, lang, onStart, onEnd) {
+  if (!("speechSynthesis" in window)) { onEnd?.(); return; }
+  window.speechSynthesis.cancel();
   const doSpeak = () => {
     const utt = new SpeechSynthesisUtterance(text.replace(/"/g, ""));
     utt.lang = lang || "en-US";
@@ -48,18 +73,15 @@ function speakTTS(text, lang, onStart, onEnd) {
     utt.pitch = 1;
     utt.volume = 0.9;
     const voices = window.speechSynthesis.getVoices();
-    // Pick a voice matching the language, then fall back gracefully
-    const v =
-      voices.find((v) => v.lang === lang) ||
-      voices.find((v) => v.lang.startsWith(lang.split("-")[0])) ||
-      voices[0];
+    const v = voices.find((v) => v.lang === lang)
+           || voices.find((v) => v.lang.startsWith((lang || "en").split("-")[0]))
+           || voices[0];
     if (v) utt.voice = v;
     utt.onstart = () => onStart?.();
-    utt.onend = () => onEnd?.();
+    utt.onend   = () => onEnd?.();
     utt.onerror = () => onEnd?.();
     window.speechSynthesis.speak(utt);
   };
-
   const voices = window.speechSynthesis.getVoices();
   if (voices.length > 0) {
     doSpeak();
@@ -103,7 +125,7 @@ export default function PracticePage() {
   const { user, updateUser } = useAuth();
 
   // Award minutes and update user stats after a completed practice session
-  const awardPracticeMinutes = async (type, minutes = 5) => {
+  const awardPracticeMinutes = async (type, minutes = 5, score = null) => {
     // 1. Increment todayMinutes in local stats state + persist
     setPracticeStats((prev) => {
       const next = { ...prev, todayMinutes: (prev.todayMinutes || 0) + minutes };
@@ -120,7 +142,7 @@ export default function PracticePage() {
         type,
         language: lang,
         durationMinutes: minutes,
-        score: 7,
+        score: score ?? undefined,
       });
     } catch (_) { /* non-critical — don't block UI */ }
   };
@@ -222,7 +244,10 @@ export default function PracticePage() {
     }
   });
 
-  const [activeTab, setActiveTab] = useState("tutor");
+  const [searchParams] = useSearchParams();
+  const VALID_TABS = ["tutor", "flashcards", "grammar", "reading", "listening", "writing", "speaking"];
+  const initialTab = VALID_TABS.includes(searchParams.get("tab")) ? searchParams.get("tab") : "tutor";
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   // ── Dynamic AI content (null = not yet fetched) ──
   const [dynamicFlashcards, setDynamicFlashcards] = useState(null);
@@ -259,10 +284,19 @@ export default function PracticePage() {
   const LISTENING_EXERCISE = dynamicListening || content.listening;
   const writingPrompt = dynamicWritingPrompt || content.writingPrompt;
 
-  // ── Flashcard state ──
+  // ── Flashcard state (SM-2 spaced repetition) ──
   const [cardIdx, setCardIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [known, setKnown] = useState(0);
+  // SM-2: cardSRState maps cardIndex -> { interval, easeFactor, repetitions, dueOrder }
+  // Persisted to localStorage with user+language key so it survives tab switches and restarts
+  const sm2Key = `polylingo_sm2_${user?.id || "guest"}_${user?.preferred_language || "English"}`;
+  const [cardSRState, setCardSRState] = useState(() => {
+    try {
+      const saved = localStorage.getItem(sm2Key);
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
 
   // ── Grammar state ──
   const [grammarAnswers, setGrammarAnswers] = useState({});
@@ -328,6 +362,7 @@ export default function PracticePage() {
   const chunksRef = useRef([]);
   const streamRef = useRef(null);
   const chatEndRef = useRef(null);
+  const chatContainerRef = useRef(null);
   const tutorStreamRef = useRef(null);  // AbortController for active SSE stream
   const ttsQueueRef = useRef([]);        // Sentences waiting for TTS playback
   const ttsBusyRef = useRef(false);      // Whether TTS is currently speaking
@@ -403,7 +438,10 @@ export default function PracticePage() {
     if (tutorMessages.length > tutorMsgCount.current) {
       tutorMsgCount.current = tutorMessages.length;
       if (tutorMessages.length > 1) {
-        chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        // Scroll inside the chat container, not the whole page
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
       }
     }
   }, [tutorMessages]);
@@ -480,7 +518,41 @@ export default function PracticePage() {
     loadTabContent();
   }, [activeTab, dynamicFlashcards, dynamicGrammar, dynamicReading, dynamicListening, dynamicWritingPrompt, dynamicSpeakingPhrases]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Flashcard handlers ────────────────────────────────────────────────────
+  // ── Flashcard handlers (SM-2 spaced repetition) ──────────────────────────
+  const _sm2Update = (idx, quality) => {
+    setCardSRState((prev) => {
+      const card = prev[idx] || { interval: 1, easeFactor: 2.5, repetitions: 0 };
+      let { interval, easeFactor, repetitions } = card;
+      if (quality >= 3) {
+        if (repetitions === 0) interval = 1;
+        else if (repetitions === 1) interval = 6;
+        else interval = Math.round(interval * easeFactor);
+        easeFactor = Math.max(1.3, easeFactor + 0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
+        repetitions++;
+      } else {
+        repetitions = 0;
+        interval = 1;
+      }
+      const next = { ...prev, [idx]: { interval, easeFactor, repetitions } };
+      try { localStorage.setItem(sm2Key, JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+  };
+
+  // Pick the card with the smallest interval (most due) that hasn't been fully mastered
+  const _getNextDueIdx = (srState, total, currentIdx) => {
+    let bestIdx = (currentIdx + 1) % total;
+    let bestInterval = Infinity;
+    for (let i = 0; i < total; i++) {
+      const s = srState[i] || { interval: 1, repetitions: 0 };
+      if (i !== currentIdx && s.interval < bestInterval) {
+        bestInterval = s.interval;
+        bestIdx = i;
+      }
+    }
+    return bestIdx;
+  };
+
   const nextCard = () => {
     setCardIdx((i) => (i + 1) % FLASHCARDS.length);
     setFlipped(false);
@@ -492,8 +564,24 @@ export default function PracticePage() {
   const markKnown = () => {
     setKnown((k) => k + 1);
     updateStat("flashcards", (s) => ({ ...s, wordsLearned: s.wordsLearned + 1 }));
-    nextCard();
+    _sm2Update(cardIdx, 4);
+    setCardSRState((prev) => {
+      const nextIdx = _getNextDueIdx(prev, FLASHCARDS.length, cardIdx);
+      // use a timeout so the state update has propagated
+      setTimeout(() => { setCardIdx(nextIdx); setFlipped(false); }, 0);
+      return prev;
+    });
   };
+  const markHard = () => {
+    _sm2Update(cardIdx, 1);
+    setCardSRState((prev) => {
+      const nextIdx = _getNextDueIdx(prev, FLASHCARDS.length, cardIdx);
+      setTimeout(() => { setCardIdx(nextIdx); setFlipped(false); }, 0);
+      return prev;
+    });
+  };
+
+  const sm2DueCount = FLASHCARDS.length - Object.values(cardSRState).filter((s) => s.repetitions >= 3 && s.interval >= 6).length;
 
   // ── Grammar handlers ──────────────────────────────────────────────────────
   const setGrammarAnswer = (idx, ans) => {
@@ -513,7 +601,7 @@ export default function PracticePage() {
       totalCorrect:  s.totalCorrect  + score,
       totalAttempted: s.totalAttempted + GRAMMAR_EXERCISES.length,
     }));
-    awardPracticeMinutes("grammar", score * 2);
+    awardPracticeMinutes("grammar", score * 2, Math.round((score / GRAMMAR_EXERCISES.length) * 100));
   };
 
   // ── Reading handlers ──────────────────────────────────────────────────────
@@ -530,7 +618,7 @@ export default function PracticePage() {
       totalCorrect:  s.totalCorrect  + correct,
       totalAttempted: s.totalAttempted + READING.questions.length,
     }));
-    awardPracticeMinutes("reading", 5);
+    awardPracticeMinutes("reading", 5, Math.round((correct / READING.questions.length) * 100));
   };
 
   // ── Writing handlers ──────────────────────────────────────────────────────
@@ -916,7 +1004,7 @@ export default function PracticePage() {
     _drainTTSQueue();
   };
 
-  const sendTutorChat = (overrideText) => {
+  const sendTutorChat = (overrideText, speechAnalytics = null) => {
     const msg = (overrideText ?? tutorInput).trim();
     if (!msg || tutorLoading) return;
 
@@ -942,7 +1030,7 @@ export default function PracticePage() {
 
     // Kick off the SSE stream directly — no setTimeout needed
     const controller = streamTutorChat(
-      { message: msg, history: historyForApi, language: lang, level: practiceLevel },
+      { message: msg, history: historyForApi, language: lang, level: practiceLevel, speech_analytics: speechAnalytics },
       {
         onToken: (token) => {
           setTutorMessages((prev) => {
@@ -1024,11 +1112,12 @@ export default function PracticePage() {
 
         const blob = new Blob(tutorMicChunksRef.current, { type: mimeType || "audio/mp4" });
         try {
-          const { transcript } = await transcribeAudio(blob, (ttsLang || "en").slice(0, 2));
+          const result = await transcribeAudio(blob, (ttsLang || "en").slice(0, 2));
+          const { transcript, speech_analytics } = result;
           setTutorTranscribing(false);
           if (transcript?.trim()) {
             setTutorInput(transcript.trim());
-            sendTutorChat(transcript.trim());
+            sendTutorChat(transcript.trim(), speech_analytics);
           } else if (tutorVoiceLoopRef.current) {
             // empty — restart mic
             setTimeout(() => _startTutorMic(), 400);
@@ -1210,15 +1299,54 @@ export default function PracticePage() {
         {/* ── EXERCISE PANEL ── */}
         <div className="practice-exercises">
           <div className="exercise-tabs">
-            {CATEGORIES.map((cat) => (
-              <button
-                key={cat.id}
-                className={`exercise-tab${activeTab === cat.id ? " active" : ""}`}
-                onClick={() => setActiveTab(cat.id)}
-              >
-                <i className={`fas ${cat.icon}`} /> {cat.title}
-              </button>
-            ))}
+            {CATEGORIES.map((cat) => {
+              const badgeMap = {
+                tutor:      { label: "AI Chat",    value: null },
+                flashcards: { label: "words",      value: practiceStats?.flashcards?.wordsLearned ?? 0 },
+                grammar:    { label: "correct",    value: practiceStats?.grammar?.totalCorrect ?? 0 },
+                reading:    { label: "correct",    value: practiceStats?.reading?.totalCorrect ?? 0 },
+                listening:  { label: "correct",    value: practiceStats?.listening?.totalCorrect ?? 0 },
+                writing:    { label: "submitted",  value: practiceStats?.writing?.submissions ?? 0 },
+                speaking:   { label: "sessions",   value: practiceStats?.speaking?.sessions ?? 0 },
+              };
+              const badge = badgeMap[cat.id];
+              return (
+                <button
+                  key={cat.id}
+                  className={`exercise-tab${activeTab === cat.id ? " active" : ""}`}
+                  onClick={() => setActiveTab(cat.id)}
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.15rem" }}
+                >
+                  <span><i className={`fas ${cat.icon}`} /> {cat.title}</span>
+                  {badge && badge.value !== null && (
+                    <span style={{
+                      fontSize: "0.65rem",
+                      fontWeight: 600,
+                      color: activeTab === cat.id ? "rgba(255,255,255,0.8)" : "var(--text-muted)",
+                      background: activeTab === cat.id ? "rgba(255,255,255,0.15)" : "var(--border)",
+                      borderRadius: "99px",
+                      padding: "0.05rem 0.4rem",
+                      lineHeight: 1.6,
+                    }}>
+                      {badge.value === null ? "AI Chat" : `${badge.value} ${badge.label}`}
+                    </span>
+                  )}
+                  {badge && badge.value === null && (
+                    <span style={{
+                      fontSize: "0.65rem",
+                      fontWeight: 600,
+                      color: activeTab === cat.id ? "rgba(255,255,255,0.8)" : "var(--text-muted)",
+                      background: activeTab === cat.id ? "rgba(255,255,255,0.15)" : "var(--border)",
+                      borderRadius: "99px",
+                      padding: "0.05rem 0.4rem",
+                      lineHeight: 1.6,
+                    }}>
+                      AI Chat
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {/* ════════════════════════════════
@@ -1327,22 +1455,43 @@ export default function PracticePage() {
                   </button>
                 </div>
               )}
+              {/* SM-2 due count badge */}
+              <div style={{ textAlign: "center", marginBottom: "0.75rem" }}>
+                <span style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.35rem",
+                  background: "rgba(99,102,241,0.1)",
+                  color: "#6366f1",
+                  borderRadius: "99px",
+                  padding: "0.25rem 0.85rem",
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                }}>
+                  <i className="fas fa-clock" /> {sm2DueCount} card{sm2DueCount !== 1 ? "s" : ""} due today
+                </span>
+              </div>
               <div className="flashcard-controls">
                 <button className="btn btn-outline" onClick={prevCard}>
                   <i className="fas fa-arrow-left" /> Previous
                 </button>
-                <button className="btn btn-primary" onClick={markKnown} disabled={known >= FLASHCARDS.length}>
-                  <i className="fas fa-check" /> I Know This
+                <button
+                  className="btn btn-primary"
+                  style={{ background: "#10b981", borderColor: "#10b981" }}
+                  onClick={markKnown}
+                  disabled={!flipped}
+                  title="I knew this — increases interval"
+                >
+                  <i className="fas fa-check" /> Know it
                 </button>
                 <button
                   className="btn btn-outline"
-                  title="Mark as hard — will appear again"
-                  onClick={() => {
-                    setHardCards((prev) => new Set([...prev, cardIdx]));
-                    nextCard();
-                  }}
+                  style={{ borderColor: "#ef4444", color: "#ef4444" }}
+                  onClick={markHard}
+                  disabled={!flipped}
+                  title="Need more practice — resets interval"
                 >
-                  <i className="fas fa-redo" /> Hard
+                  <i className="fas fa-times" /> Need practice
                 </button>
                 <button className="btn btn-outline" onClick={nextCard}>
                   Next <i className="fas fa-arrow-right" />
@@ -1351,7 +1500,7 @@ export default function PracticePage() {
               <div style={{ textAlign: "center", marginTop: "1.5rem" }}>
                 <p style={{ color: "var(--gray)", fontSize: "0.9rem" }}>
                   Card {cardIdx + 1} of {FLASHCARDS.length} &nbsp;|&nbsp; Known: {known}
-                  {hardCards.size > 0 && <>&nbsp;|&nbsp; Hard: {hardCards.size}</>}
+                  {!flipped && <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginLeft: "0.5rem" }}>(flip to rate)</span>}
                 </p>
                 <div
                   className="goal-progress"
@@ -2317,6 +2466,7 @@ export default function PracticePage() {
 
                 {/* Chat window */}
                 <div
+                  ref={chatContainerRef}
                   style={{
                     height: "420px",
                     overflowY: "auto",
@@ -2438,7 +2588,6 @@ export default function PracticePage() {
                       </div>
                     </div>
                   )}
-                  <div ref={chatEndRef} />
                 </div>
 
                 {/* Error bar */}

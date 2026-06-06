@@ -199,7 +199,7 @@ export default function DashboardPage() {
               stats.language || user?.preferred_language || "English"
             );
             if (mounted && prog) setPracticeProgress(prog);
-          } catch (_) {}
+          } catch (err) { console.warn("Practice progress fetch failed:", err); }
         }
         setStatsLoading(false);
       }
@@ -210,14 +210,14 @@ export default function DashboardPage() {
         if (mounted && Array.isArray(activity) && activity.length > 0) {
           setWeekData(activity.map((item) => ({ day: item.label, minutes: item.minutes || 0 })));
         }
-      } catch (_) {}
+      } catch (err) { console.warn("Weekly activity fetch failed:", err); }
       if (mounted) setChartLoading(false);
 
       // Leaderboard
       try {
         const lb = await fetchLeaderboard();
         if (mounted && Array.isArray(lb) && lb.length > 0) setLeaderboardData(lb);
-      } catch (_) {}
+      } catch (err) { console.warn("Leaderboard fetch failed:", err); }
     };
     load();
     return () => { mounted = false; };
@@ -649,7 +649,7 @@ export default function DashboardPage() {
             {suggestedActivities.map((ex, idx) => (
               <div
                 key={idx}
-                onClick={() => navigate("/practice")}
+                onClick={() => navigate(ex.key ? `/practice?tab=${ex.key}` : "/practice")}
                 style={{
                   display: "flex",
                   alignItems: "center",

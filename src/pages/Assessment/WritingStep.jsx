@@ -90,9 +90,9 @@ export default function WritingStep() {
       if (!res.ok) throw new Error(json?.error?.message || `HTTP ${res.status}`);
 
       const r = json.result || json;
-      // score_speaking returns overall (0-10), fluency, grammar + summary_feedback
+      // Backend returns score on 0-100 scale (score_writing_with_ai * 10); scale back to 0-10 for display
       const rawScore = r.score ?? r.overall ?? 0;
-      const score = Math.round(Math.max(0, Math.min(10, rawScore)));
+      const score = Math.round(Math.max(0, Math.min(10, rawScore / 10)));
       const feedback = r.summary_feedback || r.feedback || "";
 
       setResult({ score, total: 10, feedback });

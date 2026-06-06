@@ -155,7 +155,9 @@ export async function loginWithFirebase({
   });
 
   localStorage.setItem("polylingo_token", data.access_token || data.token);
-  localStorage.setItem("polylingo_refresh_token", data.refresh_token);
+  if (data.refresh_token) {
+    localStorage.setItem("polylingo_refresh_token", data.refresh_token);
+  }
   localStorage.setItem("polylingo_auth_user", JSON.stringify(data.user));
 
   return data.user;
@@ -353,10 +355,12 @@ export async function sendSpeakingAssessmentMessage({
   text,
   mode = "voice",
   audio_analysis = null,
+  duration_seconds = null,
+  speech_analytics = null,
 }) {
   return await apiFetch(`/assessment/speaking/${sessionId}/message`, {
     method: "POST",
-    body: JSON.stringify({ text, mode, audio_analysis }),
+    body: JSON.stringify({ text, mode, audio_analysis, duration_seconds, speech_analytics }),
   });
 }
 

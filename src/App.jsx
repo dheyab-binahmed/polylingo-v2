@@ -86,6 +86,17 @@ function AppContent() {
   useEffect(() => {
     const handleIncomingCall = ({ from, offer, callType, callerName }) => {
       console.log("Global incoming call from:", from, "caller:", callerName);
+
+      // Let DMModal claim the call first (synchronous CustomEvent).
+      // If DMModal is open with this caller it will call event.preventDefault()
+      // to prevent the global modal from also appearing.
+      const claimEvent = new CustomEvent("polylingo:incoming-call", {
+        cancelable: true,
+        detail: { from },
+      });
+      const claimedByModal = !window.dispatchEvent(claimEvent);
+      if (claimedByModal) return;
+
       setGlobalIncomingCall({ from, offer, callType, callerName });
 
       // Play ringing sound

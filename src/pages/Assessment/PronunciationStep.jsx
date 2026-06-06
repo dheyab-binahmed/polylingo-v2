@@ -235,8 +235,8 @@ export default function PronunciationStep() {
           : [],
         pronunciationFeedback: backendResult.summary,
       });
-      // ✅ Analysis complete - proceed to next step
-      goNext("pronunciation");
+      // Show score card briefly before advancing
+      setTimeout(() => goNext("pronunciation"), 2500);
     } catch (err) {
       // ✅ Better error extraction
       let errorMsg = "Analysis failed. Please try again.";
@@ -517,7 +517,7 @@ export default function PronunciationStep() {
               }}
             >
               {recording
-                ? `Recording… ${30 - time}s remaining — click to stop`
+                ? `Recording… ${time}s — click to stop`
                 : hasRecorded
                   ? "Recording saved! You can re-record or continue."
                   : "Click the microphone to start recording"}

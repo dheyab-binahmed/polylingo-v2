@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAssessment } from './assessmentContext'
 
 const LANGS = [
@@ -27,8 +28,10 @@ const LEVELS = [
 
 export default function LanguageStep() {
   const { data, update, goNext } = useAssessment()
+  const navigate = useNavigate()
   const [selLang,  setSelLang]  = useState(data.language || null)
   const [selLevel, setSelLevel] = useState(data.level    || null)
+  const [showShortcut, setShowShortcut] = useState(false)
 
   function confirm() {
     if (!selLang)  { alert('Please select a language first!'); return }
@@ -140,6 +143,104 @@ export default function LanguageStep() {
         >
           Start Assessment <i className="fas fa-arrow-right" />
         </button>
+      </div>
+
+      {/* ── Placement shortcut ───────────────────────────────────────── */}
+      <div style={{ marginTop: '2.5rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+        <button
+          onClick={() => setShowShortcut((s) => !s)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'var(--text-muted)',
+            fontSize: '0.9rem',
+            fontWeight: 600,
+            fontFamily: 'inherit',
+            margin: '0 auto',
+            padding: '0.5rem 1rem',
+          }}
+        >
+          <i className={`fas fa-chevron-${showShortcut ? 'up' : 'down'}`} />
+          I already know my level — skip straight to results
+        </button>
+
+        {showShortcut && (
+          <div style={{ marginTop: '1.25rem' }}>
+            <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+              Select your CEFR level to skip the assessment and go directly to your dashboard.
+            </p>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+              gap: '0.75rem',
+              maxWidth: '700px',
+              margin: '0 auto',
+            }}>
+              {LEVELS.map((lv) => (
+                <button
+                  key={lv.code}
+                  disabled={!selLang}
+                  onClick={() => {
+                    if (!selLang) { alert('Please select a language first!'); return; }
+                    update({ language: selLang, level: lv.code });
+                    navigate('/assessment/results');
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    padding: '0.85rem 1rem',
+                    borderRadius: '12px',
+                    border: `2px solid ${lv.color}40`,
+                    background: lv.color + '0a',
+                    cursor: selLang ? 'pointer' : 'not-allowed',
+                    opacity: selLang ? 1 : 0.5,
+                    transition: 'border-color 0.15s, background 0.15s',
+                    fontFamily: 'inherit',
+                  }}
+                  onMouseOver={(e) => {
+                    if (selLang) {
+                      e.currentTarget.style.borderColor = lv.color;
+                      e.currentTarget.style.background = lv.color + '18';
+                    }
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.borderColor = lv.color + '40';
+                    e.currentTarget.style.background = lv.color + '0a';
+                  }}
+                >
+                  <div style={{
+                    minWidth: '36px',
+                    height: '36px',
+                    borderRadius: '8px',
+                    background: lv.color,
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 800,
+                    fontSize: '0.85rem',
+                  }}>
+                    {lv.code}
+                  </div>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontWeight: 700, color: 'var(--text-base)', fontSize: '0.88rem' }}>{lv.label}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{lv.desc}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+            {!selLang && (
+              <p style={{ textAlign: 'center', color: '#f59e0b', fontSize: '0.8rem', marginTop: '0.75rem' }}>
+                <i className="fas fa-exclamation-triangle" /> Select a language above first
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

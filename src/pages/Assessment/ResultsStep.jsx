@@ -1,4 +1,5 @@
 import { useNavigate, Link } from "react-router-dom";
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer } from "recharts";
 import { useAuth } from "../../context/AuthContext";
 import { useAssessment } from "./assessmentContext";
 import {
@@ -48,7 +49,6 @@ function ScoreBar({ label, value, max = 10, color }) {
 
 export default function ResultsStep() {
   const { data } = useAssessment();
-  console.log("[ResultsStep] assessment data:", data);
   const navigate = useNavigate();
   const { completeAssessment } = useAuth();
 
@@ -94,7 +94,7 @@ export default function ResultsStep() {
               margin: "1rem 0 0 0",
             }}
           >
-            Debug info: data={JSON.stringify(data).substring(0, 100)}...
+            No assessment data found. Please retake the assessment.
           </p>
         </div>
         <button
@@ -163,7 +163,7 @@ export default function ResultsStep() {
 
   // Overall = weighted average of all completed sections
   const completedScores = [hasPronunciationResult ? ps : 0, fs, gs, rs].filter(
-    (s) => s > 0,
+    (s) => s !== null && s > 0,
   );
   const overall =
     completedScores.length > 0
@@ -545,6 +545,108 @@ export default function ResultsStep() {
             )}
           </div>
         ))}
+      </div>
+
+
+      {/* ─── Radar / Spider Chart ─────────────────────────────────────── */}
+      <div
+        style={{
+          background: "var(--bg-card)",
+          borderRadius: "20px",
+          padding: "clamp(1.25rem, 4vw, 2.5rem)",
+          boxShadow: "0 4px 24px rgba(0,0,0,0.06)",
+          marginBottom: "2rem",
+        }}
+      >
+        <h2
+          style={{
+            fontSize: "1.2rem",
+            fontWeight: 800,
+            color: "var(--text-base)",
+            marginBottom: "1.5rem",
+            textAlign: "center",
+          }}
+        >
+          <i className="fas fa-chart-area" style={{ color: "#6366f1", marginRight: "0.5rem" }} />
+          Skill Breakdown
+        </h2>
+        <ResponsiveContainer width="100%" height={280}>
+          <RadarChart
+            data={[
+              { skill: "Pronunciation", score: hasPronunciationResult ? ps : 0 },
+              { skill: "Speaking",      score: fs },
+              { skill: "Grammar",       score: gs },
+              { skill: "Reading",       score: rs },
+            ]}
+            margin={{ top: 10, right: 30, bottom: 10, left: 30 }}
+          >
+            <PolarGrid stroke="var(--border)" />
+            <PolarAngleAxis
+              dataKey="skill"
+              tick={{ fill: "var(--text-muted)", fontSize: 12, fontWeight: 600 }}
+            />
+            <Radar
+              name="Score"
+              dataKey="score"
+              stroke="#6366f1"
+              fill="#6366f1"
+              fillOpacity={0.25}
+              dot={{ fill: "#6366f1", r: 4 }}
+            />
+          </RadarChart>
+        </ResponsiveContainer>
+
+        {/* Weakest skill callout */}
+        {(() => {
+          const skills = [
+            { label: "Pronunciation", value: hasPronunciationResult ? ps : null, icon: "fa-volume-up",  tip: "Practice speaking slowly and clearly. Try shadowing native speakers to improve your accent." },
+            { label: "Speaking",      value: fs,                                  icon: "fa-comments",   tip: "Have short daily conversations, even with yourself. Fluency comes from repetition." },
+            { label: "Grammar",       value: gs,                                  icon: "fa-book",       tip: "Focus on one grammar rule at a time. Try the Grammar tab in your practice sessions." },
+            { label: "Reading",       value: rs,                                  icon: "fa-book-reader", tip: "Read short articles in your target language daily to build comprehension." },
+          ].filter((s) => s !== null && s.value !== null && s.value !== undefined);
+
+          if (!skills.length) return null;
+          const weakest = skills.reduce((a, b) => (b.value < a.value ? b : a));
+          return (
+            <div
+              style={{
+                marginTop: "1.5rem",
+                padding: "1rem 1.25rem",
+                background: "rgba(99,102,241,0.07)",
+                border: "1px solid rgba(99,102,241,0.2)",
+                borderRadius: "12px",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "1rem",
+              }}
+            >
+              <div
+                style={{
+                  width: "40px",
+                  height: "40px",
+                  borderRadius: "50%",
+                  background: "#6366f1",
+                  color: "white",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  fontSize: "0.9rem",
+                }}
+              >
+                <i className={`fas ${weakest.icon}`} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, color: "var(--text-base)", fontSize: "0.95rem", marginBottom: "0.25rem" }}>
+                  Focus area: {weakest.label} ({weakest.value}/10)
+                </div>
+                <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", lineHeight: 1.6 }}>
+                  {weakest.tip}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Learning Plan */}

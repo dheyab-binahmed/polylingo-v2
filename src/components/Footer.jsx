@@ -1,27 +1,29 @@
+import { Link } from "react-router-dom";
+
 export default function Footer() {
   return (
     <footer>
       <div className="container">
         <div className="footer-content">
           <div>
-            <a href="#" className="logo" style={{ color: 'white', marginBottom: '1.5rem', display: 'inline-flex' }}>
+            <Link to="/" className="logo" style={{ color: 'white', marginBottom: '1.5rem', display: 'inline-flex', textDecoration: 'none' }}>
               <div className="logo-icon"><i className="fas fa-language" /></div>
               <span>PolyLingo</span>
-            </a>
+            </Link>
             <p style={{ color: 'var(--gray-light)', marginBottom: '1.5rem' }}>The future of language learning, powered by AI.</p>
             <div className="social-links">
-              <a href="#"><i className="fab fa-facebook-f" /></a>
-              <a href="#"><i className="fab fa-twitter" /></a>
-              <a href="#"><i className="fab fa-instagram" /></a>
-              <a href="#"><i className="fab fa-linkedin-in" /></a>
+              <span style={{ cursor: 'default' }}><i className="fab fa-facebook-f" /></span>
+              <span style={{ cursor: 'default' }}><i className="fab fa-twitter" /></span>
+              <span style={{ cursor: 'default' }}><i className="fab fa-instagram" /></span>
+              <span style={{ cursor: 'default' }}><i className="fab fa-linkedin-in" /></span>
             </div>
           </div>
           <div>
             <h3>Product</h3>
             <ul className="footer-links">
-              <li><a href="#">Dashboard</a></li>
-              <li><a href="#">Practice</a></li>
-              <li><a href="#">Community</a></li>
+              <li><Link to="/dashboard">Dashboard</Link></li>
+              <li><Link to="/practice">Practice</Link></li>
+              <li><Link to="/community">Community</Link></li>
             </ul>
           </div>
         </div>
@@ -30,5 +32,5 @@ export default function Footer() {
         </div>
       </div>
     </footer>
-  )
+  );
 }

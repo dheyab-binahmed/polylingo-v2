@@ -201,26 +201,6 @@ export default function DMModal({
     }, 1000);
   }, [stopTimer]);
 
-  // ── Connection timeout — if ICE never reaches "connected" after 15 seconds ──
-  useEffect(() => {
-    if (!callActive) return;
-    const timeout = setTimeout(() => {
-      if (
-        pc.current &&
-        pc.current.iceConnectionState !== "connected" &&
-        pc.current.iceConnectionState !== "completed"
-      ) {
-        console.warn("Call connection timed out");
-        const notify = typeof window !== "undefined" && window.Notification;
-        if (notify) {
-          alert("Call connection failed. Please try again.");
-        }
-        hangUp();
-      }
-    }, 15000);
-    return () => clearTimeout(timeout);
-  }, [callActive, hangUp]);
-
   const stopRinging = useCallback(() => {
     if (!ringingRef.current) return;
 
@@ -288,11 +268,29 @@ export default function DMModal({
     };
 
     handleAcceptCall(call);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingIncomingCall, partner.id, partner.name, callActive]);
 
   const hangUp = useCallback(() => {
     cleanupCall({ notify: true });
   }, [cleanupCall]);
+
+  // ── Connection timeout — if ICE never reaches "connected" after 15 seconds ──
+  useEffect(() => {
+    if (!callActive) return;
+    const timeout = setTimeout(() => {
+      if (
+        pc.current &&
+        pc.current.iceConnectionState !== "connected" &&
+        pc.current.iceConnectionState !== "completed"
+      ) {
+        console.warn("Call connection timed out");
+        alert("Call connection failed. Please try again.");
+        hangUp();
+      }
+    }, 15000);
+    return () => clearTimeout(timeout);
+  }, [callActive, hangUp]);
 
   const startCall = async (type) => {
     setMediaError(null);
@@ -462,6 +460,13 @@ export default function DMModal({
   );
 
   useEffect(() => {
+    // Claim the call before App.jsx's global handler so only one modal appears.
+    const claimCall = (event) => {
+      if (!sameId(event.detail.from, partnerRef.current.id)) return;
+      event.preventDefault();
+    };
+    window.addEventListener("polylingo:incoming-call", claimCall);
+
     const handleIncomingCall = ({ from, offer, callType: ct }) => {
       const activePartner = partnerRef.current;
       if (!sameId(from, activePartner.id)) return;
@@ -535,6 +540,7 @@ export default function DMModal({
       }) || (() => {});
 
     return () => {
+      window.removeEventListener("polylingo:incoming-call", claimCall);
       offCallIncoming(handleIncomingCall);
       unsubAnswered();
       unsubIce();
