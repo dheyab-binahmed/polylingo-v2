@@ -138,6 +138,40 @@ const DEFAULT_STATS = {
   dailyGoalMinutes: 10,
 };
 
+// Level-aware, randomized tutor opener. __LANG__ is replaced with the language.
+const _TUTOR_GREETINGS = {
+  beginner: [
+    "Hi! I'm your AI tutor. Let's practice __LANG__! Tell me — what's your name, or what do you like to do?",
+    "Hello! Ready to practice __LANG__? Let's keep it easy. What did you do today?",
+    "Hi there! I'm here to help you with __LANG__. Tell me about something you like!",
+    "Hey! Let's practice __LANG__ together. Do you have any hobbies?",
+  ],
+  intermediate: [
+    "Hey! I'm your AI __LANG__ tutor. What's something interesting that happened to you recently?",
+    "Hi! Let's have a chat in __LANG__. What have you been up to lately?",
+    "Hello! Ready to practice your __LANG__? Tell me about your day or a topic you enjoy.",
+    "Hi there! What would you like to talk about in __LANG__ today — work, travel, food?",
+  ],
+  advanced: [
+    "Hi! I'm your AI __LANG__ tutor. What's been on your mind lately — anything you'd enjoy getting into?",
+    "Hey there! Let's dive into a real conversation in __LANG__. What topic would you like to explore today?",
+    "Hello! I'd love to chat in __LANG__. Current events, ideas, life — what shall we get into?",
+    "Hi! Let's have a proper discussion in __LANG__. Is there something you've been thinking about lately?",
+  ],
+};
+
+function makeTutorGreeting(level, lang) {
+  const lvl = String(level || "B1").toUpperCase();
+  const tier = ["A1", "A2"].includes(lvl)
+    ? "beginner"
+    : ["C1", "C2"].includes(lvl)
+      ? "advanced"
+      : "intermediate";
+  const pool = _TUTOR_GREETINGS[tier];
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+  return pick.replaceAll("__LANG__", lang);
+}
+
 // ─────────────────────────────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────
@@ -365,7 +399,7 @@ export default function PracticePage() {
   const [tutorMessages, setTutorMessages] = useState([
     {
       role: "assistant",
-      content: `Hello! I'm your AI language tutor. Let's practice ${lang} together. Tell me — what did you do today, or is there a topic you'd like to talk about?`,
+      content: makeTutorGreeting(practiceLevel, lang),
       correction: null,
       vocab_tip: null,
     },
@@ -466,19 +500,29 @@ export default function PracticePage() {
     }
   }, [tutorMessages]);
 
-  // Reset tutor chat when language changes
+  // Reset tutor chat when the language OR level changes (fresh, level-matched start)
   useEffect(() => {
+    // Stop anything in flight from the previous level/language
+    tutorStreamRef.current?.abort();
+    tutorStreamRef.current = null;
+    window.speechSynthesis?.cancel();
+    try { _currentTTSAudio?.pause(); _currentTTSAudio = null; } catch (_) {}
+    ttsQueueRef.current = [];
+    ttsBusyRef.current = false;
+    setTutorSpeaking(false);
+    setTutorLoading(false);
+
     setTutorMessages([
       {
         role: "assistant",
-        content: `Hello! I'm your AI language tutor. Let's practice ${lang} together. Tell me — what did you do today, or is there a topic you'd like to talk about?`,
+        content: makeTutorGreeting(practiceLevel, lang),
         correction: null,
         vocab_tip: null,
       },
     ]);
     setTutorInput("");
     setTutorError("");
-  }, [lang]);
+  }, [lang, practiceLevel]);
 
   // Fetch AI-generated content when a tab is first opened (cached until reset)
   useEffect(() => {
