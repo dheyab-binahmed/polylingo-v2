@@ -45,16 +45,33 @@ async function speakTTS(text, lang, onStart, onEnd) {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, lang }),
     });
     if (res.ok) {
       const data = await res.json();
       if (data.audioBase64) {
-        const audio = new Audio(`data:audio/mp3;base64,${data.audioBase64}`);
-        onStart?.();
-        audio.onended = () => onEnd?.();
-        audio.onerror = () => { _browserSpeak(text, lang, onStart, onEnd); };
-        await audio.play();
+        await new Promise((resolve) => {
+          const audio = new Audio(`data:audio/mpeg;base64,${data.audioBase64}`);
+          // Retain a reference so the element isn't garbage-collected mid-play.
+          _currentTTSAudio = audio;
+          let settled = false;
+          const done = () => { if (!settled) { settled = true; onEnd?.(); resolve(); } };
+          onStart?.();
+          audio.onended = done;
+          audio.onerror = () => {
+            if (settled) return;
+            settled = true;
+            _browserSpeak(text, lang, onStart, onEnd);
+            resolve();
+          };
+          // play() rejects when the browser blocks autoplay — fall back to browser TTS
+          audio.play().catch(() => {
+            if (settled) return;
+            settled = true;
+            _browserSpeak(text, lang, onStart, onEnd);
+            resolve();
+          });
+        });
         return;
       }
     }
@@ -62,6 +79,9 @@ async function speakTTS(text, lang, onStart, onEnd) {
   // Browser TTS fallback
   _browserSpeak(text, lang, onStart, onEnd);
 }
+
+// Holds the currently-playing TTS <audio> so the browser can't GC it mid-play.
+let _currentTTSAudio = null;
 
 function _browserSpeak(text, lang, onStart, onEnd) {
   if (!("speechSynthesis" in window)) { onEnd?.(); return; }
@@ -726,9 +746,9 @@ export default function PracticePage() {
     setAudioPlaying(true);
     // Try ElevenLabs first via backend proxy
     try {
-      const { audioBase64 } = await fetchTTS(fullText);
+      const { audioBase64 } = await fetchTTS(fullText, ttsLang);
       if (audioBase64) {
-        const audio = new Audio(`data:audio/mp3;base64,${audioBase64}`);
+        const audio = new Audio(`data:audio/mpeg;base64,${audioBase64}`);
         listeningAudioRef.current = audio;
         audio.onended = () => { listeningAudioRef.current = null; setAudioPlaying(false); };
         audio.onerror = () => {
@@ -773,6 +793,7 @@ export default function PracticePage() {
         return;
       }
       const audio = new Audio(`data:audio/mpeg;base64,${phrase.audioBase64}`);
+      _currentTTSAudio = audio; // retain so it isn't GC'd mid-play
       audio.onended = () => setExamplePlaying(false);
       audio.onerror = () => {
         setExamplePlaying(false);
@@ -955,52 +976,48 @@ export default function PracticePage() {
   // ── AI Tutor handlers ────────────────────────────────────────────────────────
   // ── Queued TTS so sentences play back-to-back without overlap ────────────────
 
-  // _onTTSDone: called when a sentence finishes playing (from any TTS source)
-  const _onTTSDone = () => {
-    ttsBusyRef.current = false;
-    if (ttsQueueRef.current.length > 0) {
-      _drainTTSQueue();
-    } else {
-      setTutorSpeaking(false);
-      // Auto-restart mic if voice loop is on and not already recording
-      if (tutorVoiceLoopRef.current && !tutorMicRecRef.current) {
-        setTimeout(() => _startTutorMic(), 600);
-      }
-    }
-  };
+  // ── Tutor TTS pipeline ────────────────────────────────────────────────────
+  // Synthesis for each sentence starts the MOMENT it arrives (parallel with
+  // playback + ongoing streaming), so playback is gapless instead of pausing to
+  // fetch audio before every sentence. ttsQueueRef holds in-flight promises.
+  const _playTTSAudio = (sentence, audioBase64) =>
+    new Promise((resolve) => {
+      if (!audioBase64) { speakTTS(sentence, ttsLang, () => {}, resolve); return; }
+      const audio = new Audio(`data:audio/mpeg;base64,${audioBase64}`);
+      _currentTTSAudio = audio; // retain so it isn't GC'd mid-play
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      const fallback = () => { if (!done) { done = true; speakTTS(sentence, ttsLang, () => {}, resolve); } };
+      audio.onended = finish;
+      audio.onerror = fallback;
+      audio.play().catch(fallback);
+    });
 
   const _drainTTSQueue = async () => {
-    if (ttsBusyRef.current || ttsQueueRef.current.length === 0) return;
-    const sentence = ttsQueueRef.current.shift();
+    if (ttsBusyRef.current) return;
     ttsBusyRef.current = true;
     setTutorSpeaking(true);
-
-    // Try ElevenLabs first via backend proxy
-    try {
-      const { audioBase64 } = await fetchTTS(sentence);
-      if (audioBase64) {
-        const audio = new Audio(`data:audio/mp3;base64,${audioBase64}`);
-        audio.onended = _onTTSDone;
-        audio.onerror = () => {
-          // ElevenLabs audio failed — fall through to browser TTS
-          speakTTS(sentence, lang, () => {}, _onTTSDone);
-        };
-        audio.play().catch(() => {
-          speakTTS(sentence, lang, () => {}, _onTTSDone);
-        });
-        return;
-      }
-    } catch (_) {
-      // Network error — fall through to browser TTS
+    while (ttsQueueRef.current.length > 0) {
+      const { sentence, audioBase64 } = await ttsQueueRef.current.shift();
+      await _playTTSAudio(sentence, audioBase64);
     }
-
-    // Browser TTS fallback
-    speakTTS(sentence, lang, () => {}, _onTTSDone);
+    ttsBusyRef.current = false;
+    // A sentence may have been enqueued in the gap — keep draining if so.
+    if (ttsQueueRef.current.length > 0) { _drainTTSQueue(); return; }
+    setTutorSpeaking(false);
+    // Auto-restart mic if voice loop is on and not already recording
+    if (tutorVoiceLoopRef.current && !tutorMicRecRef.current) {
+      setTimeout(() => _startTutorMic(), 450);
+    }
   };
 
   const _enqueueSentence = (sentence) => {
     if (!sentence) return;
-    ttsQueueRef.current.push(sentence);
+    // Start synthesis right away; store the promise so playback stays in order.
+    const job = fetchTTS(sentence, ttsLang)
+      .then((r) => ({ sentence, audioBase64: r?.audioBase64 }))
+      .catch(() => ({ sentence, audioBase64: null }));
+    ttsQueueRef.current.push(job);
     _drainTTSQueue();
   };
 
@@ -1012,6 +1029,7 @@ export default function PracticePage() {
     tutorStreamRef.current?.abort();
     tutorStreamRef.current = null;
     window.speechSynthesis?.cancel();
+    try { _currentTTSAudio?.pause(); _currentTTSAudio = null; } catch (_) {}
     ttsQueueRef.current = [];
     ttsBusyRef.current = false;
     setTutorSpeaking(false);
@@ -1149,6 +1167,21 @@ export default function PracticePage() {
       tutorMicRecRef.current.stop();
     }
   };
+
+  // While the mic is recording the textarea is disabled, so Enter never reaches
+  // it. Listen at the window level so Enter stops recording (which then
+  // transcribes + sends), matching what the chat input does for typed text.
+  useEffect(() => {
+    if (!tutorListening) return;
+    const onKey = (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        _stopTutorMic();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [tutorListening]);
 
   const startVoiceInput = () => {
     if (tutorListening) { _stopTutorMic(); return; }

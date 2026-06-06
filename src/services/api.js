@@ -544,14 +544,14 @@ export async function getSpeakingReply({ message, history, language }) {
  * POST /api/v1/assessment/tts
  * Expected response: { audio: base64_string, content_type: "audio/mpeg" }
  */
-export const generateSpeech = async (text) => {
+export const generateSpeech = async (text, lang) => {
   const response = await fetch(`${BASE_URL}/api/v1/assessment/tts`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${localStorage.getItem("polylingo_token") || localStorage.getItem("access_token") || ""}`,
     },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, lang }),
   });
   if (!response.ok) throw new Error("TTS failed");
   return response.json();
@@ -1060,11 +1060,11 @@ export async function scorePracticeWriting({ writingText, prompt, language }) {
  * POST /api/v1/practice/tts
  * Returns: { audioBase64: "..." } — null if ElevenLabs is not configured.
  */
-export async function fetchTTS(text) {
+export async function fetchTTS(text, lang) {
   try {
     return await apiFetch("/practice/tts", {
       method: "POST",
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, lang }),
     });
   } catch (_) {
     return { audioBase64: null };

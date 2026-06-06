@@ -134,7 +134,7 @@ export default function SpeakingStep() {
     for (const sentence of splitSentences(text)) {
       if (!sentence) continue;
       try {
-        const { audio, content_type } = await generateSpeech(sentence);
+        const { audio, content_type } = await generateSpeech(sentence, ttsLang);
         await playAudioBlob(audio, content_type);
       } catch { await browserSpeak(sentence); }
     }
@@ -363,18 +363,20 @@ export default function SpeakingStep() {
         const decoder = new TextDecoder();
         let buf = "";
 
-        // Start TTS queue — plays sentences as they arrive
+        // TTS queue — audio now arrives inline on the stream (event.audio).
+        // Each item is either { audio, content_type } (ElevenLabs) or
+        // { text } (browser-speech fallback when TTS is unavailable).
         const ttsQueue    = [];
         let   ttsPlaying  = false;
 
         const playNextSentence = async () => {
           if (ttsPlaying || ttsQueue.length === 0) return;
           ttsPlaying = true;
-          const sentence = ttsQueue.shift();
+          const item = ttsQueue.shift();
           try {
-            const { audio, content_type } = await generateSpeech(sentence);
-            await playAudioBlob(audio, content_type);
-          } catch { await browserSpeak(sentence); }
+            if (item.audio) await playAudioBlob(item.audio, item.content_type);
+            else if (item.text) await browserSpeak(item.text);
+          } catch { if (item.text) await browserSpeak(item.text); }
           ttsPlaying = false;
           playNextSentence(); // process next in queue
         };
@@ -403,8 +405,14 @@ export default function SpeakingStep() {
                 setStreamingText(accumulatedText);
               }
 
+              if (event.audio) {
+                ttsQueue.push({ audio: event.audio, content_type: event.content_type || "audio/mpeg" });
+                playNextSentence();
+              }
+
               if (event.sentence) {
-                ttsQueue.push(event.sentence);
+                // No inline audio (TTS unavailable) — use browser speech
+                ttsQueue.push({ text: event.sentence });
                 playNextSentence();
               }
 
