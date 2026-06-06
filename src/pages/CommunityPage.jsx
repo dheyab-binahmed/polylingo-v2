@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import CommunityStyles from "../styles/CommunityStyles";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import {
   fetchCommunityPosts,
   createPost as apiCreatePost,
@@ -21,6 +22,7 @@ import {
 } from "../services/api";
 import { off, on, onDmMessage } from "../services/socket";
 import MessageToast from "../components/common/MessageToast";
+import ErrorBoundary from "../components/common/ErrorBoundary";
 import ToastContainer from "../components/components/ui/ToastContainer";
 import Section from "../components/components/ui/Section";
 import Hero from "../components/components/Hero";
@@ -57,6 +59,7 @@ const asList = (value) => (Array.isArray(value) ? value : []);
 export default function CommunityPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const [posts, setPosts] = useState([]);
   const [groups, setGroups] = useState([]);
   const [partners, setPartners] = useState([]);
@@ -99,6 +102,30 @@ export default function CommunityPage() {
     // Check for pending call in navigation state
     if (location.state?.pendingCall) {
       setPendingIncomingCall(location.state.pendingCall);
+    }
+
+    // Open DM when navigated from FriendsPage with openDM state
+    if (location.state?.openDM) {
+      setDmPartner(location.state.openDM);
+      setActiveGroup(null);
+    }
+
+    // Open DM and trigger call when navigated from FriendsPage with startCall state
+    if (location.state?.startCall) {
+      const sc = location.state.startCall;
+      const name = sc.name || "";
+      setDmPartner({
+        id: sc.id,
+        name,
+        initials: name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) || "??",
+        online: true,
+        color: "#8b5cf6",
+        languages: [],
+        connected: true,
+        autoCall: true,
+        autoCallType: sc.callType || "video",
+      });
+      setActiveGroup(null);
     }
 
     // Also check sessionStorage as fallback
@@ -643,19 +670,26 @@ export default function CommunityPage() {
 
   const handleJoinGroup = (id) => {
     (async () => {
-      setGroups((g) =>
-        g.map((gr) =>
-          gr.id === id
-            ? { ...gr, joined: true, members: (gr.members || 0) + 1 }
-            : gr,
-        ),
-      );
       try {
-        await apiJoinGroup(id);
-        notify(
-          `Joined "${groups.find((g) => g.id === id)?.name}"! 🎉`,
-          "success",
-        );
+        const res = await apiJoinGroup(id);
+        const groupName = groups.find((g) => g.id === id)?.name;
+        if (res?.status === "pending") {
+          setGroups((g) =>
+            g.map((gr) =>
+              gr.id === id ? { ...gr, pendingRequest: true } : gr,
+            ),
+          );
+          notify(`Join request sent to "${groupName}". Waiting for admin approval. ⏳`, "info");
+        } else {
+          setGroups((g) =>
+            g.map((gr) =>
+              gr.id === id
+                ? { ...gr, joined: true, pendingRequest: false, members: (gr.members || 0) + 1 }
+                : gr,
+            ),
+          );
+          notify(`Joined "${groupName}"! 🎉`, "success");
+        }
       } catch (err) {
         notify("Failed to join group", "danger");
       }
@@ -750,7 +784,7 @@ export default function CommunityPage() {
         }
       />
 
-      <main style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 24px" }}>
+      <main className="plg-main">
         <Hero
           onCreateGroup={() => setShowCreateGroup(true)}
           onFindPartners={() => scrollTo("partners")}
@@ -1134,13 +1168,7 @@ export default function CommunityPage() {
             )}
             {/* BACKEND INTEGRATION: GET /api/community/partners?lang=&search=&page= */}
             {filteredPartners.length > 0 ? (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(230px,1fr))",
-                  gap: 16,
-                }}
-              >
+              <div className="partner-grid">
                 {filteredPartners.map((p) =>
                   p.status === "pending" &&
                   p.request_direction === "outgoing" ? (
@@ -1415,30 +1443,38 @@ export default function CommunityPage() {
       </button>
 
       {/* Modals */}
-      {showCreateGroup && (
-        <CreateGroupModel
-          onClose={() => setShowCreateGroup(false)}
-          onCreate={handleCreateGroup}
-        />
-      )}
-      {activeGroup && (
-        <GroupInterface
-          group={activeGroup}
-          onClose={() => setActiveGroup(null)}
-          notify={notify}
-          onOpenDM={openDM}
-          onLeaveGroup={handleLeaveGroup}
-          onDeleteGroup={handleDeleteGroup}
-        />
-      )}
-      {dmPartner && (
-        <DMModal
-          partner={dmPartner}
-          onClose={() => setDmPartner(null)}
-          onCall={handleCall}
-          pendingIncomingCall={pendingIncomingCall}
-        />
-      )}
+      <ErrorBoundary>
+        {showCreateGroup && (
+          <CreateGroupModel
+            onClose={() => setShowCreateGroup(false)}
+            onCreate={handleCreateGroup}
+          />
+        )}
+      </ErrorBoundary>
+      <ErrorBoundary>
+        {activeGroup && (
+          <GroupInterface
+            group={activeGroup}
+            onClose={() => setActiveGroup(null)}
+            notify={notify}
+            onOpenDM={openDM}
+            onLeaveGroup={handleLeaveGroup}
+            onDeleteGroup={handleDeleteGroup}
+            currentUserId={user?.id}
+          />
+        )}
+      </ErrorBoundary>
+      <ErrorBoundary>
+        {dmPartner && (
+          <DMModal
+            partner={dmPartner}
+            onClose={() => setDmPartner(null)}
+            pendingIncomingCall={pendingIncomingCall}
+            autoCall={dmPartner.autoCall || false}
+            autoCallType={dmPartner.autoCallType || "video"}
+          />
+        )}
+      </ErrorBoundary>
     </div>
   );
 }

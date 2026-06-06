@@ -23,7 +23,7 @@ async function fetchNotifications() {
   } catch { return []; }
 }
 
-export default function Navbar() {
+export default function Navbar({ friendRequestCount = 0, onResetFriendCount }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -40,7 +40,13 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  useEffect(() => { setMenuOpen(false); }, [location.pathname]);
+  // Close sidebar on route change; reset friend badge when on friends page
+  useEffect(() => {
+    setMenuOpen(false);
+    if (location.pathname === '/community/friends') {
+      onResetFriendCount?.();
+    }
+  }, [location.pathname]);
 
   // Load notifications when user logs in
   useEffect(() => {
@@ -76,7 +82,7 @@ export default function Navbar() {
           <nav className="navbar">
             <NavLink to="/" className="logo">
               <div className="logo-icon"><i className="fas fa-language" /></div>
-              <span>PolyLingo</span>
+              <span>Fluax</span>
             </NavLink>
 
             {/* Desktop nav links */}
@@ -84,9 +90,23 @@ export default function Navbar() {
               {user && (
                 <>
                   <NavLink to="/dashboard" className={({ isActive }) => isActive ? 'active' : ''}>Dashboard</NavLink>
-                  <NavLink to="/practice"  className={({ isActive }) => isActive ? 'active' : ''}>Practice</NavLink>
-                  <NavLink to="/community" className={({ isActive }) => isActive ? 'active' : ''}>Community</NavLink>
-                  <NavLink to="/profile"   className={({ isActive }) => isActive ? 'active' : ''}>Profile</NavLink>
+                  <NavLink to="/practice" className={({ isActive }) => isActive ? 'active' : ''}>Practice</NavLink>
+                  <NavLink to="/community" className={({ isActive }) => isActive ? 'active' : ''} style={{ position: 'relative' }}>
+                    Community
+                    {friendRequestCount > 0 && (
+                      <span style={{
+                        position: 'absolute', top: -6, right: -10,
+                        background: '#ef4444', color: '#fff',
+                        borderRadius: '50%', width: 18, height: 18,
+                        fontSize: 11, fontWeight: 700,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        lineHeight: 1,
+                      }}>
+                        {friendRequestCount > 9 ? '9+' : friendRequestCount}
+                      </span>
+                    )}
+                  </NavLink>
+                  <NavLink to="/profile" className={({ isActive }) => isActive ? 'active' : ''}>Profile</NavLink>
                 </>
               )}
             </div>
@@ -220,12 +240,35 @@ export default function Navbar() {
           <nav className="mobile-sidebar__nav">
             {user ? (
               <>
-                <NavLink to="/dashboard" className={({ isActive }) => `mobile-nav-link${isActive ? ' mobile-nav-link--active' : ''}`}><i className="fas fa-tachometer-alt" /> Dashboard</NavLink>
-                <NavLink to="/practice"  className={({ isActive }) => `mobile-nav-link${isActive ? ' mobile-nav-link--active' : ''}`}><i className="fas fa-dumbbell" /> Practice</NavLink>
-                <NavLink to="/community" className={({ isActive }) => `mobile-nav-link${isActive ? ' mobile-nav-link--active' : ''}`}><i className="fas fa-users" /> Community</NavLink>
-                <NavLink to="/profile"   className={({ isActive }) => `mobile-nav-link${isActive ? ' mobile-nav-link--active' : ''}`}><i className="fas fa-user" /> Profile</NavLink>
-                <NavLink to="/assessment" className={({ isActive }) => `mobile-nav-link${isActive ? ' mobile-nav-link--active' : ''}`}><i className="fas fa-rocket" /> Assessment</NavLink>
-                <button className="mobile-nav-link mobile-nav-link--logout" onClick={handleLogout}><i className="fas fa-sign-out-alt" /> Logout</button>
+                <NavLink to="/dashboard" className={({ isActive }) => `mobile-nav-link${isActive ? ' mobile-nav-link--active' : ''}`}>
+                  <i className="fas fa-tachometer-alt" /> Dashboard
+                </NavLink>
+                <NavLink to="/practice" className={({ isActive }) => `mobile-nav-link${isActive ? ' mobile-nav-link--active' : ''}`}>
+                  <i className="fas fa-dumbbell" /> Practice
+                </NavLink>
+                <NavLink to="/community" className={({ isActive }) => `mobile-nav-link${isActive ? ' mobile-nav-link--active' : ''}`} style={{ position: 'relative' }}>
+                  <i className="fas fa-users" /> Community
+                  {friendRequestCount > 0 && (
+                    <span style={{
+                      position: 'absolute', top: 8, right: 10,
+                      background: '#ef4444', color: '#fff',
+                      borderRadius: '50%', width: 18, height: 18,
+                      fontSize: 11, fontWeight: 700,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {friendRequestCount > 9 ? '9+' : friendRequestCount}
+                    </span>
+                  )}
+                </NavLink>
+                <NavLink to="/profile" className={({ isActive }) => `mobile-nav-link${isActive ? ' mobile-nav-link--active' : ''}`}>
+                  <i className="fas fa-user" /> Profile
+                </NavLink>
+                <NavLink to="/assessment" className={({ isActive }) => `mobile-nav-link${isActive ? ' mobile-nav-link--active' : ''}`}>
+                  <i className="fas fa-rocket" /> Assessment
+                </NavLink>
+                <button className="mobile-nav-link mobile-nav-link--logout" onClick={handleLogout}>
+                  <i className="fas fa-sign-out-alt" /> Logout
+                </button>
               </>
             ) : (
               <>
