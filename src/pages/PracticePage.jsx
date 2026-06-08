@@ -1085,7 +1085,7 @@ export default function PracticePage() {
 
     // Add user message + empty assistant placeholder in ONE state update
     // (never put setTimeout/side-effects inside a state updater — React StrictMode double-fires them)
-    const userMsg       = { role: "user",      content: msg, correction: null, vocab_tip: null };
+    const userMsg       = { role: "user",      content: msg, correction: null, vocab_tip: null, via: speechAnalytics ? "voice" : "text" };
     const placeholderMsg = { role: "assistant", content: "",  correction: null, vocab_tip: null, streaming: true };
     setTutorMessages((prev) => [...prev, userMsg, placeholderMsg]);
     setTutorLoading(true);
@@ -2599,6 +2599,23 @@ export default function PracticePage() {
                           }} />
                         )}
                       </div>
+
+                      {/* Voice transcript cue */}
+                      {msg.role === "user" && msg.via === "voice" && (
+                        <div
+                          title="This is what we heard from your voice. If a word looks wrong, the transcription misheard it."
+                          style={{
+                            fontSize: "0.72rem",
+                            color: "var(--text-muted)",
+                            fontStyle: "italic",
+                            marginTop: "0.25rem",
+                            opacity: 0.8,
+                          }}
+                        >
+                          <i className="fas fa-microphone" style={{ marginRight: "0.3rem" }} />
+                          transcribed from your voice
+                        </div>
+                      )}
 
                       {/* Correction chip */}
                       {msg.correction && (

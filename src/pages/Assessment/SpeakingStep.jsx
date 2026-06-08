@@ -328,7 +328,7 @@ export default function SpeakingStep() {
 
     const userMsgId = Date.now();
     setTranscripts((prev) => [...prev, { text: trimmed, duration: durationSeconds }]);
-    setMessages((prev) => [...prev, { role: "user", text: trimmed, id: userMsgId }]);
+    setMessages((prev) => [...prev, { role: "user", text: trimmed, id: userMsgId, mode }]);
     setInput("");
     setStreamingText("");
 
@@ -363,22 +363,39 @@ export default function SpeakingStep() {
         const decoder = new TextDecoder();
         let buf = "";
 
-        // TTS queue — audio now arrives inline on the stream (event.audio).
-        // Each item is either { audio, content_type } (ElevenLabs) or
-        // { text } (browser-speech fallback when TTS is unavailable).
+        // TTS queue — neural audio is fetched PER SENTENCE in parallel (one
+        // /assessment/tts request each) the moment a sentence arrives, so audio
+        // synthesis never blocks the text token stream. Each queue entry is a
+        // promise resolving to { audio, content_type } or { text } (browser-speech
+        // fallback). Playback drains the queue in order.
         const ttsQueue    = [];
         let   ttsPlaying  = false;
 
-        const playNextSentence = async () => {
+        const drainTTS = async () => {
           if (ttsPlaying || ttsQueue.length === 0) return;
           ttsPlaying = true;
-          const item = ttsQueue.shift();
-          try {
-            if (item.audio) await playAudioBlob(item.audio, item.content_type);
-            else if (item.text) await browserSpeak(item.text);
-          } catch { if (item.text) await browserSpeak(item.text); }
+          while (ttsQueue.length > 0) {
+            let item = null;
+            try { item = await ttsQueue.shift(); } catch { item = null; }
+            try {
+              if (item && item.audio) await playAudioBlob(item.audio, item.content_type);
+              else if (item && item.text) await browserSpeak(item.text);
+            } catch { if (item && item.text) await browserSpeak(item.text); }
+          }
           ttsPlaying = false;
-          playNextSentence(); // process next in queue
+        };
+
+        const enqueueSentence = (sentence) => {
+          const s = (sentence || "").trim();
+          if (!s) return;
+          // Kick off synthesis immediately (parallel with streaming + playback)
+          const job = generateSpeech(s, ttsLang)
+            .then((r) => (r && r.audio
+              ? { audio: r.audio, content_type: r.content_type || "audio/mpeg" }
+              : { text: s }))
+            .catch(() => ({ text: s }));
+          ttsQueue.push(job);
+          drainTTS();
         };
 
         setAiSpeaking(true);
@@ -406,14 +423,17 @@ export default function SpeakingStep() {
               }
 
               if (event.audio) {
-                ttsQueue.push({ audio: event.audio, content_type: event.content_type || "audio/mpeg" });
-                playNextSentence();
+                // Back-compat: server still sent inline audio — play as-is.
+                ttsQueue.push(Promise.resolve({
+                  audio: event.audio,
+                  content_type: event.content_type || "audio/mpeg",
+                }));
+                drainTTS();
               }
 
               if (event.sentence) {
-                // No inline audio (TTS unavailable) — use browser speech
-                ttsQueue.push({ text: event.sentence });
-                playNextSentence();
+                // Fetch neural audio for this sentence in parallel (non-blocking).
+                enqueueSentence(event.sentence);
               }
 
               if (event.scores) {
@@ -691,6 +711,13 @@ export default function SpeakingStep() {
                       </span>
                     )}
                   </div>
+                  {msg.role === "user" && msg.mode === "voice" && (
+                    <div className="sp-lbl" style={{ marginTop:"0.25rem", opacity:0.7, fontStyle:"italic" }}
+                      title="This is what we heard from your voice. If a word looks wrong, the transcription misheard it.">
+                      <i className="fas fa-microphone" style={{ marginRight:"0.3rem" }} />
+                      transcribed from your voice
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
