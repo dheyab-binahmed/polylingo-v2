@@ -28,7 +28,6 @@ import {
   firebaseSignOut,
   getCurrentFirebaseSession,
   signInWithGoogle,
-  getGoogleRedirectResult,
 } from "../services/firebase";
 
 const AuthContext = createContext(null);
@@ -51,20 +50,6 @@ export function AuthProvider({ children }) {
     const restore = async () => {
       try {
         let restored = null;
-
-        // Check for Google redirect result first (after signInWithRedirect)
-        const redirectSession = await getGoogleRedirectResult();
-        if (redirectSession) {
-          restored = await loginWithFirebase(redirectSession);
-          if (restored) {
-            localStorage.setItem("polylingo_auth_user", JSON.stringify(restored));
-            setUser(restored);
-            requestNotificationPermission();
-            const appToken = localStorage.getItem("polylingo_token");
-            if (appToken) connectSocket(appToken);
-            return;
-          }
-        }
 
         const token = localStorage.getItem("polylingo_token");
 
@@ -155,12 +140,19 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // ── Login with Google (Firebase redirect) ────────────────────
-  // Triggers a page redirect; the result is handled in the restore()
-  // effect above via getGoogleRedirectResult() when the app reloads.
+  // ── Login with Google (popup) ────────────────────────────────
   const loginWithGoogleAuth = async () => {
     try {
-      await signInWithGoogle();
+      const session = await signInWithGoogle();
+      if (!session) throw new Error("Google sign-in failed");
+      const userData = await loginWithFirebase(session);
+      if (userData) {
+        setUser(userData);
+        requestNotificationPermission();
+        const appToken = localStorage.getItem("polylingo_token");
+        if (appToken) connectSocket(appToken);
+      }
+      return userData;
     } catch (err) {
       if (err instanceof Error) throw err;
       throw new Error(String(err) || "Google sign-in failed");

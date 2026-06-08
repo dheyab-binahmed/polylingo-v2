@@ -3,6 +3,7 @@ import {
   getAuth,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   GoogleAuthProvider,
@@ -86,11 +87,11 @@ export const createEmailAccount = async ({
 };
 
 /**
- * Initiate Google sign-in via redirect.
- * The page will navigate away; call getGoogleRedirectResult() on return.
+ * Open a Google sign-in popup and return { idToken, user } on success.
  */
-export const signInWithGoogle = () => {
-  return signInWithRedirect(auth, googleProvider);
+export const signInWithGoogle = async () => {
+  const result = await signInWithPopup(auth, googleProvider);
+  return buildFirebaseSession(result.user);
 };
 
 /**
