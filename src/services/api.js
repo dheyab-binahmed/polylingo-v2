@@ -468,7 +468,11 @@ export async function scorePronunciation(
   formData.append("audio", audioBlob, "recording.webm");
   formData.append("language", languageCode);
   if (pronunciationPrompt) {
-    formData.append("reference_text", pronunciationPrompt);
+    const refText =
+      typeof pronunciationPrompt === "string"
+        ? pronunciationPrompt
+        : pronunciationPrompt.passage || pronunciationPrompt.title || "";
+    if (refText) formData.append("reference_text", refText);
   }
 
   // ─── REAL IMPLEMENTATION ──────────────────────────────────────
@@ -482,12 +486,15 @@ export async function scorePronunciation(
   );
 
   if (!response.ok) {
-    const error = await response
-      .json()
-      .catch(() => ({ error: "Pronunciation scoring failed" }));
-    throw new Error(
-      error.error || error.message || "Pronunciation scoring failed",
-    );
+    if (response.status === 401) {
+      throw new Error("Session expired. Please log out and log back in.");
+    }
+    try {
+      const errorData = await response.json();
+      throw new Error(errorData.message || errorData.error || `Request failed with status ${response.status}`);
+    } catch {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
   }
 
   return response.json(); // { score: number, feedback: string }

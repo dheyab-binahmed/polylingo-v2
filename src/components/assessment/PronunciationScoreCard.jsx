@@ -1,15 +1,47 @@
 export default function PronunciationScoreCard({ result }) {
   if (!result) return null;
-  const {
-    pronunciation_score,
-    cefr_band,
-    is_reliable,
-    sub_scores = {},
-    summary_feedback,
-    strengths = [],
-    improvements_needed = [],
-    word_level_feedback = [],
-  } = result;
+  const pronunciation_score = result.overall_score ?? result.pronunciation_score ?? null;
+  const cefr_band = result.estimated_cefr_level || result.cefr_band || null;
+  const is_reliable = result.is_reliable;
+  const summary_feedback = result.summary_feedback || result.summary || "";
+  const strengths = result.strengths || [];
+  const improvements_needed = result.improvements_needed || [];
+  const word_level_feedback = result.word_level_feedback || result.word_evaluations || [];
+
+  // Build sub_scores from top-level fields
+  const sub_scores = {
+    accuracy:        result.pronunciation_accuracy ?? result.sub_scores?.accuracy ?? null,
+    fluency:         result.fluency_score ?? result.sub_scores?.fluency ?? null,
+    clarity:         result.clarity_score ?? result.sub_scores?.clarity ?? null,
+    intonation:      result.intonation_score ?? result.sub_scores?.intonation ?? null,
+    intelligibility: result.intelligibility_score ?? result.sub_scores?.intelligibility ?? null,
+  };
+
+  // Compute data-driven strengths and improvements from word results
+  const subs    = word_level_feedback.filter(w => w.status === "substitution").length;
+  const omits   = word_level_feedback.filter(w => w.status === "omission").length;
+  const inserts = word_level_feedback.filter(w => w.status === "insertion").length;
+  const correct = word_level_feedback.filter(w => w.status === "correct" || (!w.status && (w.pronunciation_score ?? 100) >= 80)).length;
+  const total   = word_level_feedback.length;
+
+  const derived_strengths = [];
+  const derived_improvements = [];
+
+  if (total > 0) {
+    const accuracy_pct = Math.round((correct / total) * 100);
+    if (accuracy_pct >= 90) derived_strengths.push(`Excellent word accuracy — ${accuracy_pct}% of words read correctly`);
+    else if (accuracy_pct >= 75) derived_strengths.push(`Good accuracy — ${accuracy_pct}% of words read correctly`);
+    else derived_improvements.push(`Word accuracy needs work — only ${accuracy_pct}% of words were correct`);
+
+    if (subs > 0) derived_improvements.push(`${subs} word(s) mispronounced or substituted — check "Words to practise" below`);
+    if (omits > 0) derived_improvements.push(`${omits} word(s) were skipped — make sure to read every word in the passage`);
+    if (inserts > 0) derived_improvements.push(`${inserts} extra word(s) added that were not in the passage — read only what is written`);
+    if (subs === 0 && omits === 0 && inserts === 0) derived_strengths.push("Read the passage without any substitutions or omissions");
+  }
+
+  // Use derived if available, fall back to backend strengths/improvements
+  const display_strengths    = derived_strengths.length > 0 ? derived_strengths : strengths;
+  const display_improvements = derived_improvements.length > 0 ? derived_improvements : improvements_needed;
 
   const color = (s) => {
     if (s == null) return "#6b7280";
@@ -150,7 +182,7 @@ export default function PronunciationScoreCard({ result }) {
       )}
 
       {/* Strengths */}
-      {strengths.length > 0 && (
+      {display_strengths.length > 0 && (
         <div style={{ marginBottom: 14 }}>
           <div
             style={{
@@ -162,7 +194,7 @@ export default function PronunciationScoreCard({ result }) {
           >
             ✓ Strengths
           </div>
-          {strengths.slice(0, 3).map((s, i) => (
+          {display_strengths.slice(0, 3).map((s, i) => (
             <div
               key={i}
               style={{ fontSize: 13, color: "#d1d5db", marginBottom: 4 }}
@@ -174,7 +206,7 @@ export default function PronunciationScoreCard({ result }) {
       )}
 
       {/* Improvements */}
-      {improvements_needed.length > 0 && (
+      {display_improvements.length > 0 && (
         <div style={{ marginBottom: 16 }}>
           <div
             style={{
@@ -186,7 +218,7 @@ export default function PronunciationScoreCard({ result }) {
           >
             ↑ Areas to improve
           </div>
-          {improvements_needed.slice(0, 3).map((s, i) => (
+          {display_improvements.slice(0, 3).map((s, i) => (
             <div
               key={i}
               style={{ fontSize: 13, color: "#d1d5db", marginBottom: 4 }}
@@ -198,49 +230,35 @@ export default function PronunciationScoreCard({ result }) {
       )}
 
       {/* Word-level feedback chips */}
-      {word_level_feedback.length > 0 && (
-        <div>
-          <div
-            style={{
-              fontSize: 12,
-              color: "#9ca3af",
-              fontWeight: 600,
-              marginBottom: 8,
-            }}
-          >
-            Words to practise:
+      {(() => {
+        const problem_words = word_level_feedback.filter(w =>
+          w.status === "substitution" ||
+          w.status === "omission" ||
+          w.status === "insertion" ||
+          (w.pronunciation_score ?? w.score ?? 100) < 80
+        );
+        if (problem_words.length === 0) return null;
+        return (
+          <div>
+            <div style={{ fontSize: 12, color: "#9ca3af", fontWeight: 600, marginBottom: 8 }}>
+              Words to practise:
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {problem_words.map((w, i) => {
+                const s = w.pronunciation_score ?? w.score ?? 0;
+                const issue = w.issues?.[0] || "";
+                const statusColor = w.status === "omission" ? "#ef4444" : w.status === "insertion" ? "#f59e0b" : color(s);
+                return (
+                  <div key={i} style={{ background: "#111827", border: `1px solid ${statusColor}40`, borderRadius: 8, padding: "5px 10px", fontSize: 13 }}>
+                    <span style={{ color: statusColor, fontWeight: 600 }}>{w.word}</span>
+                    {issue && <span style={{ color: "#6b7280", marginLeft: 6, fontSize: 11 }}>{issue}</span>}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {word_level_feedback.slice(0, 10).map((w, i) => {
-              const s = w.pronunciation_score ?? w.score ?? 0;
-              const issue = w.issues?.[0] || "";
-              return (
-                <div
-                  key={i}
-                  style={{
-                    background: "#111827",
-                    border: "1px solid #374151",
-                    borderRadius: 8,
-                    padding: "5px 10px",
-                    fontSize: 13,
-                  }}
-                >
-                  <span style={{ color: color(s), fontWeight: 600 }}>
-                    {w.word}
-                  </span>
-                  {issue && (
-                    <span
-                      style={{ color: "#6b7280", marginLeft: 6, fontSize: 11 }}
-                    >
-                      {issue}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
