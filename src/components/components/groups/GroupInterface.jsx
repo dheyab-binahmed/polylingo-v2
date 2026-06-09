@@ -101,7 +101,18 @@ const GroupInterface = ({
     }
   };
 
+  const groupinterfacestyle = {
+    position: "fixed",
+    top: 0,
+    left: 0,  
+    width: "50px",
+    height: "10px",
+    background: "rgba(0,0,0,.35)",
+  }
+
+
   return (
+    <div className="group-interface" >
     <div
       className="gi-overlay"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -109,6 +120,7 @@ const GroupInterface = ({
       <div className="gi-box">
         {/* Header — Fix 7: shows name, member count, language, description snippet */}
         <div
+          className="gi-header"
           style={{
             background: groupData.color,
             padding: "14px 20px",
@@ -118,7 +130,7 @@ const GroupInterface = ({
             flexShrink: 0,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div className="gi-header-main" style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div
               style={{
                 width: 40,
@@ -133,11 +145,12 @@ const GroupInterface = ({
             >
               {groupData.icon}
             </div>
-            <div>
+            <div className="gi-header-text">
               <div style={{ fontWeight: 800, fontSize: 16, color: "#fff" }}>
                 {groupData.name}
               </div>
               <div
+                className="gi-header-meta"
                 style={{
                   fontSize: 12,
                   color: "rgba(255,255,255,.75)",
@@ -177,7 +190,7 @@ const GroupInterface = ({
               </div>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div className="gi-header-actions" style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button
               onClick={startCall}
               title="Start video call"
@@ -225,6 +238,7 @@ const GroupInterface = ({
         {/* Description strip — Fix 7 */}
         {groupData.description && (
           <div
+            className="gi-description"
             style={{
               padding: "8px 20px",
               background: "var(--bg-subtle)",
@@ -245,6 +259,7 @@ const GroupInterface = ({
 
         {/* Tabs */}
         <div
+          className="gi-tabs"
           style={{
             display: "flex",
             borderBottom: "1px solid var(--border)",
@@ -303,6 +318,7 @@ const GroupInterface = ({
 
         {/* Content */}
         <div
+          className="gi-content"
           style={{
             flex: 1,
             display: "flex",
@@ -399,6 +415,7 @@ const GroupInterface = ({
           )}
         </div>
       </div>
+    </div>
     </div>
   );
 };

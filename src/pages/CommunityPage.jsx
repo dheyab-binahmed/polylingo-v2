@@ -1427,10 +1427,10 @@ export default function CommunityPage() {
         onClick={() => setShowCreateGroup(true)}
         style={{
           position: "fixed",
-          bottom: 26,
-          right: 26,
-          width: 54,
-          height: 54,
+          bottom: 20,
+          right: 16,
+          width: 52,
+          height: 52,
           borderRadius: "50%",
           padding: 0,
           fontSize: 22,

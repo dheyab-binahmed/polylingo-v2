@@ -208,7 +208,7 @@ const ChatTab = ({ group, notify, onOpenDM, onStartCall, onNewMessage }) => {
   };
 
   return (
-    <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+    <div className="gi-tab-panel gi-chat-tab" style={{ flex: 1, display: "flex", overflow: "hidden" }}>
       {/* ── Members sidebar (hidden on mobile via .chat-sidebar media query) ── */}
       <div
         className="chat-sidebar"
@@ -379,6 +379,7 @@ const ChatTab = ({ group, notify, onOpenDM, onStartCall, onNewMessage }) => {
 
       {/* ── Chat area ── */}
       <div
+        className="gi-chat-main"
         style={{
           flex: 1,
           display: "flex",
