@@ -19,12 +19,10 @@ import FriendsPage from "./pages/Community/FriendsPage";
 import ProfilePage from "./pages/ProfilePage";
 import AssessmentPage from "./pages/Assessment/AssessmentPage";
 import LanguageStep from "./pages/Assessment/LanguageStep";
-import PronunciationStep from "./pages/Assessment/PronunciationStep";
 import SpeakingStep from "./pages/Assessment/SpeakingStep";
 import GrammarStep from "./pages/Assessment/GrammarStep";
 import ReadingStep from "./pages/Assessment/ReadingStep";
 import ResultsStep from "./pages/Assessment/ResultsStep";
-import PronunciationDetailsPage from "./pages/Assessment/PronunciationDetailsPage";
 import AuthRequired from "./components/AuthRequired";
 import LoginPage from "./components/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
@@ -262,15 +260,10 @@ function AppContent() {
               element={<Navigate to="/assessment/language" replace />}
             />
             <Route path="language" element={<LanguageStep />} />
-            <Route path="pronunciation" element={<PronunciationStep />} />
             <Route path="speaking" element={<SpeakingStep />} />
             <Route path="grammar" element={<GrammarStep />} />
             <Route path="reading" element={<ReadingStep />} />
             <Route path="results" element={<ResultsStep />} />
-            <Route
-              path="pronunciation-details"
-              element={<PronunciationDetailsPage />}
-            />
           </Route>
 
           {/* Catch all */}

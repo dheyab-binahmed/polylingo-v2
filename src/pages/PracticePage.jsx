@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
+import PronunciationStep from "./Assessment/PronunciationStep";
 import { useAuth } from "../context/AuthContext";
 import {
   logPracticeSession,
@@ -123,6 +124,7 @@ const CAT_META = [
   { id: "speaking",   icon: "fa-microphone",    title: "Speaking Drills",    desc: "Practice pronunciation and speaking with AI-powered conversation partners" },
   { id: "reading",    icon: "fa-book-open",     title: "Reading Practice",   desc: "Improve reading comprehension with authentic texts and vocabulary exercises" },
   { id: "grammar",    icon: "fa-check-double",  title: "Grammar Practice",   desc: "Master grammar rules with interactive exercises and instant feedback" },
+  { id: "pronunciation", icon: "fa-microphone", title: "Pronunciation",      desc: "Test and improve your pronunciation with AI-powered analysis and scoring" },
 ];
 
 // Default per-user stats stored in localStorage (all zero for new users)
@@ -299,7 +301,7 @@ export default function PracticePage() {
   });
 
   const [searchParams] = useSearchParams();
-  const VALID_TABS = ["tutor", "flashcards", "grammar", "reading", "listening", "writing", "speaking"];
+  const VALID_TABS = ["tutor", "flashcards", "grammar", "reading", "listening", "writing", "speaking", "pronunciation"];
   const initialTab = VALID_TABS.includes(searchParams.get("tab")) ? searchParams.get("tab") : "tutor";
   const [activeTab, setActiveTab] = useState(initialTab);
 
@@ -1385,6 +1387,7 @@ export default function PracticePage() {
                 listening:  { label: "correct",    value: practiceStats?.listening?.totalCorrect ?? 0 },
                 writing:    { label: "submitted",  value: practiceStats?.writing?.submissions ?? 0 },
                 speaking:   { label: "sessions",   value: practiceStats?.speaking?.sessions ?? 0 },
+                pronunciation: { label: "sessions", value: practiceStats?.speaking?.sessions ?? 0 },
               };
               const badge = badgeMap[cat.id];
               return (
@@ -2473,6 +2476,15 @@ export default function PracticePage() {
               </div>
             </div>
           )}
+          {/* ════════════════════════════════
+              PRONUNCIATION
+          ════════════════════════════════ */}
+          {activeTab === "pronunciation" && (
+            <div className="fade-in">
+              <PronunciationStep />
+            </div>
+          )}
+
           {/* ════════════════════════════════
               SESSION SUMMARY (dismissable)
           ════════════════════════════════ */}

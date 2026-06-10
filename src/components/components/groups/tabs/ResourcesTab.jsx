@@ -68,15 +68,15 @@ const ResourcesTab = ({ group, notify }) => {
   };
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div className="gi-tab-panel gi-resources-tab" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
       {/* ── Header ── */}
-      <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
-        <div>
+      <div className="gi-tab-header" style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+        <div className="gi-tab-header-text">
           <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text-base)" }}>Study Resources</div>
           <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Shared files & learning materials ({resources.length})</div>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div className="gi-tab-header-actions" style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {uploading && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Uploading…</span>}
           <input ref={fileRef} type="file" style={{ display: "none" }} onChange={handleFileChange} />
           <button className="btn-coral" style={{ padding: "7px 14px", fontSize: 13 }} onClick={handleUploadClick} disabled={uploading}>
@@ -93,7 +93,7 @@ const ResourcesTab = ({ group, notify }) => {
       )}
 
       {/* ── Resource grid ── */}
-      <div style={{ flex: 1, padding: 20, overflowY: "auto" }}>
+      <div className="gi-tab-scroll" style={{ flex: 1, padding: 20, overflowY: "auto" }}>
         {/* BACKEND INTEGRATION: GET /api/community/groups/:id/resources */}
         {resources.length === 0 ? (
           <div style={{ textAlign: "center", color: "var(--text-muted)", padding: "40px 20px" }}>
@@ -102,7 +102,7 @@ const ResourcesTab = ({ group, notify }) => {
             <div style={{ fontSize: 13 }}>Upload study materials to share with the group</div>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 14 }}>
+          <div className="gi-resource-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 14 }}>
             {resources.map(r => (
               <div key={r.id} style={{ background: "var(--bg-subtle)", border: "1px solid var(--border)", borderRadius: 12, padding: 16 }}>
                 <div style={{ fontSize: 30, marginBottom: 8 }}>{r.icon}</div>
