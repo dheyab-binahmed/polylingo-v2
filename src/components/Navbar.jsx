@@ -82,7 +82,7 @@ export default function Navbar({ friendRequestCount = 0, onResetFriendCount }) {
           <nav className="navbar">
             <NavLink to="/" className="logo">
               <div className="logo-icon"><i className="fas fa-language" /></div>
-              <span>Fluax</span>
+              <span>FluentPeak</span>
             </NavLink>
 
             {/* Desktop nav links */}

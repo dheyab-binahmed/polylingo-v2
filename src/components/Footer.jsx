@@ -8,7 +8,7 @@ export default function Footer() {
           <div>
             <Link to="/" className="logo" style={{ color: 'white', marginBottom: '1.5rem', display: 'inline-flex', textDecoration: 'none' }}>
               <div className="logo-icon"><i className="fas fa-language" /></div>
-              <span>Fluax</span>
+              <span>FluentPeak</span>
             </Link>
             <p style={{ color: 'var(--gray-light)', marginBottom: '1.5rem' }}>The future of language learning, powered by AI.</p>
             <div className="social-links">
@@ -28,7 +28,7 @@ export default function Footer() {
           </div>
         </div>
         <div className="footer-bottom">
-          <p>&copy; {new Date().getFullYear()} Fluax. All rights reserved. | CMSE 405 - Group 13 Project</p>
+          <p>&copy; {new Date().getFullYear()} FluentPeak. All rights reserved. | CMSE 405 - Group 13 Project</p>
         </div>
       </div>
     </footer>

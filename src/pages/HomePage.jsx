@@ -38,7 +38,7 @@ export default function HomePage() {
               </h1>
 
               <p className="animate-fadeInUp animation-delay-1">
-                Fluax combines AI-powered technology with proven language learning methods to help you achieve fluency faster than ever before.
+                FluentPeak combines AI-powered technology with proven language learning methods to help you achieve fluency faster than ever before.
               </p>
 
               <div className="hero-features animate-fadeInUp animation-delay-2">
@@ -91,7 +91,7 @@ export default function HomePage() {
                   className="hero-image-main"
                   viewBox="0 0 520 380"
                   xmlns="http://www.w3.org/2000/svg"
-                  aria-label="Fluax app interface preview"
+                  aria-label="FluentPeak app interface preview"
                 >
                   <defs>
                     <linearGradient id="cardBg" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -142,7 +142,7 @@ export default function HomePage() {
                   <text x="30" y="30" textAnchor="middle" fontSize="14" fontWeight="700" fill="white">F</text>
 
                   {/* App name */}
-                  <text x="52" y="30" fontSize="15" fontWeight="700" fill="#1a1730" fontFamily="sans-serif">Fluax</text>
+                  <text x="52" y="30" fontSize="15" fontWeight="700" fill="#1a1730" fontFamily="sans-serif">FluentPeak</text>
 
                   {/* Nav dots */}
                   <circle cx="420" cy="25" r="3" fill="rgba(0,0,0,0.25)" />
@@ -238,7 +238,7 @@ export default function HomePage() {
       <section className="why-choose">
         <div className="container">
           <div className="section-title">
-            <h2>Why Choose Fluax?</h2>
+            <h2>Why Choose FluentPeak?</h2>
             <p>Our unique approach combines cutting-edge technology with proven learning methods</p>
           </div>
           <div className="dashboard-sections">
