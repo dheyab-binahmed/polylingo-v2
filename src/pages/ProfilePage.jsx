@@ -475,7 +475,7 @@ export default function ProfilePage() {
         )}
 
         {/* ── Page title ── */}
-        <div style={{ padding: '1.5rem 0' }}>
+        <div style={{ padding: '1.5rem 0' , marginTop: '-4.5rem', textAlign: 'center' }}>
           <h1 style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-base)', marginBottom: '0.25rem' }}>Your Profile</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Manage your account and track your learning journey</p>
         </div>

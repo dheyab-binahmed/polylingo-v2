@@ -425,7 +425,7 @@ const CommunityStyles = () => (
       /* Create group bottom sheet */
       .create-group-overlay {
         padding-bottom: 50px;
-        align-items: flex-end;
+        align-items: center;
       }
       .create-group-box {
         border-radius: 20px;
@@ -433,7 +433,7 @@ const CommunityStyles = () => (
         max-height: 88dvh;
         overflow-y: auto;
         overflow-x: hidden;
-        padding: 24px 20px 40px;
+        padding: 25px;
         animation: slideUp .3s ease;
       }
 
@@ -597,7 +597,7 @@ const CommunityStyles = () => (
     /* ── Fix for form inputs on mobile ── */
     @media (max-width: 640px) {
       input, select, textarea, .fc, .fc-area {
-        font-size: 16px; /* Prevents zoom on iOS */
+        font-size: 12px; /* Prevents zoom on iOS */
       }
       
       /* Fix grid columns for language filter buttons */
@@ -615,6 +615,7 @@ const CommunityStyles = () => (
       /* Make sure all containers respect viewport */
       .gi-box, .create-group-box {
         box-sizing: border-box;
+
       }
     }
   `}</style>
