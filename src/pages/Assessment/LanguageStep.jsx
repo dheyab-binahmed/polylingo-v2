@@ -27,7 +27,7 @@ const LEVELS = [
 ]
 
 export default function LanguageStep() {
-  const { data, update, goNext } = useAssessment()
+  const { data, reset, goNext } = useAssessment()
   const navigate = useNavigate()
   const [selLang,  setSelLang]  = useState(data.language || null)
   const [selLevel, setSelLevel] = useState(data.level    || null)
@@ -36,7 +36,9 @@ export default function LanguageStep() {
   function confirm() {
     if (!selLang)  { alert('Please select a language first!'); return }
     if (!selLevel) { alert('Please select your current level!'); return }
-    update({ language: selLang, level: selLevel })
+    // reset() wipes any scores from a previous attempt so they can't leak
+    // into this run's results
+    reset({ language: selLang, level: selLevel })
     goNext('language')
   }
 
@@ -186,7 +188,7 @@ export default function LanguageStep() {
                   disabled={!selLang}
                   onClick={() => {
                     if (!selLang) { alert('Please select a language first!'); return; }
-                    update({ language: selLang, level: lv.code });
+                    reset({ language: selLang, level: lv.code });
                     navigate('/assessment/results');
                   }}
                   style={{

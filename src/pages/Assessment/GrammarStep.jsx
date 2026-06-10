@@ -1,12 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAssessment } from './assessmentContext'
 import { getAssessmentContent } from '../../data/assessmentContent'
-
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
-
-function getToken() {
-  return localStorage.getItem('polylingo_token') || ''
-}
+import { apiFetch } from '../../services/api'
 
 /** Convert static assessmentContent grammar format → backend format */
 function staticToBackend(staticQuestions) {
@@ -41,20 +36,12 @@ export default function GrammarStep() {
       setLoading(true)
       setError(null)
       try {
-        const token = getToken()
         const lang  = data.language || 'en'
         const level = data.level    || ''
-        const res   = await fetch(
-          `${BASE_URL}/api/v1/assessment/content?step_type=grammar&language=${lang}${level ? `&level=${level}` : ''}`,
-          {
-            headers: {
-              'Content-Type':  'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-          }
+        // apiFetch attaches the token, auto-refreshes on 401, throws on error
+        const json  = await apiFetch(
+          `/assessment/content?step_type=grammar&language=${lang}${level ? `&level=${level}` : ''}`
         )
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const json = await res.json()
         if (cancelled) return
         if (json.questions && json.questions.length > 0) {
           setQuestions(json.questions)
@@ -118,18 +105,10 @@ export default function GrammarStep() {
         answer_index,
       }))
 
-      const token = getToken()
-      const res   = await fetch(`${BASE_URL}/api/v1/assessment/grammar/score`, {
-        method:  'POST',
-        headers: {
-          'Content-Type':  'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ session_id: sessionId, responses, level: data.level || '' }),
+      const json = await apiFetch('/assessment/grammar/score', {
+        method: 'POST',
+        body:   JSON.stringify({ session_id: sessionId, responses, level: data.level || '' }),
       })
-
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error?.message || `HTTP ${res.status}`)
 
       // json = { score, correct_count, total, feedback, ... }
       update({

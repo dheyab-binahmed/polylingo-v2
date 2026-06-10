@@ -1,12 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useAssessment } from './assessmentContext'
 import { getAssessmentContent } from '../../data/assessmentContent'
-
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
-
-function getToken() {
-  return localStorage.getItem('polylingo_token') || ''
-}
+import { apiFetch } from '../../services/api'
+import { takePrefetched, contentUrl, makeT } from './assessmentExtras'
+import AnswerReview from './AnswerReview'
 
 /** Convert static assessmentContent reading format → backend format */
 function staticToBackend(staticQuestions) {
@@ -26,6 +23,7 @@ function staticToBackend(staticQuestions) {
 export default function ReadingStep() {
   const { data, update, goNext, goPrev } = useAssessment()
   const staticContent = getAssessmentContent(data.language)
+  const t = makeT(data.language, data.level)
 
   // ── state ────────────────────────────────────────────────────────────────
   const [passage,    setPassage]    = useState('')
@@ -39,28 +37,19 @@ export default function ReadingStep() {
   const [idx,     setIdx]     = useState(0)
   const [sel,     setSel]     = useState(null)
   const [answers, setAnswers] = useState({})  // { questionId: answerIndex }
+  const [review,  setReview]  = useState(null) // { details } once scored
 
-  // ── fetch from backend on mount ──────────────────────────────────────────
+  // ── fetch from backend on mount (consume prefetch if available) ───────────
   useEffect(() => {
     let cancelled = false
     async function fetchContent() {
       setLoading(true)
       setError(null)
       try {
-        const token = getToken()
         const lang  = data.language || 'en'
         const level = data.level    || ''
-        const res   = await fetch(
-          `${BASE_URL}/api/v1/assessment/content?step_type=reading&language=${lang}${level ? `&level=${level}` : ''}`,
-          {
-            headers: {
-              'Content-Type':  'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-          }
-        )
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const json = await res.json()
+        const pre = takePrefetched('reading', lang, level)
+        const json = pre ? await pre : await apiFetch(contentUrl('reading', lang, level))
         if (cancelled) return
         if (json.questions && json.questions.length > 0) {
           setPassage(json.passage || json.questions[0]?.passage || '')
@@ -89,18 +78,22 @@ export default function ReadingStep() {
   // ── derived ──────────────────────────────────────────────────────────────
   const q      = questions[idx] || null
   const isLast = questions.length > 0 && idx === questions.length - 1
-
-  // Each question can have its own passage (reading bank) or share the top-level one
   const currentPassage = q?.passage || passage
 
-  // ── handlers ─────────────────────────────────────────────────────────────
-  function handleSelect(i) {
-    setSel(i)
+  // Build review details locally (offline) from the hidden _answer field.
+  function localDetails(newAnswers) {
+    return questions.map((qq) => ({
+      question_id: qq.id,
+      selected: newAnswers[qq.id],
+      correct: qq._answer,
+      is_correct: newAnswers[qq.id] === qq._answer,
+    }))
   }
+
+  function handleSelect(i) { setSel(i) }
 
   async function next() {
     if (sel === null || !q) return
-
     const newAnswers = { ...answers, [q.id]: sel }
     setAnswers(newAnswers)
 
@@ -110,47 +103,29 @@ export default function ReadingStep() {
       return
     }
 
-    // ── last question: submit and score ───────────────────────────────────
+    // ── last question: submit and score, then show the review ─────────────
     setSubmitting(true)
     setError(null)
     try {
       if (isStatic || !sessionId) {
-        // Score locally using the hidden _answer field
         let correct = 0
-        questions.forEach(qq => {
-          if (newAnswers[qq.id] === qq._answer) correct++
-        })
+        questions.forEach(qq => { if (newAnswers[qq.id] === qq._answer) correct++ })
         update({ readingScore: correct, readingTotal: questions.length })
-        goNext('reading')
+        setReview({ details: localDetails(newAnswers) })
         return
       }
 
-      // Build responses array for backend
-      const responses = Object.entries(newAnswers).map(([question_id, answer_index]) => ({
-        question_id,
-        answer_index,
-      }))
-
-      const token = getToken()
-      const res   = await fetch(`${BASE_URL}/api/v1/sessions/${sessionId}/score`, {
-        method:  'PUT',
-        headers: {
-          'Content-Type':  'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ test_type: 'reading', responses }),
+      const responses = Object.entries(newAnswers).map(([question_id, answer_index]) => ({ question_id, answer_index }))
+      const json = await apiFetch(`/sessions/${sessionId}/score`, {
+        method: 'PUT',
+        body:   JSON.stringify({ test_type: 'reading', responses }),
       })
-
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error?.message || `HTTP ${res.status}`)
-
-      // json = { result: { score, correct_count, total, ... }, ... }
       const result = json.result || json
       update({
         readingScore: result.correct_count ?? result.score ?? 0,
         readingTotal: result.total         ?? questions.length,
       })
-      goNext('reading')
+      setReview({ details: result.details || localDetails(newAnswers) })
     } catch (err) {
       console.error('[ReadingStep] Scoring failed:', err)
       setError('Could not submit answers. Please try again.')
@@ -164,7 +139,7 @@ export default function ReadingStep() {
     goPrev('reading')
   }
 
-  // ── render ────────────────────────────────────────────────────────────────
+  // ── render ──────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="test-container fade-in" style={{ margin: '2rem auto', textAlign: 'center', padding: '3rem' }}>
@@ -174,14 +149,29 @@ export default function ReadingStep() {
     )
   }
 
+  // ── review screen (after scoring) ─────────────────────────────────────────
+  if (review) {
+    return (
+      <div className="test-container fade-in" style={{ margin: '2rem auto' }}>
+        <AnswerReview
+          title="Review your Reading answers"
+          questions={questions}
+          details={review.details}
+          onContinue={() => goNext('reading')}
+          continueLabel={t('results')}
+        />
+      </div>
+    )
+  }
+
   if (!q) return null
 
   return (
     <div className="test-container fade-in" style={{ margin: '2rem auto' }}>
       <div className="test-header">
-        <h2>Reading Comprehension</h2>
+        <h2>{t('readingTitle')}</h2>
         <p>
-          Read the following passage in {staticContent.fullName} and answer the question.
+          {t('readingHint')}
           {isStatic && <span style={{ fontSize: '0.8rem', color: '#f59e0b', marginLeft: '0.5rem' }}>(offline mode)</span>}
         </p>
       </div>
@@ -215,18 +205,18 @@ export default function ReadingStep() {
 
       <div className="test-navigation">
         <div className="test-progress-text" id="readingProgress">
-          Question {idx + 1} of {questions.length}
+          {t('question')} {idx + 1} / {questions.length}
         </div>
         <div>
           <button className="btn btn-outline" onClick={handleBack} disabled={submitting} style={{ marginRight: '1rem' }}>
-            <i className="fas fa-arrow-left" /> Back
+            <i className="fas fa-arrow-left" /> {t('back')}
           </button>
           <button className="btn btn-primary" onClick={next} disabled={sel === null || submitting}>
             {submitting
               ? <><i className="fas fa-spinner fa-spin" /> Scoring…</>
               : isLast
-                ? <>See Results <i className="fas fa-arrow-right" /></>
-                : <>Next Question <i className="fas fa-arrow-right" /></>}
+                ? <>{t('results')} <i className="fas fa-arrow-right" /></>
+                : <>{t('next')} <i className="fas fa-arrow-right" /></>}
           </button>
         </div>
       </div>

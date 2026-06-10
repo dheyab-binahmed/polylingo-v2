@@ -6,7 +6,9 @@ import {
   completeSpeakingAssessment,
   generateSpeech,
   transcribeAudio,
+  authorizedFetch,
 } from "../../services/api";
+import { prefetchStep } from "./assessmentExtras";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -21,10 +23,6 @@ const TOPICS = [
 function splitSentences(text) {
   const parts = text.match(/[^.!?…]+[.!?…]+/g);
   return parts ? parts.map((s) => s.trim()).filter(Boolean) : [text.trim()];
-}
-
-function getToken() {
-  return localStorage.getItem("polylingo_token") || "";
 }
 
 // ── VAD constants ─────────────────────────────────────────────────────────────
@@ -98,6 +96,11 @@ export default function SpeakingStep() {
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [messages, streamingText]);
+
+  // Prefetch the next step (Writing) in the background so it loads instantly.
+  useEffect(() => {
+    prefetchStep("writing", data.language || "en", data.level || "");
+  }, [data.language, data.level]);
 
   useEffect(() => {
     if (sessionStarted) return;
@@ -342,15 +345,12 @@ export default function SpeakingStep() {
       let turnScores      = null;
 
       try {
-        const token = getToken();
-        const resp  = await fetch(
+        // authorizedFetch attaches the token and auto-refreshes on 401
+        const resp = await authorizedFetch(
           `${BASE_URL}/api/v1/assessment/speaking/${sessionId}/message/stream`,
           {
             method: "POST",
-            headers: {
-              "Content-Type":  "application/json",
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               text:             trimmed,
               mode,
@@ -419,8 +419,16 @@ export default function SpeakingStep() {
             const raw = line.slice(6).trim();
             if (!raw) continue;
 
+            // Parse in its own try/catch so a malformed chunk is skipped
+            // WITHOUT swallowing real server error events below.
+            let event;
             try {
-              const event = JSON.parse(raw);
+              event = JSON.parse(raw);
+            } catch (_) {
+              continue; // ignore malformed SSE chunk
+            }
+
+            {
 
               if (event.token !== undefined) {
                 accumulatedText += event.token;
@@ -474,9 +482,11 @@ export default function SpeakingStep() {
               }
 
               if (event.error) {
+                // Server-sent error — propagate to the outer catch (shows the
+                // retry message) instead of being silently ignored.
                 throw new Error(event.error);
               }
-            } catch (_) { /* ignore parse errors on individual events */ }
+            }
           }
         }
 
@@ -538,14 +548,15 @@ export default function SpeakingStep() {
         update({ speakingSessionId: sessionId, speakingResult: completion, speakingScore, fluencyScore: speakingScore, speakingTranscripts: transcripts });
         setScore(speakingScore);
       } else {
-        const s = Math.min(10, Math.max(4, 5 + userCount));
-        update({ fluencyScore: s, speakingTranscripts: transcripts });
-        setScore(s);
+        // No backend session — we can't grade fairly. Exclude speaking from
+        // the aggregate (null) instead of fabricating a turn-count score.
+        update({ speakingScore: null, fluencyScore: null, speakingTranscripts: transcripts });
+        setScore(null);
       }
     } catch {
-      const s = Math.min(10, Math.max(4, 5 + messages.filter((m) => m.role === "user").length));
-      update({ fluencyScore: s, speakingTranscripts: transcripts });
-      setScore(s);
+      // Completion failed — exclude speaking rather than fabricate a score.
+      update({ speakingScore: null, fluencyScore: null, speakingTranscripts: transcripts });
+      setScore(null);
     }
 
     setTimeout(() => goNext("speaking"), 400);

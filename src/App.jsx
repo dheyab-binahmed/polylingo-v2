@@ -11,6 +11,7 @@ import { updatePresence, fetchFriendRequests } from "./services/api";
 import { onCallIncoming, offCallIncoming, endCall, onFriendRequest, offFriendRequest } from "./services/socket";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
+import AchievementToaster from "./components/AchievementToaster";
 import HomePage from "./pages/HomePage";
 import DashboardPage from "./pages/DashboardPage";
 import PracticePage from "./pages/PracticePage";
@@ -20,7 +21,8 @@ import ProfilePage from "./pages/ProfilePage";
 import AssessmentPage from "./pages/Assessment/AssessmentPage";
 import LanguageStep from "./pages/Assessment/LanguageStep";
 import SpeakingStep from "./pages/Assessment/SpeakingStep";
-import GrammarStep from "./pages/Assessment/GrammarStep";
+import WritingStep from "./pages/Assessment/WritingStep";
+import ListeningStep from "./pages/Assessment/ListeningStep";
 import ReadingStep from "./pages/Assessment/ReadingStep";
 import ResultsStep from "./pages/Assessment/ResultsStep";
 import AuthRequired from "./components/AuthRequired";
@@ -194,6 +196,7 @@ function AppContent() {
         friendRequestCount={friendRequestCount}
         onResetFriendCount={() => setFriendRequestCount(0)}
       />
+      <AchievementToaster />
       <main className="main-content">
         <Routes>
           {/* Public Routes */}
@@ -261,7 +264,8 @@ function AppContent() {
             />
             <Route path="language" element={<LanguageStep />} />
             <Route path="speaking" element={<SpeakingStep />} />
-            <Route path="grammar" element={<GrammarStep />} />
+            <Route path="writing" element={<WritingStep />} />
+            <Route path="listening" element={<ListeningStep />} />
             <Route path="reading" element={<ReadingStep />} />
             <Route path="results" element={<ResultsStep />} />
           </Route>
