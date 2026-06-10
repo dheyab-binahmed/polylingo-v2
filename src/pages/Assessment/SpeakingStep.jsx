@@ -109,12 +109,15 @@ export default function SpeakingStep() {
   }, [sessionStarted]);
 
   // ── Audio playback ────────────────────────────────────────────────────────
+  // Rejects on playback error / blocked autoplay so the caller can fall back to
+  // browser speech (parity with the practice tutor's TTS pipeline).
   const playAudioBlob = (base64, contentType) =>
-    new Promise((resolve) => {
+    new Promise((resolve, reject) => {
       const el = new Audio(`data:${contentType};base64,${base64}`);
       audioRef.current = el;
-      el.onended = el.onerror = () => { audioRef.current = null; resolve(); };
-      el.play().catch(resolve);
+      el.onended = () => { audioRef.current = null; resolve(); };
+      el.onerror = () => { audioRef.current = null; reject(new Error("audio error")); };
+      el.play().catch((e) => { audioRef.current = null; reject(e); });
     });
 
   const browserSpeak = (text) =>
@@ -388,10 +391,12 @@ export default function SpeakingStep() {
         const enqueueSentence = (sentence) => {
           const s = (sentence || "").trim();
           if (!s) return;
-          // Kick off synthesis immediately (parallel with streaming + playback)
+          // Kick off synthesis immediately (parallel with streaming + playback).
+          // Always carry the text so playback can fall back to browser speech if
+          // the audio errors or autoplay is blocked.
           const job = generateSpeech(s, ttsLang)
             .then((r) => (r && r.audio
-              ? { audio: r.audio, content_type: r.content_type || "audio/mpeg" }
+              ? { audio: r.audio, content_type: r.content_type || "audio/mpeg", text: s }
               : { text: s }))
             .catch(() => ({ text: s }));
           ttsQueue.push(job);
