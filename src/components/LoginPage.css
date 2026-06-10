@@ -254,6 +254,7 @@
 
 /* Responsive */
 @media (max-width: 480px) {
+  
   .login-card {
     padding: 1.8rem;
   }
