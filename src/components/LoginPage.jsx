@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { formatErrorForDisplay, logError } from "../utils/errorHandler";
-
 // Demo credentials only shown when VITE_SHOW_DEMO=true in .env.local
 // Leave unset (or false) in production to hide this block.
 const SHOW_DEMO = import.meta.env.VITE_SHOW_DEMO === "true";
