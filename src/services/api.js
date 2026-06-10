@@ -515,13 +515,10 @@ export async function getPronunciationJobStatus(jobId) {
 
 /**
  * Submit pronunciation audio for AI scoring.
- * 👉 INSERT API URL HERE: POST /api/assessment/pronunciation
+ * POST /api/v1/assessment/pronunciation/score
  *
  * This sends a FormData (binary audio file), NOT JSON.
  * Expected response: { score: 8.2, feedback: "..." }
- *
- * ⚠️  Currently in PronunciationStep.jsx the score is faked with Math.random().
- *     Replace that with a call to this function.
  */
 export async function scorePronunciation(
   audioBlob,
@@ -596,17 +593,7 @@ export async function getSpeakingReply({ message, history, language }) {
     });
   } catch (err) {
     console.error("Failed to get speaking reply:", err);
-    const MOCK_REPLIES = [
-      "Interesting! Could you tell me more about that?",
-      "Great point! How did that experience affect you?",
-      "That's a thoughtful response. What would you do differently?",
-      "I like how you expressed that. Can you elaborate a bit more?",
-      "Well said! What do you think about the broader context of that?",
-    ];
-    return {
-      reply: MOCK_REPLIES[Math.floor(Math.random() * MOCK_REPLIES.length)],
-      fluencyScore: null,
-    };
+    throw err;
   }
 }
 
