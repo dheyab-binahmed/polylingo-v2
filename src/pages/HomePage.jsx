@@ -68,18 +68,15 @@ export default function HomePage() {
               {/* ── Stats ── */}
               <div className="hero-stats animate-fadeInUp animation-delay-3">
                 <div className="hero-stat">
-                  <strong>50K+</strong>
-                  <small>Active Learners</small>
+                  
                 </div>
-                <div className="hero-stat-divider" />
+                <div  />
                 <div className="hero-stat">
-                  <strong>4.9</strong>
-                  <small>User Rating</small>
+                  
                 </div>
-                <div className="hero-stat-divider" />
+                <div  />
                 <div className="hero-stat">
-                  <strong>30+</strong>
-                  <small>Languages</small>
+                  
                 </div>
               </div>
             </div>
