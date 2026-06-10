@@ -9,6 +9,7 @@ import {
   getJobStatus,
   chatWithTutor,
   streamTutorChat,
+  fetchTutorSuggestions,
   fetchTTS,
   fetchPracticeFlashcards,
   fetchPracticeGrammar,
@@ -22,9 +23,12 @@ import {
   savePracticeProgress,
   updateUserProfile,
   transcribeAudio,
+  authorizedFetch,
 } from "../services/api";
 import { formatErrorForDisplay, logError } from "../utils/errorHandler";
 import { getContent } from "../data/practiceContent";
+import { logActivityMinutes } from "../utils/activityLog";
+import PracticeActivity from "../components/PracticeActivity";
 
 // ─────────────────────────────────────────────────────────────────
 // HELPERS
@@ -37,15 +41,12 @@ const fmt = (s) =>
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 async function speakTTS(text, lang, onStart, onEnd) {
-  // Try ElevenLabs via backend first, fall back to browser TTS
+  // Try neural TTS via backend first, fall back to browser TTS.
+  // authorizedFetch attaches the token and auto-refreshes on 401.
   try {
-    const token = localStorage.getItem("polylingo_token");
-    const res = await fetch(`${BASE_URL}/api/v1/practice/tts`, {
+    const res = await authorizedFetch(`${BASE_URL}/api/v1/practice/tts`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text, lang }),
     });
     if (res.ok) {
@@ -184,8 +185,10 @@ export default function PracticePage() {
   const awardPracticeMinutes = async (type, minutes = 5, score = null) => {
     // 1. Increment todayMinutes in local stats state + persist
     setPracticeStats((prev) => {
-      const next = { ...prev, todayMinutes: (prev.todayMinutes || 0) + minutes };
+      const base = _applyDailyReset(prev);
+      const next = { ...base, todayMinutes: (base.todayMinutes || 0) + minutes, statsDate: _todayStr() };
       try { localStorage.setItem(`polylingo_stats_${user?.id || "guest"}`, JSON.stringify(next)); } catch (_) {}
+      try { logActivityMinutes(user?.id, minutes); setActivityKey((k) => k + 1); } catch (_) {}
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
         savePracticeProgress({ language: lang, ...next });
@@ -211,12 +214,24 @@ export default function PracticePage() {
 
   // ── Practice stats (persisted in localStorage, zero for new users) ──
   const STATS_KEY = `polylingo_stats_${user?.id || "guest"}`;
+  // Daily rollover: todayMinutes must reset each calendar day, otherwise
+  // yesterday's minutes keep counting toward today's goal forever.
+  const _todayStr = () => new Date().toISOString().slice(0, 10);
+  const _applyDailyReset = (stats) => {
+    if (!stats) return stats;
+    if (stats.statsDate !== _todayStr()) {
+      return { ...stats, todayMinutes: 0, statsDate: _todayStr() };
+    }
+    return stats;
+  };
+
+  const [activityKey, setActivityKey] = useState(0); // bumps to re-render the heatmap
   const [practiceStats, setPracticeStats] = useState(() => {
     try {
       const stored = JSON.parse(localStorage.getItem(`polylingo_stats_${user?.id || "guest"}`));
       // merge with DEFAULT_STATS so new keys are always present
       if (stored) {
-        return {
+        return _applyDailyReset({
           flashcards: { ...DEFAULT_STATS.flashcards, ...stored.flashcards },
           listening:  { ...DEFAULT_STATS.listening,  ...stored.listening  },
           writing:    { ...DEFAULT_STATS.writing,     ...stored.writing    },
@@ -226,17 +241,18 @@ export default function PracticePage() {
           streak:          stored.streak          ?? 0,
           todayMinutes:    stored.todayMinutes    ?? 0,
           dailyGoalMinutes: stored.dailyGoalMinutes ?? 10,
-        };
+          statsDate:       stored.statsDate,
+        });
       }
     } catch (_) {}
-    return { ...DEFAULT_STATS };
+    return { ...DEFAULT_STATS, statsDate: _todayStr() };
   });
   // Debounce ref so we don't fire a PUT on every single click
   const saveTimerRef = useRef(null);
 
   const updateStat = (tabId, updater) => {
     setPracticeStats((prev) => {
-      const next = { ...prev, [tabId]: updater({ ...prev[tabId] }) };
+      const next = { ..._applyDailyReset(prev), [tabId]: updater({ ...prev[tabId] }), statsDate: _todayStr() };
       // Always persist locally immediately
       try { localStorage.setItem(STATS_KEY, JSON.stringify(next)); } catch (_) {}
       // Debounce the backend save by 1.5 s
@@ -263,6 +279,7 @@ export default function PracticePage() {
         streak:          remote.streak          ?? 0,
         todayMinutes:    remote.todayMinutes    ?? 0,
         dailyGoalMinutes: remote.dailyGoalMinutes ?? 10,
+        statsDate:       _todayStr(), // server already applies its own daily rollover
       };
       setPracticeStats(merged);
       try { localStorage.setItem(STATS_KEY, JSON.stringify(merged)); } catch (_) {}
@@ -332,8 +349,15 @@ export default function PracticePage() {
   // ── Session summary ──
   const [sessionSummary, setSessionSummary] = useState(null); // { type, score, total }
 
-  // Use AI-generated content when available, fall back to static
-  const FLASHCARDS = dynamicFlashcards || content.flashcards;
+  // Cards the learner saved from tutor-chat mistakes (persisted per user+lang).
+  const customCardsKey = `polylingo_custom_cards_${user?.id || "guest"}_${lang}`;
+  const [customCards, setCustomCards] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(customCardsKey)) || []; } catch { return []; }
+  });
+
+  // Use AI-generated content when available, fall back to static. Mistake cards
+  // are prepended so review starts with the learner's own errors.
+  const FLASHCARDS = [...customCards, ...(dynamicFlashcards || content.flashcards)];
   const GRAMMAR_EXERCISES = dynamicGrammar || content.grammar;
   const READING = dynamicReading || content.reading;
   const SPEAKING_PHRASES = dynamicSpeakingPhrases || content.speakingPhrases;
@@ -397,20 +421,80 @@ export default function PracticePage() {
   const [processingStatus, setProcessingStatus] = useState("");
   const [feedbackData, setFeedbackData] = useState(null);
 
-  // ── AI Tutor state ──
-  const [tutorMessages, setTutorMessages] = useState([
-    {
-      role: "assistant",
-      content: makeTutorGreeting(practiceLevel, lang),
-      correction: null,
-      vocab_tip: null,
-    },
-  ]);
+  // ── AI Tutor state (persisted per user+language so the chat survives
+  //    tab switches and page refreshes) ──
+  const TUTOR_CHAT_KEY = `polylingo_tutor_chat_${user?.id || "guest"}_${lang}`;
+  const loadTutorChat = (key) => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(key));
+      if (Array.isArray(saved) && saved.length > 0) {
+        // Drop unfinished streaming placeholders from a previous session
+        const clean = saved
+          .filter((m) => m && m.content)
+          .map(({ streaming: _s, ...m }) => m);
+        if (clean.length > 0) return clean;
+      }
+    } catch (_) {}
+    return [
+      {
+        role: "assistant",
+        content: makeTutorGreeting(practiceLevel, lang),
+        correction: null,
+        vocab_tip: null,
+      },
+    ];
+  };
+  const [tutorMessages, setTutorMessages] = useState(() => loadTutorChat(TUTOR_CHAT_KEY));
+
+  // Persist tutor chat on every change (last 50 messages, no streaming placeholders)
+  useEffect(() => {
+    try {
+      const toSave = tutorMessages
+        .filter((m) => m && m.content)
+        .map(({ streaming: _s, ...m }) => m)
+        .slice(-50);
+      localStorage.setItem(TUTOR_CHAT_KEY, JSON.stringify(toSave));
+    } catch (_) {}
+  }, [tutorMessages, TUTOR_CHAT_KEY]);
   const [tutorInput, setTutorInput] = useState("");
   const [tutorLoading, setTutorLoading] = useState(false);
   const [tutorListening, setTutorListening] = useState(false);
   const [tutorSpeaking, setTutorSpeaking] = useState(false);
   const [tutorError, setTutorError] = useState("");
+  const [tutorSuggestions, setTutorSuggestions] = useState([]); // A1/A2 reply chips
+  const [recapSaved, setRecapSaved] = useState(false);          // mistakes→flashcards feedback
+
+  // All correction notes the tutor has made this conversation.
+  const tutorCorrections = tutorMessages.filter((m) => m && m.correction).map((m) => m.correction);
+
+  // Turn a correction note like '"I goed" → "I went" (past tense)' into a card.
+  function correctionToCard(note) {
+    const s = String(note);
+    const arrow = s.indexOf("→") >= 0 ? "→" : (s.indexOf("->") >= 0 ? "->" : null);
+    let word = s, translation = "Your version", example = "Saved from your tutor chat";
+    if (arrow) {
+      const [left, right] = s.split(arrow);
+      translation = left.replace(/["“”]/g, "").trim();
+      const m = (right || "").match(/^[^("]*"?([^"(]+)"?\s*(\(.*\))?/);
+      word = (right || "").replace(/["“”]/g, "").replace(/\(.*\)/, "").trim() || s;
+      example = (right.match(/\((.*)\)/) || [, "Saved from your tutor chat"])[1];
+    }
+    return { word, translation, example };
+  }
+
+  function saveMistakesAsFlashcards() {
+    if (tutorCorrections.length === 0) return;
+    const cards = tutorCorrections.map(correctionToCard);
+    const seen = new Set();
+    const merged = [...cards, ...customCards].filter((c) => {
+      const k = (c.word || "") + "|" + (c.translation || "");
+      if (seen.has(k)) return false; seen.add(k); return true;
+    });
+    setCustomCards(merged);
+    try { localStorage.setItem(customCardsKey, JSON.stringify(merged)); } catch (_) {}
+    setRecapSaved(true);
+    setTimeout(() => setRecapSaved(false), 4000);
+  }
 
   const timerRef = useRef(null);
   const barsRef = useRef([]);
@@ -447,6 +531,9 @@ export default function PracticePage() {
     setShowPronFeedback(false);
     setMicError("");
     window.speechSynthesis?.cancel();
+    // Swap in the tutor chat history for the new language
+    setTutorMessages(loadTutorChat(`polylingo_tutor_chat_${user?.id || "guest"}_${lang}`));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang]);
 
   // Scroll to top when the practice page first loads
@@ -1081,6 +1168,7 @@ export default function PracticePage() {
     setTutorSpeaking(false);
     setTutorInput("");
     setTutorError("");
+    setTutorSuggestions([]); // clear old reply chips while the tutor responds
 
     // Snapshot history BEFORE adding new messages (so we don't send the new user msg as history)
     const historyForApi = tutorMessages.map((m) => ({ role: m.role, content: m.content }));
@@ -1110,10 +1198,12 @@ export default function PracticePage() {
           _enqueueSentence(sentence);
         },
         onDone: ({ correction, vocab_tip }) => {
+          let replyText = "";
           setTutorMessages((prev) => {
             const msgs = [...prev];
             const last = msgs[msgs.length - 1];
             if (last?.streaming) {
+              replyText = last.content || "";
               msgs[msgs.length - 1] = {
                 ...last,
                 correction: correction || null,
@@ -1124,6 +1214,12 @@ export default function PracticePage() {
             return msgs;
           });
           setTutorLoading(false);
+          // Beginners freeze on an open chat — offer 2–3 tappable replies.
+          if (["A1", "A2"].includes(practiceLevel) && replyText) {
+            fetchTutorSuggestions({ message: replyText, language: lang, level: practiceLevel })
+              .then((r) => setTutorSuggestions(Array.isArray(r?.suggestions) ? r.suggestions.slice(0, 3) : []))
+              .catch(() => setTutorSuggestions([]));
+          }
         },
         onError: () => {
           setTutorError("Couldn't reach the tutor. Please check your connection and try again.");
@@ -1304,6 +1400,15 @@ export default function PracticePage() {
             </select>
           </div>
 
+          {/* Practice heatmap + daily-goal ring */}
+          <PracticeActivity
+            userId={user?.id}
+            today={practiceStats.todayMinutes}
+            goal={practiceStats.dailyGoalMinutes}
+            streak={practiceStats.streak}
+            refreshKey={activityKey}
+          />
+
           {/* Row 2: streak + daily goal */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "1.5rem", marginTop: "0.9rem", flexWrap: "wrap" }}>
             {/* Streak */}
@@ -1398,6 +1503,15 @@ export default function PracticePage() {
                   style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.15rem" }}
                 >
                   <span><i className={`fas ${cat.icon}`} /> {cat.title}</span>
+                  {cat.id === "flashcards" && sm2DueCount > 0 && (
+                    <span style={{
+                      fontSize: "0.65rem", fontWeight: 800,
+                      color: "#fff", background: "#ef4444",
+                      borderRadius: "99px", padding: "0.05rem 0.45rem", lineHeight: 1.6,
+                    }}>
+                      <i className="fas fa-bolt" style={{ fontSize: "0.6rem" }} /> {sm2DueCount} due
+                    </span>
+                  )}
                   {badge && badge.value !== null && (
                     <span style={{
                       fontSize: "0.65rem",
@@ -2710,6 +2824,36 @@ export default function PracticePage() {
                     }}
                   >
                     <i className="fas fa-exclamation-circle" /> {tutorError}
+                  </div>
+                )}
+
+                {/* Suggested reply chips (beginners A1/A2) */}
+                {["A1", "A2"].includes(practiceLevel) && tutorSuggestions.length > 0 && !tutorLoading && (
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.6rem" }}>
+                    {tutorSuggestions.map((s, i) => (
+                      <button key={i} onClick={() => { setTutorSuggestions([]); sendTutorChat(s); }}
+                        style={{ border: "1.5px solid rgba(99,102,241,0.4)", background: "rgba(99,102,241,0.07)", color: "#4f46e5", borderRadius: 99, padding: "0.4rem 0.85rem", fontSize: "0.85rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Mistake recap → flashcards */}
+                {tutorCorrections.length > 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.6rem", padding: "0.55rem 0.85rem", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 10, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: "0.84rem", fontWeight: 600, color: "var(--text-base)", flex: 1 }}>
+                      <i className="fas fa-clipboard-check" style={{ color: "#f59e0b", marginRight: "0.4rem" }} />
+                      {recapSaved
+                        ? `Saved! Review them in Flashcards.`
+                        : `You've made ${tutorCorrections.length} correction${tutorCorrections.length === 1 ? "" : "s"} this chat.`}
+                    </span>
+                    {!recapSaved && (
+                      <button onClick={saveMistakesAsFlashcards}
+                        style={{ background: "#f59e0b", color: "#fff", border: "none", borderRadius: 8, padding: "0.4rem 0.85rem", fontSize: "0.82rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+                        <i className="fas fa-layer-group" /> Save as flashcards
+                      </button>
+                    )}
                   </div>
                 )}
 

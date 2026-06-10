@@ -46,25 +46,90 @@ function extractErrorMessage(errorResponse) {
   return "An unknown error occurred";
 }
 
-// ─── Shared fetch helper ──────────────────────────────────────
+// ─── Token refresh ────────────────────────────────────────────
+/**
+ * Exchange the stored refresh token for a new access token.
+ * Deduplicates concurrent refreshes so parallel 401s trigger ONE call.
+ * Returns the new access token, or null if refresh isn't possible.
+ */
+let refreshPromise = null;
+
+async function refreshAccessToken() {
+  const refreshToken = localStorage.getItem("polylingo_refresh_token");
+  if (!refreshToken) return null;
+
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const res = await fetch(`${BASE_URL}/api/v1/auth/refresh`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${refreshToken}` },
+        });
+        if (!res.ok) {
+          // Refresh token expired/revoked — clear stale credentials so
+          // AuthRequired redirects to login on the next navigation.
+          localStorage.removeItem("polylingo_token");
+          localStorage.removeItem("polylingo_refresh_token");
+          return null;
+        }
+        const data = await res.json();
+        if (data?.access_token) {
+          localStorage.setItem("polylingo_token", data.access_token);
+          return data.access_token;
+        }
+        return null;
+      } catch {
+        return null;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
+  }
+  return refreshPromise;
+}
+
+// ─── Shared fetch helpers ─────────────────────────────────────
+/**
+ * Low-level fetch with auth: attaches the Bearer token and, on a 401,
+ * refreshes the access token once and retries. Returns the raw Response.
+ * Use this for non-JSON requests (e.g. multipart uploads).
+ */
+export async function authorizedFetch(url, options = {}) {
+  const doFetch = (token) =>
+    fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+
+  let response = await doFetch(localStorage.getItem("polylingo_token"));
+
+  if (response.status === 401) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      response = await doFetch(newToken);
+    }
+  }
+
+  return response;
+}
+
 /**
  * Wraps every API call:
  *  - Attaches Authorization header automatically
+ *  - On 401, refreshes the access token once and retries
  *  - Throws a friendly Error on non-2xx responses
  *  - Returns parsed JSON
  */
-async function apiFetch(path, options = {}) {
-  const token = localStorage.getItem("polylingo_token");
-
-  const headers = {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...options.headers,
-  };
-
-  const response = await fetch(`${BASE_URL}/api/v1${path}`, {
+export async function apiFetch(path, options = {}) {
+  const response = await authorizedFetch(`${BASE_URL}/api/v1${path}`, {
     ...options,
-    headers,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
   });
 
   if (!response.ok) {
@@ -463,7 +528,6 @@ export async function scorePronunciation(
   languageCode,
   pronunciationPrompt = null,
 ) {
-  const token = localStorage.getItem("polylingo_token");
   const formData = new FormData();
   formData.append("audio", audioBlob, "recording.webm");
   formData.append("language", languageCode);
@@ -476,11 +540,11 @@ export async function scorePronunciation(
   }
 
   // ─── REAL IMPLEMENTATION ──────────────────────────────────────
-  const response = await fetch(
+  // authorizedFetch attaches the token and auto-refreshes on 401.
+  const response = await authorizedFetch(
     `${BASE_URL}/api/v1/assessment/pronunciation/score`,
     {
       method: "POST",
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: formData, // Don't set Content-Type — browser sets multipart boundary automatically
     },
   );
@@ -552,16 +616,15 @@ export async function getSpeakingReply({ message, history, language }) {
  * Expected response: { audio: base64_string, content_type: "audio/mpeg" }
  */
 export const generateSpeech = async (text, lang) => {
-  const response = await fetch(`${BASE_URL}/api/v1/assessment/tts`, {
+  // Use apiFetch so the access token is auto-refreshed on a 401. Assessments can
+  // run long enough for the token to expire mid-session; a raw fetch would 401,
+  // throw, and the caller would fall back to the robotic browser voice instead
+  // of the neural TTS. apiFetch retries with a fresh token and returns the same
+  // { audio, content_type } shape.
+  return await apiFetch("/assessment/tts", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("polylingo_token") || localStorage.getItem("access_token") || ""}`,
-    },
     body: JSON.stringify({ text, lang }),
   });
-  if (!response.ok) throw new Error("TTS failed");
-  return response.json();
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -1075,6 +1138,33 @@ export async function fetchTTS(text, lang) {
     });
   } catch (_) {
     return { audioBase64: null };
+  }
+}
+
+/**
+ * Get 2–3 short suggested replies for a beginner, given the tutor's last message.
+ * POST /api/v1/practice/tutor/suggestions  →  { suggestions: ["…", "…"] }
+ */
+export async function fetchTutorSuggestions({ message, language, level }) {
+  try {
+    return await apiFetch("/practice/tutor/suggestions", {
+      method: "POST",
+      body: JSON.stringify({ message, language, level }),
+    });
+  } catch (_) {
+    return { suggestions: [] };
+  }
+}
+
+/**
+ * List the current user's earned achievements.
+ * GET /api/v1/users/me/achievements  →  { achievements: [{id,title,description,earned_at}], total }
+ */
+export async function fetchMyAchievements() {
+  try {
+    return await apiFetch("/users/me/achievements");
+  } catch (_) {
+    return { achievements: [], total: 0 };
   }
 }
 
