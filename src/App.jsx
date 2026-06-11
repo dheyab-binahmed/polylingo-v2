@@ -13,6 +13,7 @@ import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import AchievementToaster from "./components/AchievementToaster";
 import HomePage from "./pages/HomePage";
+import AboutPage from "./pages/AboutPage";
 import DashboardPage from "./pages/DashboardPage";
 import PracticePage from "./pages/PracticePage";
 import CommunityPage from "./pages/CommunityPage";
@@ -201,6 +202,7 @@ function AppContent() {
         <Routes>
           {/* Public Routes */}
           <Route path="/" element={<HomeRoute />} />
+          <Route path="/about" element={<AboutPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />

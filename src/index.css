@@ -448,6 +448,13 @@ header {
     align-items: center;
 }
 
+/* Let the navbar use more horizontal room than content sections so the
+   logo and the Sign In / Get Started / About Us group sit closer to the
+   screen edges instead of being boxed into the narrower 1200px content width */
+.navbar-header .container {
+    max-width: 1480px;
+}
+
 .logo {
     display: flex;
     align-items: center;

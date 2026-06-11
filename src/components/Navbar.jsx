@@ -107,6 +107,7 @@ export default function Navbar({ friendRequestCount = 0, onResetFriendCount }) {
                     )}
                   </NavLink>
                   <NavLink to="/profile" className={({ isActive }) => isActive ? 'active' : ''}>Profile</NavLink>
+                  <NavLink to="/about" className={({ isActive }) => isActive ? 'active' : ''}>About Us</NavLink>
                 </>
               )}
             </div>
@@ -209,6 +210,9 @@ export default function Navbar({ friendRequestCount = 0, onResetFriendCount }) {
                   <button className="btn btn-primary" onClick={() => navigate('/register')}>
                     <i className="fas fa-rocket" /> Get Started
                   </button>
+                  <button className="btn btn-outline" onClick={() => navigate('/about')}>
+                    <i className="fas fa-users" /> About Us
+                  </button>
                 </div>
               )}
             </div>
@@ -266,6 +270,9 @@ export default function Navbar({ friendRequestCount = 0, onResetFriendCount }) {
                 <NavLink to="/assessment" className={({ isActive }) => `mobile-nav-link${isActive ? ' mobile-nav-link--active' : ''}`}>
                   <i className="fas fa-rocket" /> Assessment
                 </NavLink>
+                <NavLink to="/about" className={({ isActive }) => `mobile-nav-link${isActive ? ' mobile-nav-link--active' : ''}`}>
+                  <i className="fas fa-users" /> About Us
+                </NavLink>
                 <button className="mobile-nav-link mobile-nav-link--logout" onClick={handleLogout}>
                   <i className="fas fa-sign-out-alt" /> Logout
                 </button>
@@ -273,6 +280,7 @@ export default function Navbar({ friendRequestCount = 0, onResetFriendCount }) {
             ) : (
               <>
                 <NavLink to="/"        className={({ isActive }) => `mobile-nav-link${isActive ? ' mobile-nav-link--active' : ''}`}><i className="fas fa-home" /> Home</NavLink>
+                <NavLink to="/about"   className={({ isActive }) => `mobile-nav-link${isActive ? ' mobile-nav-link--active' : ''}`}><i className="fas fa-users" /> About Us</NavLink>
                 <NavLink to="/login"   className={({ isActive }) => `mobile-nav-link${isActive ? ' mobile-nav-link--active' : ''}`}><i className="fas fa-sign-in-alt" /> Sign In</NavLink>
                 <NavLink to="/register" className={({ isActive }) => `mobile-nav-link${isActive ? ' mobile-nav-link--active' : ''}`}><i className="fas fa-user-plus" /> Create Account</NavLink>
               </>
