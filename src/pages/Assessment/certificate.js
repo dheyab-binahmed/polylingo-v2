@@ -15,7 +15,7 @@ export function certificateHTML({ cefr, language, name, date }) {
     .toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
   const desc = CEFR_DESC[cefr] || "";
   return `<!doctype html><html><head><meta charset="utf-8"/>
-<title>PolyLingo Certificate — ${esc(language)} ${esc(cefr)}</title>
+<title>FluentPeak Certificate — ${esc(language)} ${esc(cefr)}</title>
 <style>
   @page { size: 1123px 794px; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -56,11 +56,11 @@ export function certificateHTML({ cefr, language, name, date }) {
     <div class="kicker">Certificate of Achievement</div>
     <div class="title">${esc(language)} Proficiency</div>
     <div class="name">${esc(name)}</div>
-    <div class="line">has completed the PolyLingo CEFR assessment and achieved</div>
+    <div class="line">has completed the FluentPeak CEFR assessment and achieved</div>
     <div class="badge"><div class="lvl">${esc(cefr)}</div><div class="desc">${esc(desc).toUpperCase()}</div></div>
     <div class="foot">
       <div class="blk"><div class="val">${esc(d)}</div>Date</div>
-      <div class="blk"><div class="val">PolyLingo</div>Issued by</div>
+      <div class="blk"><div class="val">FluentPeak</div>Issued by</div>
     </div>
     <div class="note">CEFR-aligned self-assessment estimate — not an official CEFR certification.</div>
   </div></div>
