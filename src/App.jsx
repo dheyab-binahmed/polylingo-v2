@@ -33,6 +33,7 @@ import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import VerifyEmailPage from "./pages/VerifyEmailPage";
 import IncomingCallModal from "./components/components/partners/IncomingCallModal";
+import Companion from "./components/Companion/Companion";
 
 // Redirect logged-in users away from the homepage to the dashboard
 function HomeRoute() {
@@ -277,6 +278,7 @@ function AppContent() {
         </Routes>
       </main>
       <Footer />
+      <Companion />
     </>
   );
 }

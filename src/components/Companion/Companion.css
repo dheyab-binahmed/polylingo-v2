@@ -1,0 +1,498 @@
+/* ═══════════════════════════════════════════════════════════════
+   COMPANION — small animated animal on Dashboard & Community.
+   Untouchable: it always runs from the cursor.
+   All movement uses transform only (GPU-composited, no layout
+   work per frame) so it stays perfectly smooth.
+═══════════════════════════════════════════════════════════════ */
+
+.companion {
+  position: fixed;
+  bottom: 8px;
+  left: 0;
+  width: 84px;
+  z-index: 1300;
+  user-select: none;
+  -webkit-user-select: none;
+  /* untouchable: the cursor passes straight through it */
+  pointer-events: none;
+  /* dashes are animated on transform only */
+  transition: transform 0.62s cubic-bezier(0.3, 0.9, 0.35, 1);
+  will-change: transform;
+}
+
+.companion-inner {
+  position: relative;
+  transform-origin: 50% 100%;
+  animation: companionBob 3.4s ease-in-out infinite;
+}
+
+.companion-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  transform: scaleX(var(--facing, 1));
+}
+
+@keyframes companionBob {
+  0%, 100% { transform: translateY(0)    scale(1, 1); }
+  50%      { transform: translateY(-4px) scale(0.99, 1.01); }
+}
+
+/* ground shadow */
+.companion-shadow {
+  position: absolute;
+  bottom: -3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 64%;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(26, 23, 48, 0.18);
+  filter: blur(3px);
+  animation: shadowPulse 3.4s ease-in-out infinite;
+}
+
+@keyframes shadowPulse {
+  0%, 100% { transform: translateX(-50%) scaleX(1); opacity: 0.8; }
+  50%      { transform: translateX(-50%) scaleX(0.85); opacity: 0.55; }
+}
+
+/* ── blinking (idle eyes) ── */
+.companion-blink {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: companionBlink 4.6s infinite;
+}
+
+@keyframes companionBlink {
+  0%, 93%, 100% { transform: scaleY(1); }
+  95.5%         { transform: scaleY(0.06); }
+}
+
+/* ── paw / flipper sway ── */
+.companion-arm {
+  transform-box: fill-box;
+  transform-origin: top center;
+  animation: armSway 3.4s ease-in-out infinite;
+}
+
+.companion-arm--right { animation-delay: -1.7s; }
+
+@keyframes armSway {
+  0%, 100% { transform: rotate(0deg); }
+  50%      { transform: rotate(6deg); }
+}
+
+/* ── tail wag (fox / cat) ── */
+.companion-tail {
+  transform-box: fill-box;
+  transform-origin: 10% 90%;
+  animation: tailWag 1.6s ease-in-out infinite;
+}
+
+@keyframes tailWag {
+  0%, 100% { transform: rotate(0deg); }
+  50%      { transform: rotate(9deg); }
+}
+
+/* ── bunny ear flop ── */
+.companion-ear {
+  transform-box: fill-box;
+  transform-origin: 50% 95%;
+  animation: earFlop 3.8s ease-in-out infinite;
+}
+
+.companion-ear--right { animation-delay: -1.9s; }
+
+@keyframes earFlop {
+  0%, 100% { transform: rotate(0deg); }
+  50%      { transform: rotate(-6deg); }
+}
+
+/* ── head tilt for life ── */
+.companion-head {
+  transform-box: fill-box;
+  transform-origin: 50% 90%;
+  animation: headTilt 6.5s ease-in-out infinite;
+}
+
+@keyframes headTilt {
+  0%, 100% { transform: rotate(0deg); }
+  30%      { transform: rotate(-2.5deg); }
+  60%      { transform: rotate(2deg); }
+}
+
+/* ═════════ PAGE TRANSITIONS: poof out / pop in ═════════ */
+.companion--out .companion-inner {
+  animation: companionPoofOut 0.4s cubic-bezier(0.5, 0, 0.75, 0) forwards;
+}
+
+@keyframes companionPoofOut {
+  0%   { transform: scale(1)    rotate(0deg);  opacity: 1; }
+  60%  { transform: scale(1.15) rotate(-8deg); opacity: 1; }
+  100% { transform: scale(0)    rotate(30deg); opacity: 0; }
+}
+
+.companion--in .companion-inner {
+  animation: companionPopIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes companionPopIn {
+  0%   { transform: scale(0)    rotate(-30deg); opacity: 0; }
+  60%  { transform: scale(1.12) rotate(5deg);   opacity: 1; }
+  100% { transform: scale(1)    rotate(0deg);   opacity: 1; }
+}
+
+/* ═════════ MOTIONS ═════════ */
+
+/* scrambling away from the cursor */
+.companion--flee .companion-inner {
+  animation: companionRun 0.3s linear infinite;
+}
+
+@keyframes companionRun {
+  0%, 100% { transform: translateY(0)    rotate(-3deg) scale(1.03, 0.96); }
+  50%      { transform: translateY(-8px) rotate(3deg)  scale(0.96, 1.05); }
+}
+
+/* cornered — big leap over the cursor */
+.companion--leap .companion-inner {
+  animation: companionLeap 0.62s cubic-bezier(0.34, 1.2, 0.5, 1);
+}
+
+@keyframes companionLeap {
+  0%   { transform: translateY(0)     scale(1.06, 0.9)  rotate(0deg); }
+  45%  { transform: translateY(-56px) scale(0.94, 1.08) rotate(-8deg); }
+  80%  { transform: translateY(0)     scale(1.06, 0.92) rotate(2deg); }
+  100% { transform: translateY(0)     scale(1, 1)       rotate(0deg); }
+}
+
+/* happy bounce (idle) */
+.companion--jump .companion-inner {
+  animation: companionJump 0.65s cubic-bezier(0.34, 1.3, 0.5, 1) 2;
+}
+
+@keyframes companionJump {
+  0%   { transform: translateY(0)     scale(1, 1); }
+  20%  { transform: translateY(2px)   scale(1.08, 0.88); }
+  55%  { transform: translateY(-22px) scale(0.95, 1.07); }
+  80%  { transform: translateY(0)     scale(1.05, 0.92); }
+  100% { transform: translateY(0)     scale(1, 1); }
+}
+
+/* playful spin (idle) */
+.companion--spin .companion-inner {
+  animation: companionSpin 0.8s cubic-bezier(0.45, 0.05, 0.55, 0.95) 2;
+}
+
+@keyframes companionSpin {
+  from { transform: rotateY(0deg); }
+  to   { transform: rotateY(360deg); }
+}
+
+/* ═════════ SPEECH BUBBLE ═════════ */
+.companion-bubble {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 110px;
+  max-width: 170px;
+  padding: 0.5rem 0.7rem;
+  background: var(--bg-card, #ffffff);
+  color: var(--text-base, #1a1730);
+  border: 1.5px solid rgba(109, 95, 247, 0.35);
+  border-radius: 13px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+  box-shadow: 0 10px 26px rgba(26, 23, 48, 0.16);
+  animation: bubblePop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 2;
+}
+
+.companion-bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 7px solid transparent;
+  border-top-color: var(--bg-card, #ffffff);
+}
+
+@keyframes bubblePop {
+  0%   { transform: translateX(-50%) scale(0.5) translateY(8px); opacity: 0; }
+  100% { transform: translateX(-50%) scale(1)   translateY(0);   opacity: 1; }
+}
+
+/* keep bubble on-screen near the edges */
+.companion--edge-right .companion-bubble {
+  left: auto;
+  right: -6px;
+  transform: none;
+  animation: bubblePopEdge 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.companion--edge-right .companion-bubble::after { left: auto; right: 30px; transform: none; }
+
+.companion--edge-left .companion-bubble {
+  left: -6px;
+  transform: none;
+  animation: bubblePopEdge 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.companion--edge-left .companion-bubble::after { left: 36px; }
+
+@keyframes bubblePopEdge {
+  0%   { transform: scale(0.5) translateY(8px); opacity: 0; }
+  100% { transform: scale(1)   translateY(0);   opacity: 1; }
+}
+
+/* ═════════ EFFECTS ═════════ */
+.cfx {
+  position: absolute;
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* ── FIRE above the head (grumpy cat) ── */
+.cfx-fire {
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.cfx-fire i {
+  display: block;
+  width: 11px;
+  height: 17px;
+  background: linear-gradient(to top, #e8453c 10%, #f0762e 45%, #ffd166 85%);
+  border-radius: 50% 50% 50% 50% / 65% 65% 35% 35%;
+  transform-origin: 50% 100%;
+  animation: flameFlicker 0.28s ease-in-out infinite alternate;
+}
+
+.cfx-fire i:nth-child(2) {
+  width: 15px;
+  height: 24px;
+  animation-duration: 0.22s;
+  animation-delay: 0.08s;
+}
+
+.cfx-fire i:nth-child(3) {
+  animation-duration: 0.3s;
+  animation-delay: 0.14s;
+}
+
+@keyframes flameFlicker {
+  from { transform: scaleY(1)    scaleX(1)    rotate(-3deg); filter: brightness(1); }
+  to   { transform: scaleY(1.35) scaleX(0.85) rotate(3deg);  filter: brightness(1.25); }
+}
+
+/* ── ANGER mark ── */
+.cfx-anger {
+  top: -14px;
+  right: 0;
+  animation: angerPulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes angerPulse {
+  from { transform: scale(0.85) rotate(-6deg); }
+  to   { transform: scale(1.1)  rotate(6deg); }
+}
+
+/* ── HEARTS floating up ── */
+.cfx-hearts {
+  inset: -16px 0 auto 0;
+  height: 0;
+}
+
+.cfx-hearts i {
+  position: absolute;
+  bottom: 0;
+  width: 12px;
+  height: 11px;
+  animation: heartFloat 1.6s ease-out infinite;
+  opacity: 0;
+}
+
+.cfx-hearts i::before,
+.cfx-hearts i::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 6px;
+  height: 9px;
+  border-radius: 6px 6px 0 0;
+  background: #ff5e7e;
+}
+
+.cfx-hearts i::before { left: 0;   transform: rotate(-45deg); transform-origin: 100% 100%; }
+.cfx-hearts i::after  { left: 6px; transform: rotate(45deg);  transform-origin: 0 100%; }
+
+.cfx-hearts i:nth-child(1) { left: 18%; animation-delay: 0s; }
+.cfx-hearts i:nth-child(2) { left: 44%; animation-delay: 0.35s; transform: scale(1.25); }
+.cfx-hearts i:nth-child(3) { left: 66%; animation-delay: 0.7s; }
+.cfx-hearts i:nth-child(4) { left: 32%; animation-delay: 1.05s; transform: scale(0.8); }
+
+@keyframes heartFloat {
+  0%   { transform: translateY(0)     scale(0.5); opacity: 0; }
+  20%  { opacity: 1; }
+  100% { transform: translateY(-38px) scale(1.1); opacity: 0; }
+}
+
+/* ── RAIN CLOUD (gloomy panda) ── */
+.cfx-rain {
+  top: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 52px;
+  height: 26px;
+}
+
+.cfx-cloud {
+  position: absolute;
+  top: 5px;
+  left: 11px;
+  width: 26px;
+  height: 12px;
+  background: #9aa6bd;
+  border-radius: 12px;
+  box-shadow:
+    -9px 3px 0 -2px #9aa6bd,
+    10px 3px 0 -2px #9aa6bd,
+    2px -6px 0 -1px #8694ae;
+  animation: cloudHover 2s ease-in-out infinite;
+}
+
+@keyframes cloudHover {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+
+.cfx-rain i {
+  position: absolute;
+  top: 19px;
+  width: 3px;
+  height: 7px;
+  border-radius: 2px;
+  background: #5aa7e8;
+  animation: rainDrop 0.8s linear infinite;
+  opacity: 0;
+}
+
+.cfx-rain i:nth-child(2) { left: 14px; animation-delay: 0s; }
+.cfx-rain i:nth-child(3) { left: 26px; animation-delay: 0.25s; }
+.cfx-rain i:nth-child(4) { left: 37px; animation-delay: 0.5s; }
+
+@keyframes rainDrop {
+  0%   { transform: translateY(0);    opacity: 0; }
+  15%  { opacity: 1; }
+  100% { transform: translateY(18px); opacity: 0; }
+}
+
+/* ── SWEAT drop (shy bunny) ── */
+.cfx-sweat {
+  top: 6px;
+  right: 11px;
+  width: 9px;
+  height: 13px;
+  background: linear-gradient(to bottom, #bfe3ff, #5aa7e8);
+  border-radius: 50% 50% 50% 50% / 70% 70% 30% 30%;
+  transform: rotate(180deg);
+  animation: sweatSlide 1.1s ease-in infinite;
+}
+
+@keyframes sweatSlide {
+  0%   { transform: rotate(180deg) translateY(0)     scale(0.6); opacity: 0; }
+  25%  { opacity: 1; }
+  100% { transform: rotate(180deg) translateY(-14px) scale(1);   opacity: 0; }
+}
+
+/* ── SPARKLES (happy zoomies) ── */
+.cfx-sparkles {
+  inset: -12px -6px auto -6px;
+  height: 0;
+}
+
+.cfx-sparkles i {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #ffd166;
+  clip-path: polygon(50% 0%, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0% 50%, 38% 38%);
+  animation: sparkleTwinkle 1.1s ease-in-out infinite;
+  opacity: 0;
+}
+
+.cfx-sparkles i:nth-child(1) { left: 8%;  top: 4px;   animation-delay: 0s; }
+.cfx-sparkles i:nth-child(2) { left: 82%; top: -4px;  animation-delay: 0.28s; }
+.cfx-sparkles i:nth-child(3) { left: 28%; top: -13px; animation-delay: 0.55s; transform: scale(0.7); }
+.cfx-sparkles i:nth-child(4) { left: 64%; top: 9px;   animation-delay: 0.8s;  transform: scale(0.85); }
+
+@keyframes sparkleTwinkle {
+  0%, 100% { transform: scale(0)   rotate(0deg);   opacity: 0; }
+  50%      { transform: scale(1.1) rotate(180deg); opacity: 1; }
+}
+
+/* ── ZZZ (sleepy) ── */
+.cfx-zzz {
+  top: -20px;
+  right: 4px;
+}
+
+.cfx-zzz span {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  font-weight: 900;
+  color: #6d5ff7;
+  animation: zzzFloat 2.4s ease-out infinite;
+  opacity: 0;
+}
+
+.cfx-zzz span:nth-child(1) { font-size: 0.7rem;  animation-delay: 0s; }
+.cfx-zzz span:nth-child(2) { font-size: 0.92rem; animation-delay: 0.8s; }
+.cfx-zzz span:nth-child(3) { font-size: 1.15rem; animation-delay: 1.6s; }
+
+@keyframes zzzFloat {
+  0%   { transform: translate(0, 0)        rotate(0deg);  opacity: 0; }
+  20%  { opacity: 1; }
+  100% { transform: translate(12px, -26px) rotate(20deg); opacity: 0; }
+}
+
+/* ═════════ RESPONSIVE & MOTION PREFERENCES ═════════ */
+@media (max-width: 600px) {
+  .companion {
+    width: 62px;
+    bottom: 6px;
+  }
+
+  .companion-bubble {
+    font-size: 0.66rem;
+    min-width: 90px;
+    max-width: 130px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .companion-inner,
+  .companion-shadow,
+  .companion-arm,
+  .companion-tail,
+  .companion-ear,
+  .companion-head,
+  .cfx i,
+  .cfx span {
+    animation: none !important;
+  }
+
+  .companion {
+    transition: none;
+  }
+}
