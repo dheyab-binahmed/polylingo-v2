@@ -36,8 +36,6 @@ export default function LanguageStep() {
   function confirm() {
     if (!selLang)  { alert('Please select a language first!'); return }
     if (!selLevel) { alert('Please select your current level!'); return }
-    // reset() wipes any scores from a previous attempt so they can't leak
-    // into this run's results
     reset({ language: selLang, level: selLevel })
     goNext('language')
   }
@@ -80,35 +78,23 @@ export default function LanguageStep() {
             return (
               <div
                 key={lv.code}
+                className={`level-card${isSelected ? ' selected' : ''}`}
                 onClick={() => setSelLevel(lv.code)}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1rem',
-                  padding: '1rem 1.25rem',
-                  borderRadius: '14px',
-                  border: `2px solid ${isSelected ? lv.color : 'var(--border)'}`,
-                  background: isSelected ? lv.color + '12' : 'var(--bg-card)',
-                  cursor: 'pointer',
-                  transition: 'border-color 0.15s, background 0.15s, transform 0.1s',
-                  transform: isSelected ? 'translateY(-2px)' : 'none',
-                  boxShadow: isSelected ? `0 4px 16px ${lv.color}30` : 'none',
+                  borderColor: isSelected ? lv.color : undefined,
+                  background: isSelected ? lv.color + '12' : undefined,
+                  boxShadow: isSelected ? `0 4px 16px ${lv.color}30` : undefined,
+                  color: lv.color,
                 }}
               >
                 {/* CEFR badge */}
-                <div style={{
-                  minWidth: '42px',
-                  height: '42px',
-                  borderRadius: '10px',
-                  background: isSelected ? lv.color : lv.color + '20',
-                  color: isSelected ? '#fff' : lv.color,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 800,
-                  fontSize: '0.9rem',
-                  transition: 'background 0.15s, color 0.15s',
-                }}>
+                <div
+                  className="level-badge"
+                  style={{
+                    background: isSelected ? lv.color : lv.color + '20',
+                    color: isSelected ? '#fff' : lv.color,
+                  }}
+                >
                   {lv.code}
                 </div>
 

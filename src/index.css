@@ -1278,13 +1278,13 @@ header {
 
 /* Test Container */
 .test-container {
-    max-width: 850px;
+    max-width: 800px;
     margin: 0 auto;
-    padding: 2rem;
+    padding: 1.5rem;
+    width: 100%;
     background: var(--bg-card);
     border-radius: var(--border-radius-lg);
     box-shadow: var(--shadow-lg);
-    display: block;
     animation: fadeIn 0.3s ease;
 }
 
@@ -1295,17 +1295,24 @@ header {
 
 .test-header {
     text-align: center;
-    margin-bottom: 3rem;
+    margin-bottom: 0.75rem;
 }
 
 .test-header h2 {
-    font-size: 2.5rem;
-    margin-bottom: 1rem;
+font-size: 1.5rem;
+  color: var(--text-muted, #8b869e);
+  max-width: 500px;
+  margin: 0 auto;
+  line-height: 1.5;
+  font-weight: 800;
 }
 
 .test-header p {
-    color: var(--gray);
-    font-size: 1.1rem;
+ font-size: 0.9rem;
+  color: var(--text-muted, #8b869e);
+  max-width: 500px;
+  margin: 0 auto;
+  line-height: 1.5;
 }
 
 .test-content {
@@ -1581,48 +1588,138 @@ header {
 
 /* Language Selection (for testing) */
 .language-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 1.5rem;
-    margin-bottom: 2rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-top: 1.25rem;
 }
 
 .language-card {
-    background: var(--bg-card);
-    border-radius: var(--border-radius);
-    padding: 1.5rem;
-    text-align: center;
-    cursor: pointer;
-    transition: var(--transition);
-    border: 2px solid transparent;
-    box-shadow: var(--shadow);
+  background: var(--bg-card, #ffffff);
+  border: 2px solid var(--border, rgba(0,0,0,0.08));
+  border-radius: 20px;
+  padding: 1.1rem 0.75rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .language-card:hover {
-    transform: translateY(-10px);
-    box-shadow: var(--shadow-lg);
-    border-color: var(--primary);
+  border-color: var(--primary, #7c6ff7);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(124,111,247,0.12);
 }
 
 .language-card.selected {
-    border-color: var(--primary);
-    background: rgba(99, 102, 241, 0.05);
+  border-color: var(--primary, #7c6ff7);
+  background: rgba(124,111,247,0.06);
+  box-shadow: 0 4px 20px rgba(124,111,247,0.2);
+  transform: translateY(-2px);
 }
 
 .language-flag {
-    font-size: 3rem;
-    margin-bottom: 1rem;
+  font-size: 2rem;
+  line-height: 1;
 }
 
 .language-name {
-    font-weight: 600;
-    margin-bottom: 0.5rem;
+  font-weight: 700;
+  color: var(--text-base, #1e1b2e);
+  font-size: 0.9rem;
 }
 
 .language-learners {
-    font-size: 0.9rem;
-    color: var(--gray);
+  font-size: 0.72rem;
+  color: var(--text-muted, #8b869e);
 }
+
+/* ── Level Cards ── */
+.level-card {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  border: 2px solid var(--border, rgba(0,0,0,0.08));
+  background: var(--bg-card, #fff);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+
+.level-card:hover {
+  border-color: var(--primary, #7c6ff7);
+  box-shadow: 0 2px 10px rgba(124,111,247,0.08);
+}
+
+.level-card.selected {
+  border-color: currentColor;
+  transform: translateY(-1px);
+}
+
+.level-badge {
+  min-width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.85rem;
+  transition: background 0.15s, color 0.15s;
+}
+
+/* ── Fade-in Animation ── */
+.fade-in {
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Responsive ── */
+@media (max-width: 600px) {
+  .language-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 1rem;
+    
+  }
+
+  .language-card {
+    padding: 0.8rem 0.5rem;
+  }
+
+  .language-flag {
+    font-size: 1.5rem;
+  }
+
+  .language-name {
+    font-size: 1rem;
+  }
+
+  .language-learners {
+    font-size: 0.65rem;
+  }
+
+  .test-container {
+    padding: 1rem;
+    margin: 1rem auto !important;
+  }
+
+  .test-header h2 {
+    font-size: 1.25rem;
+  }
+
+  .test-header p {
+    font-size: 0.8rem;
+  }
+}
+
 
 /* ═══════════════════════════════════════════
    10. RESULTS PAGE
