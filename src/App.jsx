@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import {
   BrowserRouter,
   Routes,
@@ -12,28 +12,62 @@ import { onCallIncoming, offCallIncoming, endCall, onFriendRequest, offFriendReq
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import AchievementToaster from "./components/AchievementToaster";
-import HomePage from "./pages/HomePage";
-import AboutPage from "./pages/AboutPage";
-import DashboardPage from "./pages/DashboardPage";
-import PracticePage from "./pages/PracticePage";
-import CommunityPage from "./pages/CommunityPage";
-import FriendsPage from "./pages/Community/FriendsPage";
-import ProfilePage from "./pages/ProfilePage";
-import AssessmentPage from "./pages/Assessment/AssessmentPage";
-import LanguageStep from "./pages/Assessment/LanguageStep";
-import SpeakingStep from "./pages/Assessment/SpeakingStep";
-import WritingStep from "./pages/Assessment/WritingStep";
-import ListeningStep from "./pages/Assessment/ListeningStep";
-import ReadingStep from "./pages/Assessment/ReadingStep";
-import ResultsStep from "./pages/Assessment/ResultsStep";
 import AuthRequired from "./components/AuthRequired";
+import HomePage from "./pages/HomePage";
 import LoginPage from "./components/LoginPage";
-import RegisterPage from "./pages/RegisterPage";
-import ForgotPasswordPage from "./pages/ForgotPasswordPage";
-import ResetPasswordPage from "./pages/ResetPasswordPage";
-import VerifyEmailPage from "./pages/VerifyEmailPage";
+
+// Route pages are code-split: each one downloads only when the user visits it,
+// so the initial bundle stays small and the app loads faster.
+// `lazyWithPreload` also exposes a `.preload()` so we can warm a page's chunk
+// in the background (during idle time) and make navigation feel instant.
+function lazyWithPreload(factory) {
+  const Component = lazy(factory);
+  Component.preload = factory;
+  return Component;
+}
+
+const AboutPage = lazyWithPreload(() => import("./pages/AboutPage"));
+const DashboardPage = lazyWithPreload(() => import("./pages/DashboardPage"));
+const PracticePage = lazyWithPreload(() => import("./pages/PracticePage"));
+const CommunityPage = lazyWithPreload(() => import("./pages/CommunityPage"));
+const FriendsPage = lazyWithPreload(() => import("./pages/Community/FriendsPage"));
+const ProfilePage = lazyWithPreload(() => import("./pages/ProfilePage"));
+const AssessmentPage = lazyWithPreload(() => import("./pages/Assessment/AssessmentPage"));
+const LanguageStep = lazy(() => import("./pages/Assessment/LanguageStep"));
+const SpeakingStep = lazy(() => import("./pages/Assessment/SpeakingStep"));
+const WritingStep = lazy(() => import("./pages/Assessment/WritingStep"));
+const ListeningStep = lazy(() => import("./pages/Assessment/ListeningStep"));
+const ReadingStep = lazy(() => import("./pages/Assessment/ReadingStep"));
+const ResultsStep = lazy(() => import("./pages/Assessment/ResultsStep"));
+const RegisterPage = lazyWithPreload(() => import("./pages/RegisterPage"));
+const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
+const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
+const VerifyEmailPage = lazy(() => import("./pages/VerifyEmailPage"));
+
+// Warm a set of route chunks during browser idle time so navigating to them
+// is instant (no loading spinner). Safe no-op on browsers without rIC.
+function preloadDuringIdle(components) {
+  const idle =
+    window.requestIdleCallback || ((cb) => setTimeout(cb, 200));
+  const cancel = window.cancelIdleCallback || clearTimeout;
+  const handle = idle(() => {
+    components.forEach((c) => {
+      try { c.preload?.(); } catch (_) {}
+    });
+  });
+  return () => cancel(handle);
+}
 import IncomingCallModal from "./components/components/partners/IncomingCallModal";
 import Companion from "./components/Companion/Companion";
+
+// Lightweight fallback shown while a route chunk loads.
+function RouteFallback() {
+  return (
+    <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <span className="auth-spinner" style={{ width: 28, height: 28 }} />
+    </div>
+  );
+}
 
 // Redirect logged-in users away from the homepage to the dashboard
 function HomeRoute() {
@@ -59,6 +93,22 @@ function AppContent() {
   const [globalIncomingCall, setGlobalIncomingCall] = useState(null);
   const globalRingRef = useRef(null);
   const [friendRequestCount, setFriendRequestCount] = useState(0);
+
+  // ── Prefetch route chunks during idle time so navigation feels instant ──
+  // Logged-in users hop between these pages constantly, so warm them in the
+  // background once. Logged-out visitors only get the cheap auth pages warmed.
+  useEffect(() => {
+    if (user) {
+      return preloadDuringIdle([
+        DashboardPage,
+        PracticePage,
+        CommunityPage,
+        ProfilePage,
+        FriendsPage,
+      ]);
+    }
+    return preloadDuringIdle([RegisterPage]);
+  }, [user]);
 
   // ── Restore dark mode preference on first load ───────────────────────
   useEffect(() => {
@@ -200,6 +250,7 @@ function AppContent() {
       />
       <AchievementToaster />
       <main className="main-content">
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           {/* Public Routes */}
           <Route path="/" element={<HomeRoute />} />
@@ -276,6 +327,7 @@ function AppContent() {
           {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
       </main>
       <Footer />
       <Companion />
