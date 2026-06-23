@@ -2595,7 +2595,7 @@ export default function PracticePage() {
           ════════════════════════════════ */}
           {activeTab === "pronunciation" && (
             <div className="fade-in">
-              <PronunciationStep />
+              <PronunciationStep level={practiceLevel} />
             </div>
           )}
 
