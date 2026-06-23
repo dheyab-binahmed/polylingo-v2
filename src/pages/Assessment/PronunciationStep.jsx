@@ -9,7 +9,7 @@ import {
   updateSessionScore,
 } from "../../services/api";
 
-export default function PronunciationStep() {
+export default function PronunciationStep({ level: levelProp = null } = {}) {
   // Safe context — works both inside Assessment flow and standalone in Practice
   const assessmentCtx = useContext(AssessmentContext);
   const data = assessmentCtx?.data ?? { language: "en", level: "B1" };
@@ -19,10 +19,18 @@ export default function PronunciationStep() {
   const isPracticeMode = !assessmentCtx;
 
   const { user } = useAuth();
-  const userLevel = data.level || user?.estimated_level || user?.selected_level || "B1";
+  // In Practice, the level selector is passed in via `levelProp` so passages
+  // match the level the user chose. In the assessment flow it comes from context.
+  const userLevel = levelProp || data.level || user?.estimated_level || user?.selected_level || "B1";
 
   const content = getAssessmentContent(data.language);
   const [selectedPrompt, setSelectedPrompt] = useState(null);
+
+  // When the chosen level changes, drop the current passage so a fresh,
+  // level-matched one is picked below.
+  useEffect(() => {
+    setSelectedPrompt(null);
+  }, [userLevel]);
 
   useEffect(() => {
     if (!selectedPrompt && content.pronunciation) {
