@@ -602,25 +602,6 @@ export default function CommunityPage() {
     })();
   };
 
-  const handleLoadMorePartners = () => {
-    if (loadingMorePartners || !hasMorePartners) return;
-    setLoadingMorePartners(true);
-    const nextPage = partnersPage + 1;
-    (async () => {
-      try {
-        const data = await apiFetchPartners({ page: nextPage });
-        const more = (data && data.partners) || [];
-        setPartners((prev) => [...prev, ...more]);
-        setPartnersPage(nextPage);
-        if (!more.length) setHasMorePartners(false);
-      } catch (err) {
-        notify("Failed to load more partners", "danger");
-      } finally {
-        setLoadingMorePartners(false);
-      }
-    })();
-  };
-
   // ─────────────────────────────────────────────────────────────────────
   // GROUP HANDLERS
   // ─────────────────────────────────────────────────────────────────────
