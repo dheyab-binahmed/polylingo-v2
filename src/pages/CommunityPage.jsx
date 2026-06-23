@@ -81,9 +81,6 @@ export default function CommunityPage() {
   const [partnerFilter, setPartnerFilter] = useState("All");
   const [partnerSearch, setPartnerSearch] = useState("");
   const [partnerLoading, setPartnerLoading] = useState(false);
-  const [loadingMorePartners, setLoadingMorePartners] = useState(false);
-  const [partnersPage, setPartnersPage] = useState(1);
-  const [hasMorePartners, setHasMorePartners] = useState(true);
 
   // Group filters
   const [groupSearch, setGroupSearch] = useState("");
@@ -592,8 +589,6 @@ export default function CommunityPage() {
 
   const handleRefreshPartners = () => {
     setPartnerLoading(true);
-    setPartnersPage(1);
-    setHasMorePartners(true);
     (async () => {
       try {
         const data = await apiFetchPartners();
@@ -750,6 +745,10 @@ export default function CommunityPage() {
       asText(p.country).includes(query);
     return matchLang && matchSearch;
   });
+
+  // Only surface a handful of suggested partners — no need to list everyone.
+  const PARTNERS_LIMIT = 12;
+  const visiblePartners = filteredPartners.slice(0, PARTNERS_LIMIT);
 
   const filteredGroups = groups.filter((g) => {
     const query = asText(groupSearch.trim());
@@ -1169,7 +1168,7 @@ export default function CommunityPage() {
             {/* BACKEND INTEGRATION: GET /api/community/partners?lang=&search=&page= */}
             {filteredPartners.length > 0 ? (
               <div className="partner-grid">
-                {filteredPartners.map((p) =>
+                {visiblePartners.map((p) =>
                   p.status === "pending" &&
                   p.request_direction === "outgoing" ? (
                     <div
@@ -1237,23 +1236,17 @@ export default function CommunityPage() {
                 </div>
               </div>
             )}
-            {filteredPartners.length > 0 && (
-              <div style={{ textAlign: "center", marginTop: 18 }}>
-                {hasMorePartners ? (
-                  <button
-                    className="btn-ghost"
-                    onClick={handleLoadMorePartners}
-                    disabled={loadingMorePartners}
-                  >
-                    {loadingMorePartners
-                      ? "⏳ Loading…"
-                      : "👥 Show More Partners"}
-                  </button>
-                ) : (
-                  <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                    ✅ You've seen all partners
-                  </div>
-                )}
+            {filteredPartners.length > PARTNERS_LIMIT && (
+              <div
+                style={{
+                  textAlign: "center",
+                  marginTop: 18,
+                  fontSize: 13,
+                  color: "var(--text-muted)",
+                }}
+              >
+                Showing {PARTNERS_LIMIT} suggested partners — use search or
+                filters to find specific people.
               </div>
             )}
           </Section>
