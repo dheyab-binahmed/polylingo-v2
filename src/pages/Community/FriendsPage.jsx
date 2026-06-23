@@ -167,7 +167,7 @@ export default function FriendsPage() {
         </div>
         <div style={{ position: "relative" }}>
           <input
-            placeholder="Search by name or email…"
+            placeholder="Search by username, name, or email…"
             value={searchEmail}
             onChange={(e) => { setSearchEmail(e.target.value); setSelectedUserId(""); }}
             style={{
@@ -196,7 +196,7 @@ export default function FriendsPage() {
                     borderBottom: "1px solid var(--border)",
                     transition: "background .15s",
                   }}
-                  onClick={() => { setSelectedUserId(u.id); setSearchEmail(u.name || u.email); setSearchResults([]); }}
+                  onClick={() => { setSelectedUserId(u.id); setSearchEmail(u.username ? `@${u.username}` : (u.name || u.email)); setSearchResults([]); }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-subtle)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 >
@@ -210,7 +210,7 @@ export default function FriendsPage() {
                   </div>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 14, color: "var(--text-base)" }}>{u.name}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{u.email}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{u.username ? `@${u.username}` : u.email}</div>
                   </div>
                 </div>
               ))}
@@ -374,6 +374,11 @@ export default function FriendsPage() {
                     <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text-base)" }}>
                       {name}
                     </div>
+                    {f.username && (
+                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 1 }}>
+                        @{f.username}
+                      </div>
+                    )}
                     {f.preferred_language && (
                       <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 1 }}>
                         🌐 {f.preferred_language}

@@ -215,6 +215,7 @@ export async function registerUser({
   age,
   password,
   preferredLanguage,
+  username,
 }) {
   return apiFetch("/auth/register", {
     method: "POST",
@@ -222,6 +223,7 @@ export async function registerUser({
       email,
       password,
       full_name: name,
+      username,
       selected_level: "A1",
       preferred_language: preferredLanguage,
     }),
@@ -298,6 +300,7 @@ export async function updateUserProfile(updates) {
     payload.preferred_language = updates.preferredLanguage; // legacy
   if (updates.selected_level !== undefined)
     payload.selected_level = updates.selected_level;
+  if (updates.username !== undefined) payload.username = updates.username;
 
   try {
     const data = await apiFetch("/auth/profile", {
