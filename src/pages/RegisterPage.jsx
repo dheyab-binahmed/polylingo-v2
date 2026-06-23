@@ -25,6 +25,7 @@ const LANGUAGES = [
 export default function RegisterPage() {
   const [form, setForm] = useState({
     name: "",
+    username: "",
     email: "",
     age: "",
     password: "",
@@ -58,6 +59,19 @@ export default function RegisterPage() {
       setError("Full name is required");
       return;
     }
+    const username = form.username.trim().toLowerCase();
+    if (!username) {
+      setError("Username is required");
+      return;
+    }
+    if (username.length < 3) {
+      setError("Username must be at least 3 characters");
+      return;
+    }
+    if (!/^[a-z0-9._]+$/.test(username)) {
+      setError("Username can only contain letters, numbers, '.' and '_'");
+      return;
+    }
     if (!form.email.trim() || !form.email.includes("@")) {
       setError("Valid email is required");
       return;
@@ -83,6 +97,7 @@ export default function RegisterPage() {
     try {
       await register({
         name: form.name.trim(),
+        username,
         email: form.email.trim(),
         age: form.age,
         password: form.password,
@@ -359,6 +374,36 @@ export default function RegisterPage() {
                 />
               </div>
             </div>
+          </div>
+
+          <div className="auth-field">
+            <label className="auth-field__label">Username</label>
+            <div className="auth-field__input-wrap">
+              <i className="fas fa-at auth-field__icon" />
+              <input
+                type="text"
+                name="username"
+                placeholder="john_doe"
+                value={form.username}
+                onChange={handleChange}
+                disabled={isLoading}
+                autoComplete="username"
+                minLength={3}
+                maxLength={30}
+                className="auth-field__input"
+              />
+            </div>
+            <span
+              style={{
+                fontSize: "0.75rem",
+                color: "var(--text-muted)",
+                marginTop: "0.25rem",
+                display: "block",
+              }}
+            >
+              At least 3 characters. Letters, numbers, '.' and '_' only. Friends
+              can find you by this.
+            </span>
           </div>
 
           <div className="auth-field">

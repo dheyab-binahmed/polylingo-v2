@@ -123,6 +123,7 @@ export function AuthProvider({ children }) {
     email,
     password,
     preferredLanguage,
+    username,
   }) => {
     try {
       return await registerUser({
@@ -130,6 +131,7 @@ export function AuthProvider({ children }) {
         password,
         preferredLanguage,
         email,
+        username,
       });
     } catch (err) {
       // Re-throw with better error message

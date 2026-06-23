@@ -112,7 +112,7 @@ export default function DashboardPage() {
 
   // Derive display values (fall back gracefully while loading)
   const language   = practiceStats?.language  || user?.preferred_language || user?.preferredLanguage || "English";
-  const level      = practiceStats?.level     || user?.estimated_level    || user?.selected_level    || "B1";
+  const level      = practiceStats?.level     || user?.estimated_level    || user?.selected_level    || "A1";
   const streak     = practiceStats?.streak    ?? 0;
   const todayMins  = practiceStats?.today_minutes   ?? 0;
   const dailyGoal  = practiceStats?.daily_goal_minutes ?? 10;

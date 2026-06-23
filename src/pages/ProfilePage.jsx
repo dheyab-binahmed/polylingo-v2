@@ -62,6 +62,7 @@ function Toggle({ checked, onChange, label }) {
 function EditProfileModal({ user, onClose, onSave }) {
   const [form, setForm] = useState({
     full_name:          user?.full_name          || '',
+    username:           user?.username            || '',
     email:              user?.email              || '',
     age:                user?.age                || '',
     preferred_language: user?.preferred_language || '',
@@ -86,9 +87,14 @@ function EditProfileModal({ user, onClose, onSave }) {
   const handleSave = () => {
     setFormError('')
     if (!form.full_name.trim())          { setFormError('Name is required');                  return }
+    const username = form.username.trim().toLowerCase()
+    if (username) {
+      if (username.length < 3)               { setFormError('Username must be at least 3 characters'); return }
+      if (!/^[a-z0-9._]+$/.test(username))   { setFormError("Username can only contain letters, numbers, '.' and '_'"); return }
+    }
     if (!form.email.trim())              { setFormError('Email is required');                 return }
     if (!form.email.includes('@'))       { setFormError('Please enter a valid email address'); return }
-    onSave(form)
+    onSave({ ...form, username })
   }
 
   // Close on Escape key
@@ -131,6 +137,33 @@ function EditProfileModal({ user, onClose, onSave }) {
             <i className="fas fa-exclamation-circle" /> {formError}
           </div>
         )}
+
+        {/* Username field (handle used to find you in the community) */}
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'block', fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Username</label>
+          <div style={{ position: 'relative' }}>
+            <span style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-faint)', fontWeight: 700, fontSize: '0.92rem' }}>@</span>
+            <input
+              type="text"
+              placeholder="john_doe"
+              value={form.username}
+              maxLength={30}
+              onChange={e => setForm(p => ({ ...p, username: e.target.value }))}
+              style={{
+                width: '100%', padding: '0.75rem 1rem 0.75rem 2rem',
+                border: '2px solid var(--border)', borderRadius: '10px',
+                fontSize: '0.92rem', fontFamily: 'inherit',
+                color: 'var(--text-base)', background: 'var(--bg-card)',
+                transition: 'border-color .2s', outline: 'none', boxSizing: 'border-box',
+              }}
+              onFocus={e => e.target.style.borderColor = '#6366f1'}
+              onBlur={e => e.target.style.borderColor = 'var(--border)'}
+            />
+          </div>
+          <span style={{ fontSize: '0.73rem', color: 'var(--text-faint)', marginTop: '0.3rem', display: 'block' }}>
+            Friends can find you by this. At least 3 characters; letters, numbers, '.' and '_'.
+          </span>
+        </div>
 
         {/* Text fields */}
         {[
@@ -397,6 +430,7 @@ export default function ProfilePage() {
     try {
       await updateUser({
         full_name:          form.full_name,
+        username:           form.username || undefined,
         email:              form.email,
         age:                form.age,
         preferred_language: form.preferred_language,
@@ -500,6 +534,9 @@ export default function ProfilePage() {
             </div>
 
             <h2 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-base)', marginBottom: '0.2rem' }}>{displayName}</h2>
+            {user?.username && (
+              <p style={{ color: '#6366f1', fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.15rem' }}>@{user.username}</p>
+            )}
             <p style={{ color: 'var(--text-faint)', fontSize: '0.85rem', marginBottom: '0.4rem' }}>{displayEmail}</p>
 
             <span style={{

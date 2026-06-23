@@ -46,6 +46,20 @@ function extractErrorMessage(errorResponse) {
   return "An unknown error occurred";
 }
 
+// ─── Friendly message sanitizer ────────────────────────────────
+/**
+ * Never show raw database/SQL errors to users. If a backend message looks
+ * like a low-level DB error (psycopg2, SQL dump, connection drop), replace it
+ * with a clean, retryable message.
+ */
+function sanitizeErrorMessage(message) {
+  const raw = String(message || "");
+  if (/psycopg2|OperationalError|DBAPIError|SQL|sqlalche|SSL connection|connection (was )?closed/i.test(raw)) {
+    return "Something went wrong connecting to the server. Please try again.";
+  }
+  return raw;
+}
+
 // ─── Token refresh ────────────────────────────────────────────
 /**
  * Exchange the stored refresh token for a new access token.
@@ -123,14 +137,31 @@ export async function authorizedFetch(url, options = {}) {
  *  - Throws a friendly Error on non-2xx responses
  *  - Returns parsed JSON
  */
-export async function apiFetch(path, options = {}) {
-  const response = await authorizedFetch(`${BASE_URL}/api/v1${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  });
+export async function apiFetch(path, options = {}, _retried = false) {
+  let response;
+  try {
+    response = await authorizedFetch(`${BASE_URL}/api/v1${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options.headers,
+      },
+    });
+  } catch (networkErr) {
+    // Network failure (server waking up, transient drop): retry once.
+    if (!_retried) {
+      await new Promise((r) => setTimeout(r, 1500));
+      return apiFetch(path, options, true);
+    }
+    throw new Error("Connection failed. Please try again.");
+  }
+
+  // 503 = backend temporarily unavailable (e.g. database connection dropped).
+  // Give it one quick retry before surfacing an error to the user.
+  if (response.status === 503 && !_retried) {
+    await new Promise((r) => setTimeout(r, 1500));
+    return apiFetch(path, options, true);
+  }
 
   if (!response.ok) {
     let message = `Request failed: ${response.status} ${response.statusText}`;
@@ -141,7 +172,7 @@ export async function apiFetch(path, options = {}) {
       // Failed to parse JSON response, use status text
       message = response.statusText || message;
     }
-    const error = new Error(message);
+    const error = new Error(sanitizeErrorMessage(message));
     error.status = response.status;
     error.response = response;
     throw error;
@@ -184,6 +215,7 @@ export async function registerUser({
   age,
   password,
   preferredLanguage,
+  username,
 }) {
   return apiFetch("/auth/register", {
     method: "POST",
@@ -191,6 +223,7 @@ export async function registerUser({
       email,
       password,
       full_name: name,
+      username,
       selected_level: "A1",
       preferred_language: preferredLanguage,
     }),
@@ -267,6 +300,7 @@ export async function updateUserProfile(updates) {
     payload.preferred_language = updates.preferredLanguage; // legacy
   if (updates.selected_level !== undefined)
     payload.selected_level = updates.selected_level;
+  if (updates.username !== undefined) payload.username = updates.username;
 
   try {
     const data = await apiFetch("/auth/profile", {
