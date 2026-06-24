@@ -88,6 +88,12 @@ export default function DMModal({
   const [micEnabled, setMicEnabled] = useState(true);
   const [camEnabled, setCamEnabled] = useState(true);
   const [incomingCall, setIncomingCall] = useState(null);
+  // Minimized = the call keeps running in a small draggable floating window
+  // (Teams-style) after the user closes the chat.
+  const [minimized, setMinimized] = useState(false);
+  const [pipPos, setPipPos] = useState(null); // {x,y} once dragged; null = default corner
+  const pipRef = useRef(null);
+  const pipDrag = useRef(null);
 
   const pc = useRef(null);
   const localStream = useRef(null);
@@ -175,19 +181,17 @@ export default function DMModal({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs]);
 
+  // Re-attach media streams whenever the call view changes — including when we
+  // switch between the full chat and the minimized floating window, since the
+  // <video> elements unmount/remount across those two layouts.
   useEffect(() => {
-    if (callType === "video" && localVideoRef.current && localStream.current) {
+    if (localVideoRef.current && localStream.current) {
       localVideoRef.current.srcObject = localStream.current;
     }
-
-    if (
-      callType === "video" &&
-      remoteVideoRef.current &&
-      remoteStream.current
-    ) {
+    if (remoteVideoRef.current && remoteStream.current) {
       remoteVideoRef.current.srcObject = remoteStream.current;
     }
-  }, [callActive, callType]);
+  }, [callActive, callType, minimized]);
 
   const stopTimer = useCallback(() => {
     clearInterval(timerRef.current);
@@ -287,6 +291,65 @@ export default function DMModal({
   const hangUp = useCallback(() => {
     cleanupCall({ notify: true });
   }, [cleanupCall]);
+
+  // Closing the chat while a call is live should NOT end the call — it shrinks
+  // it into the floating window. With no call, it closes normally.
+  const handleCloseRequest = useCallback(() => {
+    if (callActiveRef.current) {
+      setMinimized(true);
+    } else {
+      onClose();
+    }
+  }, [onClose]);
+
+  // If the call ends (hang up, or the other side leaves) while minimized, there
+  // is no chat on screen to return to, so close the whole thing.
+  useEffect(() => {
+    if (!callActive && minimized) {
+      setMinimized(false);
+      onClose();
+    }
+  }, [callActive, minimized, onClose]);
+
+  // Drag the floating window anywhere on screen (mouse + touch).
+  const startPipDrag = useCallback((clientX, clientY) => {
+    const el = pipRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    pipDrag.current = { dx: clientX - rect.left, dy: clientY - rect.top };
+  }, []);
+
+  useEffect(() => {
+    if (!minimized) return undefined;
+    const onMove = (event) => {
+      if (!pipDrag.current) return;
+      const point = event.touches ? event.touches[0] : event;
+      const width = pipRef.current?.offsetWidth || 280;
+      const height = pipRef.current?.offsetHeight || 200;
+      const x = Math.min(
+        Math.max(0, point.clientX - pipDrag.current.dx),
+        window.innerWidth - width,
+      );
+      const y = Math.min(
+        Math.max(0, point.clientY - pipDrag.current.dy),
+        window.innerHeight - height,
+      );
+      setPipPos({ x, y });
+    };
+    const onUp = () => {
+      pipDrag.current = null;
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onUp);
+    };
+  }, [minimized]);
 
   // ── Connection timeout — if ICE never reaches "connected" after 15 seconds ──
   useEffect(() => {
@@ -605,6 +668,107 @@ export default function DMModal({
     setCamEnabled(nextEnabled);
   };
 
+  // ── Minimized floating call window (Teams-style, draggable) ──────────────
+  if (minimized && callActive) {
+    const posStyle = pipPos
+      ? { left: pipPos.x, top: pipPos.y, right: "auto", bottom: "auto" }
+      : { right: 20, bottom: 20 };
+    return (
+      <div ref={pipRef} style={{ ...styles.pip, ...posStyle }}>
+        <div
+          style={styles.pipHeader}
+          onMouseDown={(e) => startPipDrag(e.clientX, e.clientY)}
+          onTouchStart={(e) =>
+            startPipDrag(e.touches[0].clientX, e.touches[0].clientY)
+          }
+        >
+          <span style={styles.pipTitle}>
+            <i
+              className={`fas ${callType === "video" ? "fa-video" : "fa-phone"}`}
+              style={{ marginRight: 6 }}
+            />
+            {partner.name} · {formatTime(callSeconds)}
+          </span>
+          <button
+            onClick={() => setMinimized(false)}
+            title="Back to chat"
+            aria-label="Back to chat"
+            style={styles.pipIconBtn}
+            type="button"
+          >
+            <i className="fas fa-up-right-and-down-left-from-center" />
+          </button>
+        </div>
+
+        <div style={styles.pipBody}>
+          {callType === "video" ? (
+            <>
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                style={styles.pipRemote}
+              />
+              <video
+                ref={localVideoRef}
+                autoPlay
+                muted
+                playsInline
+                style={styles.pipLocal}
+              />
+            </>
+          ) : (
+            <div style={styles.pipAudio}>
+              <div
+                style={{
+                  ...styles.avatar,
+                  width: 64,
+                  height: 64,
+                  fontSize: 22,
+                  background: partner.color || "#6366f1",
+                }}
+              >
+                {partner.initials || partner.name?.slice(0, 2).toUpperCase()}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={styles.pipControls}>
+          <button
+            onClick={toggleMute}
+            title={micEnabled ? "Mute" : "Unmute"}
+            aria-label={micEnabled ? "Mute" : "Unmute"}
+            style={styles.pipIconBtn}
+            type="button"
+          >
+            <i className={`fas ${micEnabled ? "fa-microphone" : "fa-microphone-slash"}`} />
+          </button>
+          {callType === "video" && (
+            <button
+              onClick={toggleCam}
+              title={camEnabled ? "Turn camera off" : "Turn camera on"}
+              aria-label={camEnabled ? "Turn camera off" : "Turn camera on"}
+              style={styles.pipIconBtn}
+              type="button"
+            >
+              <i className={`fas ${camEnabled ? "fa-video" : "fa-video-slash"}`} />
+            </button>
+          )}
+          <button
+            onClick={hangUp}
+            title="Hang up"
+            aria-label="Hang up"
+            style={{ ...styles.pipIconBtn, background: "#ef4444", color: "#fff" }}
+            type="button"
+          >
+            <i className="fas fa-phone-slash" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       {incomingCall && (
@@ -618,7 +782,9 @@ export default function DMModal({
 
       <div
         style={styles.overlay}
-        onClick={(event) => event.target === event.currentTarget && onClose()}
+        onClick={(event) =>
+          event.target === event.currentTarget && handleCloseRequest()
+        }
       >
         <div style={styles.modal}>
           <div style={styles.header}>
@@ -647,21 +813,29 @@ export default function DMModal({
               <button
                 onClick={() => startCall("audio")}
                 title="Voice call"
+                aria-label="Voice call"
                 style={styles.iconBtn}
                 type="button"
               >
-                📞
+                <i className="fas fa-phone" />
               </button>
               <button
                 onClick={() => startCall("video")}
                 title="Video call"
+                aria-label="Video call"
                 style={styles.iconBtn}
                 type="button"
               >
-                📹
+                <i className="fas fa-video" />
               </button>
-              <button onClick={onClose} style={styles.iconBtn} type="button">
-                ✕
+              <button
+                onClick={handleCloseRequest}
+                title={callActive ? "Minimize call" : "Close"}
+                aria-label={callActive ? "Minimize call" : "Close"}
+                style={styles.iconBtn}
+                type="button"
+              >
+                <i className="fas fa-xmark" />
               </button>
             </div>
           </div>
@@ -671,32 +845,51 @@ export default function DMModal({
           {callActive && (
             <div style={styles.callBar}>
               <span>
-                {callType === "video" ? "📹 Video call" : "📞 Voice call"} ·{" "}
+                <i
+                  className={`fas ${callType === "video" ? "fa-video" : "fa-phone"}`}
+                  style={{ marginRight: 6 }}
+                />
+                {callType === "video" ? "Video call" : "Voice call"} ·{" "}
                 {formatTime(callSeconds)}
               </span>
               <div style={styles.callControls}>
                 <button
                   onClick={toggleMute}
+                  title={micEnabled ? "Mute" : "Unmute"}
+                  aria-label={micEnabled ? "Mute" : "Unmute"}
                   style={styles.iconBtn}
                   type="button"
                 >
-                  {micEnabled ? "🎙️" : "🔇"}
+                  <i className={`fas ${micEnabled ? "fa-microphone" : "fa-microphone-slash"}`} />
                 </button>
                 {callType === "video" && (
                   <button
                     onClick={toggleCam}
+                    title={camEnabled ? "Turn camera off" : "Turn camera on"}
+                    aria-label={camEnabled ? "Turn camera off" : "Turn camera on"}
                     style={styles.iconBtn}
                     type="button"
                   >
-                    {camEnabled ? "📷" : "🚫"}
+                    <i className={`fas ${camEnabled ? "fa-video" : "fa-video-slash"}`} />
                   </button>
                 )}
                 <button
+                  onClick={() => setMinimized(true)}
+                  title="Minimize call"
+                  aria-label="Minimize call"
+                  style={styles.iconBtn}
+                  type="button"
+                >
+                  <i className="fas fa-compress" />
+                </button>
+                <button
                   onClick={hangUp}
+                  title="Hang up"
+                  aria-label="Hang up"
                   style={{ ...styles.iconBtn, color: "#ef4444" }}
                   type="button"
                 >
-                  📵
+                  <i className="fas fa-phone-slash" />
                 </button>
               </div>
             </div>
@@ -811,6 +1004,92 @@ const styles = {
     justifyContent: "flex-end",
     padding: 24,
     zIndex: 1000,
+  },
+  // ── Minimized floating call window ──
+  pip: {
+    position: "fixed",
+    width: 280,
+    background: "#1f2937",
+    borderRadius: 14,
+    overflow: "hidden",
+    boxShadow: "0 16px 50px rgba(0,0,0,0.45)",
+    border: "1px solid #374151",
+    zIndex: 1100,
+    display: "flex",
+    flexDirection: "column",
+    userSelect: "none",
+  },
+  pipHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    padding: "8px 10px",
+    background: "#111827",
+    cursor: "move",
+    color: "#fff",
+  },
+  pipTitle: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#fff",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  pipBody: {
+    position: "relative",
+    width: "100%",
+    height: 170,
+    background: "#000",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pipRemote: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    background: "#000",
+  },
+  pipLocal: {
+    position: "absolute",
+    right: 8,
+    bottom: 8,
+    width: 72,
+    height: 54,
+    objectFit: "cover",
+    borderRadius: 8,
+    border: "2px solid rgba(255,255,255,0.5)",
+    background: "#000",
+  },
+  pipAudio: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#fff",
+  },
+  pipControls: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    padding: "8px 10px",
+    background: "#111827",
+  },
+  pipIconBtn: {
+    background: "rgba(255,255,255,0.12)",
+    border: "none",
+    color: "#fff",
+    cursor: "pointer",
+    fontSize: 15,
+    width: 34,
+    height: 34,
+    borderRadius: "50%",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
   modal: {
     background: "#1f2937",
