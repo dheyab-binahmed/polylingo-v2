@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import PronunciationStep from "./Assessment/PronunciationStep";
+import "./polish.css";
 import { useAuth } from "../context/AuthContext";
 import {
   logPracticeSession,
@@ -125,7 +126,7 @@ const CAT_META = [
   { id: "speaking",   icon: "fa-microphone",    title: "Speaking Drills",    desc: "Practice pronunciation and speaking with AI-powered conversation partners" },
   { id: "reading",    icon: "fa-book-open",     title: "Reading Practice",   desc: "Improve reading comprehension with authentic texts and vocabulary exercises" },
   { id: "grammar",    icon: "fa-check-double",  title: "Grammar Practice",   desc: "Master grammar rules with interactive exercises and instant feedback" },
-  { id: "pronunciation", icon: "fa-microphone", title: "Pronunciation",      desc: "Test and improve your pronunciation with AI-powered analysis and scoring" },
+  { id: "pronunciation", icon: "fa-bullhorn",   title: "Pronunciation",      desc: "Test and improve your pronunciation with AI-powered analysis and scoring" },
 ];
 
 // Default per-user stats stored in localStorage (all zero for new users)
@@ -313,6 +314,7 @@ export default function PracticePage() {
       case "speaking":   return { ...meta, s1: s.speaking.minutes,          l1: "Minutes",        s2: s.speaking.sessions,    l2: "Sessions"   };
       case "reading":    return { ...meta, s1: s.reading.articles,          l1: "Articles",       s2: fmtPct(s.reading.totalCorrect, s.reading.totalAttempted), l2: "Accuracy" };
       case "grammar":    return { ...meta, s1: fmtPct(s.grammar.totalCorrect, s.grammar.totalAttempted), l1: "Accuracy", s2: s.grammar.exercises,   l2: "Exercises"  };
+      case "pronunciation": return { ...meta, s1: s.speaking.sessions,        l1: "Attempts",       s2: s.speaking.minutes,     l2: "Minutes"    };
       default:           return meta;
     }
   });
@@ -1400,15 +1402,6 @@ export default function PracticePage() {
             </select>
           </div>
 
-          {/* Practice heatmap + daily-goal ring */}
-          <PracticeActivity
-            userId={user?.id}
-            today={practiceStats.todayMinutes}
-            goal={practiceStats.dailyGoalMinutes}
-            streak={practiceStats.streak}
-            refreshKey={activityKey}
-          />
-
           {/* Row 2: streak + daily goal */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "1.5rem", marginTop: "0.9rem", flexWrap: "wrap" }}>
             {/* Streak */}
@@ -1460,8 +1453,28 @@ export default function PracticePage() {
               key={cat.id}
               className={`practice-category${activeTab === cat.id ? " active-cat" : ""}`}
               onClick={() => setActiveTab(cat.id)}
+              style={{
+                borderRadius: 22,
+                border: activeTab === cat.id ? "2px solid transparent" : "1.5px solid var(--border)",
+                background: activeTab === cat.id
+                  ? "linear-gradient(135deg, rgba(99,102,241,0.18), var(--bg-card) 72%)"
+                  : "var(--bg-card)",
+                boxShadow: activeTab === cat.id
+                  ? "0 16px 36px rgba(99,102,241,0.24)"
+                  : "0 6px 20px rgba(17,24,39,0.05)",
+                transform: activeTab === cat.id ? "translateY(-2px)" : "none",
+                transition: "transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease",
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.transform = "translateY(-6px)"; e.currentTarget.style.boxShadow = "0 20px 40px rgba(17,24,39,0.14)"; }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = activeTab === cat.id ? "translateY(-2px)" : "none";
+                e.currentTarget.style.boxShadow = activeTab === cat.id ? "0 16px 36px rgba(99,102,241,0.24)" : "0 6px 20px rgba(17,24,39,0.05)";
+              }}
             >
-              <div className="practice-icon">
+              <div
+                className="practice-icon"
+                style={{ borderRadius: 16, boxShadow: "0 8px 18px rgba(99,102,241,0.32)" }}
+              >
                 <i className={`fas ${cat.icon}`} />
               </div>
               <h3>{cat.title}</h3>

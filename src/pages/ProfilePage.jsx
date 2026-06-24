@@ -26,6 +26,7 @@ import {
   saveNotificationPreferences,
 } from "../services/api";
 import "./ProfilePage.css";
+import "./polish.css";
 
 // ── Count-up for numeric passport values; instant when motion is reduced ──
 function CountUp({ value, duration = 1.1 }) {

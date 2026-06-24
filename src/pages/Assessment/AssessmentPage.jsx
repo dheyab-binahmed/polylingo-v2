@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import AssessmentContext from "./assessmentContext";
+import "../polish.css";
 
 // CEFR four-skill assessment: Speaking, Writing, Listening, Reading.
 // "language" is the setup step (pick language + level); "results" shows scores.

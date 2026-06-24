@@ -1,6 +1,7 @@
 import { useMemo, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import "./polish.css";
 import { fetchWeeklyActivity, fetchLeaderboard, fetchPracticeStats, fetchPracticeProgress, savePracticeProgress } from "../services/api";
 
 // Weekly chart data – ready for Recharts drop-in:
@@ -13,9 +14,20 @@ function buildEmptyWeekData() {
   return days.map((day) => ({ day, minutes: 0 }));
 }
 
+// Map a 0–100 score to a CEFR band (mirrors the Assessment ResultsStep bands)
+function scoreToCEFR(s) {
+  const v = Math.max(0, Math.min(100, Number(s) || 0));
+  if (v >= 90) return "C2";
+  if (v >= 75) return "C1";
+  if (v >= 60) return "B2";
+  if (v >= 45) return "B1";
+  if (v >= 30) return "A2";
+  return "A1";
+}
+
 function WeeklyBar({ day, minutes, maxMinutes }) {
   const pct = Math.round((minutes / maxMinutes) * 100);
-  const isMax = minutes === maxMinutes;
+  const isMax = minutes > 0 && minutes === maxMinutes;
   return (
     <div
       style={{
@@ -30,35 +42,33 @@ function WeeklyBar({ day, minutes, maxMinutes }) {
         minWidth: "30px",
       }}
     >
-      {isMax && (
-        <div
+      {minutes > 0 && (
+        <span
           style={{
-            position: "absolute",
-            top: "-28px",
-            background: "#6366f1",
-            color: "white",
-            fontSize: "0.65rem",
+            fontSize: "0.66rem",
             fontWeight: 700,
-            padding: "2px 6px",
-            borderRadius: "6px",
+            color: isMax ? "#6366f1" : "var(--text-faint)",
             whiteSpace: "nowrap",
           }}
         >
-          Best! {minutes}m
-        </div>
+          {minutes}m
+        </span>
       )}
       <div
         title={`${day}: ${minutes} min`}
         style={{
-          width: "100%",
+          width: "76%",
           height: `${Math.max(pct, 5)}%`,
           background: isMax
             ? "linear-gradient(180deg, #6366f1, #8b5cf6)"
             : "linear-gradient(180deg, #a5b4fc, #c7d2fe)",
-          borderRadius: "6px 6px 0 0",
-          transition: "height 0.8s cubic-bezier(0.25,0.8,0.25,1)",
+          borderRadius: "8px 8px 0 0",
+          boxShadow: isMax ? "0 6px 14px rgba(99,102,241,0.30)" : "none",
+          transition: "height 0.8s cubic-bezier(0.25,0.8,0.25,1), filter 0.15s ease, transform 0.15s ease",
           cursor: "default",
         }}
+        onMouseOver={(e) => { e.currentTarget.style.filter = "brightness(1.08) saturate(1.1)"; e.currentTarget.style.transform = "scaleY(1.03)"; e.currentTarget.style.transformOrigin = "bottom"; }}
+        onMouseOut={(e) => { e.currentTarget.style.filter = ""; e.currentTarget.style.transform = ""; }}
       />
       <span
         style={{
@@ -252,6 +262,60 @@ export default function DashboardPage() {
         }))
       : [];
 
+  // ── Quick actions: every practice mode as a tappable tile ──────────────────
+  const QUICK_ACTIONS = [
+    { key: "tutor",         icon: "fa-robot",        label: "AI Tutor",       color: "#6366f1" },
+    { key: "flashcards",    icon: "fa-layer-group",  label: "Flashcards",     color: "#14b8a6" },
+    { key: "grammar",       icon: "fa-book",         label: "Grammar",        color: "#f59e0b" },
+    { key: "reading",       icon: "fa-glasses",      label: "Reading",        color: "#ec4899" },
+    { key: "listening",     icon: "fa-volume-up",    label: "Listening",      color: "#3b82f6" },
+    { key: "writing",       icon: "fa-pen-nib",      label: "Writing",        color: "#10b981" },
+    { key: "speaking",      icon: "fa-microphone",   label: "Speaking",       color: "#8b5cf6" },
+    { key: "pronunciation", icon: "fa-comment-dots", label: "Pronunciation",  color: "#f97316" },
+  ];
+
+  // ── CEFR skill mastery: prefer last assessment scores, fall back to practice accuracy ──
+  const skillMastery = useMemo(() => {
+    let a = {};
+    try { a = JSON.parse(localStorage.getItem("polylingo_assessment_data")) || {}; } catch { a = {}; }
+    const pct = (num, den) => (den ? Math.round((num / den) * 100) : null);
+    const fromAssess = {
+      speaking:  (a.speakingScore ?? a.fluencyScore) != null ? Math.round((a.speakingScore ?? a.fluencyScore) * 10) : null,
+      writing:   a.writingScore != null ? Math.round((a.writingScore / (a.writingTotal || 10)) * 100) : null,
+      listening: a.listeningScore != null && a.listeningTotal ? Math.round((a.listeningScore / a.listeningTotal) * 100) : null,
+      reading:   a.readingScore != null && a.readingTotal ? Math.round((a.readingScore / a.readingTotal) * 100) : null,
+    };
+    const pp = practiceProgress || {};
+    const fallback = {
+      speaking:  null,
+      writing:   pp.writing?.submissions ? Math.round((pp.writing.totalScore / pp.writing.submissions) * 10) : null,
+      listening: pct(pp.listening?.totalCorrect, pp.listening?.totalAttempted),
+      reading:   pct(pp.reading?.totalCorrect, pp.reading?.totalAttempted),
+    };
+    const meta = [
+      { key: "speaking",  label: "Speaking",  icon: "fa-comments",   color: "#10b981" },
+      { key: "writing",   label: "Writing",   icon: "fa-pen",        color: "#8b5cf6" },
+      { key: "listening", label: "Listening", icon: "fa-headphones", color: "#f59e0b" },
+      { key: "reading",   label: "Reading",   icon: "fa-book-reader",color: "#3b82f6" },
+    ];
+    return meta.map((m) => {
+      let score = fromAssess[m.key];
+      if (score == null) score = fallback[m.key];
+      if (score != null) score = Math.max(0, Math.min(100, score));
+      return { ...m, score, cefr: score == null ? null : scoreToCEFR(score) };
+    });
+  }, [practiceProgress]);
+  const hasAnyMastery = skillMastery.some((s) => s.score != null);
+
+  // ── Vocabulary ──
+  const wordsLearned     = practiceProgress?.flashcards?.wordsLearned ?? 0;
+  const flashcardSessions = practiceProgress?.flashcards?.sessions ?? 0;
+
+  // ── Continue: the top personalised next step ──
+  const continueTarget = suggestedActivities[0] || {
+    key: "tutor", icon: "fa-robot", title: "Start practicing", desc: "Pick up where you left off", color: "#6366f1",
+  };
+
   return (
     <div
       className="pg-wrapper"
@@ -336,7 +400,7 @@ export default function DashboardPage() {
         </div>
       )}
       <div className="container">
-        {/* ── Header ── */}
+        {/* ── Hero Header ── */}
         <div
           style={{
             display: "flex",
@@ -344,42 +408,67 @@ export default function DashboardPage() {
             justifyContent: "space-between",
             flexWrap: "wrap",
             gap: "1rem",
+            marginTop: "0.5rem",
             marginBottom: "2rem",
-            padding: "1.5rem 0 0",
+            padding: "1.85rem 1.85rem",
+            background: "linear-gradient(135deg, #6366f1 0%, #7c6cf0 50%, #8b5cf6 100%)",
+            borderRadius: "24px",
+            boxShadow: "0 18px 44px rgba(99,102,241,0.30)",
+            color: "#fff",
+            position: "relative",
+            overflow: "hidden",
           }}
         >
-          <div>
+          {/* soft decorative glow — purely visual */}
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: "-40%",
+              right: "-5%",
+              width: "320px",
+              height: "320px",
+              background: "radial-gradient(circle, rgba(255,255,255,0.18), rgba(255,255,255,0) 70%)",
+              pointerEvents: "none",
+            }}
+          />
+          <div style={{ position: "relative", zIndex: 1 }}>
             <h1
               style={{
-                fontSize: "clamp(1.5rem, 4vw, 2rem)",
+                fontSize: "clamp(1.5rem, 4vw, 2.1rem)",
                 fontWeight: 800,
-                color: "var(--text-base)",
-                marginBottom: "0.25rem",
+                color: "#fff",
+                letterSpacing: "-0.02em",
+                marginBottom: "0.35rem",
               }}
             >
               Welcome back, {firstName}! 👋
             </h1>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.95rem" }}>
-              Studying <strong>{language}</strong>
-              {streak > 0 && <> · <span style={{ color: "#f59e0b" }}>🔥 {streak}-day streak</span></>}
+            <p style={{ color: "rgba(255,255,255,0.9)", fontSize: "0.98rem" }}>
+              Studying <strong style={{ color: "#fff" }}>{language}</strong>
+              {streak > 0 && <> · <span style={{ color: "#fde68a", fontWeight: 700 }}>🔥 {streak}-day streak</span></>}
             </p>
           </div>
           <button
             onClick={() => setShowRetakeConfirm(true)}
             title="Retake assessment to update your level"
             style={{
+              position: "relative",
+              zIndex: 1,
               display: "inline-flex",
               alignItems: "center",
               gap: "0.5rem",
-              background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-              color: "white",
-              padding: "0.5rem 1.25rem",
+              background: "rgba(255,255,255,0.16)",
+              color: "#fff",
+              padding: "0.6rem 1.25rem",
               borderRadius: "99px",
               fontSize: "0.88rem",
               fontWeight: 700,
-              boxShadow: "0 4px 14px rgba(99,102,241,0.35)",
+              boxShadow: "0 4px 14px rgba(0,0,0,0.12)",
+              backdropFilter: "blur(6px)",
+              WebkitBackdropFilter: "blur(6px)",
               flexShrink: 0,
-              border: "none",
+              border: "1px solid rgba(255,255,255,0.35)",
               cursor: "pointer",
             }}
           >
@@ -402,9 +491,10 @@ export default function DashboardPage() {
                   key={i}
                   style={{
                     background: "var(--bg-card)",
-                    borderRadius: "16px",
-                    padding: "1.25rem",
-                    boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+                    borderRadius: "18px",
+                    padding: "1.35rem",
+                    border: "1px solid var(--border)",
+                    boxShadow: "0 6px 18px rgba(17,24,39,0.06)",
                     display: "flex",
                     alignItems: "center",
                     gap: "1rem",
@@ -423,59 +513,67 @@ export default function DashboardPage() {
                   value: level,
                   label: "Current Level",
                   grad: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                  c: "#6366f1",
                 },
                 {
                   icon: "fa-fire",
                   value: streak > 0 ? `${streak} 🔥` : "0",
                   label: "Day Streak",
                   grad: "linear-gradient(135deg,#10b981,#34d399)",
+                  c: "#10b981",
                 },
                 {
                   icon: "fa-clock",
                   value: todayDisplay,
                   label: "Today's Practice",
                   grad: "linear-gradient(135deg,#f59e0b,#fbbf24)",
+                  c: "#f59e0b",
                 },
                 {
                   icon: "fa-bullseye",
                   value: `${goalPct}%`,
                   label: "Daily Goal",
                   grad: "linear-gradient(135deg,#3b82f6,#60a5fa)",
+                  c: "#3b82f6",
                 },
               ].map((card) => (
                 <div
                   key={card.label}
                   style={{
-                    background: "var(--bg-card)",
-                    borderRadius: "16px",
-                    padding: "1.25rem",
-                    boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+                    position: "relative",
+                    overflow: "hidden",
+                    background: `color-mix(in srgb, ${card.c} 7%, var(--bg-card))`,
+                    borderRadius: "18px",
+                    padding: "1.4rem",
+                    border: `1px solid color-mix(in srgb, ${card.c} 22%, var(--border))`,
+                    boxShadow: "0 6px 18px rgba(17,24,39,0.06)",
                     display: "flex",
                     alignItems: "center",
                     gap: "1rem",
                     transition: "transform 0.2s, box-shadow 0.2s",
                   }}
                   onMouseOver={(e) => {
-                    e.currentTarget.style.transform = "translateY(-3px)";
-                    e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.1)";
+                    e.currentTarget.style.transform = "translateY(-4px)";
+                    e.currentTarget.style.boxShadow = `0 14px 30px color-mix(in srgb, ${card.c} 25%, transparent)`;
                   }}
                   onMouseOut={(e) => {
                     e.currentTarget.style.transform = "";
-                    e.currentTarget.style.boxShadow = "0 2px 12px rgba(0,0,0,0.06)";
+                    e.currentTarget.style.boxShadow = "0 6px 18px rgba(17,24,39,0.06)";
                   }}
                 >
                   <div
                     style={{
-                      width: "52px",
-                      height: "52px",
-                      borderRadius: "14px",
+                      width: "56px",
+                      height: "56px",
+                      borderRadius: "16px",
                       flexShrink: 0,
                       background: card.grad,
                       color: "white",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      fontSize: "1.25rem",
+                      fontSize: "1.35rem",
+                      boxShadow: `0 8px 18px color-mix(in srgb, ${card.c} 40%, transparent)`,
                     }}
                   >
                     <i className={`fas ${card.icon}`} />
@@ -506,6 +604,95 @@ export default function DashboardPage() {
           }
         </div>
 
+        {/* ── Continue + Vocabulary (bento) ── */}
+        <div className="dash-bento">
+          {/* Continue learning */}
+          <div
+            className="col-8"
+            onClick={() => navigate(continueTarget.key ? `/practice?tab=${continueTarget.key}` : "/practice")}
+            style={{
+              cursor: "pointer",
+              position: "relative",
+              overflow: "hidden",
+              borderRadius: "20px",
+              padding: "1.6rem 1.75rem",
+              border: `1px solid ${continueTarget.color}33`,
+              background: `linear-gradient(135deg, ${continueTarget.color}16, var(--bg-card) 62%)`,
+              boxShadow: "0 6px 20px rgba(17,24,39,0.05)",
+              display: "flex",
+              alignItems: "center",
+              gap: "1.25rem",
+              transition: "transform 0.18s ease, box-shadow 0.18s ease",
+            }}
+            onMouseOver={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = `0 14px 30px ${continueTarget.color}26`; }}
+            onMouseOut={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 6px 20px rgba(17,24,39,0.05)"; }}
+          >
+            <div style={{ width: 64, height: 64, borderRadius: 18, flexShrink: 0, background: continueTarget.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.6rem", boxShadow: `0 8px 18px ${continueTarget.color}55` }}>
+              <i className={`fas ${continueTarget.icon}`} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: "0.74rem", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: continueTarget.color, marginBottom: 4 }}>Continue learning</div>
+              <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--text-base)", marginBottom: 2 }}>{continueTarget.title}</div>
+              <div style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>{continueTarget.desc}</div>
+            </div>
+            <div style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: "0.5rem", background: continueTarget.color, color: "#fff", padding: "0.6rem 1.15rem", borderRadius: "99px", fontWeight: 700, fontSize: "0.9rem" }}>
+              Resume <i className="fas fa-arrow-right" />
+            </div>
+          </div>
+
+          {/* Vocabulary */}
+          <div className="col-4 dash-card" style={{ display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "1rem" }}>
+              <div style={{ width: 38, height: 38, borderRadius: 11, background: "#14b8a61f", color: "#14b8a6", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <i className="fas fa-layer-group" />
+              </div>
+              <h2 style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--text-base)", margin: 0 }}>Vocabulary</h2>
+            </div>
+            <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1rem" }}>
+              <div style={{ flex: 1, background: "var(--bg-subtle)", borderRadius: 14, padding: "0.85rem", textAlign: "center" }}>
+                <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--text-base)", lineHeight: 1 }}>{wordsLearned}</div>
+                <div style={{ fontSize: "0.72rem", color: "var(--text-faint)", marginTop: 4 }}>Words learned</div>
+              </div>
+              <div style={{ flex: 1, background: "var(--bg-subtle)", borderRadius: 14, padding: "0.85rem", textAlign: "center" }}>
+                <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--text-base)", lineHeight: 1 }}>{flashcardSessions}</div>
+                <div style={{ fontSize: "0.72rem", color: "var(--text-faint)", marginTop: 4 }}>Sessions</div>
+              </div>
+            </div>
+            <button onClick={() => navigate("/practice?tab=flashcards")} className="btn btn-primary" style={{ marginTop: "auto", width: "100%", justifyContent: "center" }}>
+              <i className="fas fa-sync-alt" /> Review flashcards
+            </button>
+          </div>
+        </div>
+
+        {/* ── Quick actions ── */}
+        <div className="dash-bento">
+          <div className="col-12 dash-card">
+            <h2 style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--text-base)", margin: "0 0 1rem" }}>Jump into practice</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "0.75rem" }}>
+              {QUICK_ACTIONS.map((q) => (
+                <button
+                  key={q.key}
+                  onClick={() => navigate(`/practice?tab=${q.key}`)}
+                  style={{
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: "0.6rem",
+                    padding: "1.1rem 0.5rem", borderRadius: 16, cursor: "pointer",
+                    background: `color-mix(in srgb, ${q.color} 8%, var(--bg-card))`,
+                    border: `1px solid color-mix(in srgb, ${q.color} 22%, var(--border))`,
+                    transition: "transform 0.16s ease, box-shadow 0.16s ease",
+                  }}
+                  onMouseOver={(e) => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.boxShadow = `0 10px 22px color-mix(in srgb, ${q.color} 28%, transparent)`; }}
+                  onMouseOut={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "none"; }}
+                >
+                  <div style={{ width: 44, height: 44, borderRadius: 13, background: q.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.15rem", boxShadow: `0 6px 14px ${q.color}55` }}>
+                    <i className={`fas ${q.icon}`} />
+                  </div>
+                  <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--text-base)" }}>{q.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
         {/* ── Two column: goals + chart ── */}
         <div
           style={{
@@ -521,7 +708,8 @@ export default function DashboardPage() {
               background: "var(--bg-card)",
               borderRadius: "20px",
               padding: "1.75rem",
-              boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+              border: "1px solid var(--border)",
+              boxShadow: "0 6px 20px rgba(17,24,39,0.05)",
             }}
           >
             <div
@@ -532,16 +720,14 @@ export default function DashboardPage() {
                 marginBottom: "1.25rem",
               }}
             >
-              <h2
-                style={{
-                  fontSize: "1.15rem",
-                  fontWeight: 800,
-                  color: "var(--text-base)",
-                  margin: 0,
-                }}
-              >
-                Today's Goals
-              </h2>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                <div style={{ width: 36, height: 36, borderRadius: 11, flexShrink: 0, background: "#6366f11f", color: "#6366f1", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <i className="fas fa-bullseye" />
+                </div>
+                <h2 style={{ fontSize: "1.15rem", fontWeight: 800, color: "var(--text-base)", margin: 0 }}>
+                  Today's Goals
+                </h2>
+              </div>
               <button
                 className="btn btn-outline"
                 onClick={() => navigate("/practice")}
@@ -561,60 +747,51 @@ export default function DashboardPage() {
                 border: "1px solid var(--border)",
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "0.5rem",
-                }}
-              >
-                <div style={{ display:"flex", alignItems:"center", gap:"0.4rem" }}>
-                  <span style={{ fontWeight:700, fontSize:"0.9rem", color:"var(--text-muted)" }}>
-                    Daily Practice Goal
-                  </span>
-                  <button
-                    onClick={() => { setGoalInput(String(dailyGoal)); setGoalEditing(true); }}
-                    title="Edit goal"
-                    style={{ background:"none", border:"none", cursor:"pointer", color:"var(--text-muted)", fontSize:"0.75rem", padding:"0 2px", lineHeight:1 }}
-                  >
-                    <i className="fas fa-pen" />
-                  </button>
+              <div style={{ display: "flex", alignItems: "center", gap: "1.1rem" }}>
+                {/* Circular progress ring */}
+                <div style={{ position: "relative", width: 86, height: 86, flexShrink: 0 }}>
+                  <svg width="86" height="86" viewBox="0 0 86 86">
+                    <defs>
+                      <linearGradient id="goalRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor={goalPct >= 100 ? "#10b981" : "#6366f1"} />
+                        <stop offset="100%" stopColor={goalPct >= 100 ? "#34d399" : "#8b5cf6"} />
+                      </linearGradient>
+                    </defs>
+                    <circle cx="43" cy="43" r="37" fill="none" stroke="var(--border)" strokeWidth="8" />
+                    <circle
+                      cx="43" cy="43" r="37" fill="none"
+                      stroke="url(#goalRingGrad)" strokeWidth="8" strokeLinecap="round"
+                      strokeDasharray={2 * Math.PI * 37}
+                      strokeDashoffset={(2 * Math.PI * 37) * (1 - goalPct / 100)}
+                      transform="rotate(-90 43 43)"
+                      style={{ transition: "stroke-dashoffset 0.7s cubic-bezier(0.25,0.8,0.25,1)" }}
+                    />
+                  </svg>
+                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                    <span style={{ fontWeight: 800, fontSize: "1.15rem", color: "var(--text-base)", lineHeight: 1 }}>{goalPct}%</span>
+                    {goalPct >= 100 && <span style={{ fontSize: "0.72rem", color: "#10b981", fontWeight: 700, marginTop: 2 }}>done ✓</span>}
+                  </div>
                 </div>
-                <span style={{ fontSize:"0.8rem", color: goalPct >= 100 ? "#10b981" : "#6366f1", fontWeight:700 }}>
-                  {goalPct}%{goalPct >= 100 ? " ✓" : ""}
-                </span>
+                {/* Labels */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.3rem" }}>
+                    <span style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--text-base)" }}>
+                      Daily Practice Goal
+                    </span>
+                    <button
+                      onClick={() => { setGoalInput(String(dailyGoal)); setGoalEditing(true); }}
+                      title="Edit goal"
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "0.75rem", padding: "0 2px", lineHeight: 1 }}
+                    >
+                      <i className="fas fa-pen" />
+                    </button>
+                  </div>
+                  <p style={{ fontSize: "0.88rem", color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>
+                    <strong style={{ color: goalPct >= 100 ? "#10b981" : "#6366f1", fontSize: "1.05rem" }}>{todayMins}</strong>
+                    {" "}of {dailyGoal} minutes today{goalPct >= 100 && " 🎉"}
+                  </p>
+                </div>
               </div>
-              <div
-                style={{
-                  height: "8px",
-                  background: "#e5e7eb",
-                  borderRadius: "99px",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    width: `${goalPct}%`,
-                    height: "100%",
-                    background: goalPct >= 100
-                      ? "linear-gradient(90deg,#10b981,#34d399)"
-                      : "linear-gradient(90deg,#6366f1,#8b5cf6)",
-                    borderRadius: "99px",
-                    transition: "width 0.6s ease",
-                  }}
-                />
-              </div>
-              <p
-                style={{
-                  fontSize: "0.8rem",
-                  color: "var(--text-faint)",
-                  marginTop: "0.5rem",
-                }}
-              >
-                {todayMins} of {dailyGoal} minutes completed today
-                {goalPct >= 100 && " 🎉"}
-              </p>
               {goalEditing && (
                 <div style={{ display:"flex", alignItems:"center", gap:"0.5rem", marginTop:"0.6rem" }}>
                   <input
@@ -654,33 +831,37 @@ export default function DashboardPage() {
                   display: "flex",
                   alignItems: "center",
                   gap: "0.875rem",
-                  padding: "0.875rem",
-                  borderRadius: "12px",
+                  padding: "0.9rem",
+                  borderRadius: "14px",
                   cursor: "pointer",
-                  transition: "background 0.2s",
-                  marginBottom: "0.5rem",
-                  border: ex.urgent ? `1px solid ${ex.color}33` : "none",
-                  background: ex.urgent ? `${ex.color}08` : "transparent",
+                  transition: "transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease",
+                  marginBottom: "0.6rem",
+                  border: ex.urgent ? `1px solid ${ex.color}55` : "1px solid var(--border)",
+                  background: ex.urgent ? `${ex.color}10` : "var(--bg-subtle)",
                 }}
-                onMouseOver={(e) =>
-                  (e.currentTarget.style.background = ex.urgent ? `${ex.color}12` : "var(--bg-hover)")
-                }
-                onMouseOut={(e) =>
-                  (e.currentTarget.style.background = ex.urgent ? `${ex.color}08` : "transparent")
-                }
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = "translateX(3px)";
+                  e.currentTarget.style.borderColor = ex.color;
+                  e.currentTarget.style.boxShadow = `0 6px 16px ${ex.color}22`;
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = "";
+                  e.currentTarget.style.borderColor = ex.urgent ? `${ex.color}55` : "var(--border)";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
               >
                 <div
                   style={{
-                    width: "38px",
-                    height: "38px",
-                    borderRadius: "10px",
+                    width: "42px",
+                    height: "42px",
+                    borderRadius: "12px",
                     flexShrink: 0,
-                    background: ex.color + "18",
+                    background: ex.color + "1f",
                     color: ex.color,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontSize: "0.95rem",
+                    fontSize: "1rem",
                   }}
                 >
                   <i className={`fas ${ex.icon}`} />
@@ -727,7 +908,8 @@ export default function DashboardPage() {
               background: "var(--bg-card)",
               borderRadius: "20px",
               padding: "1.75rem",
-              boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+              border: "1px solid var(--border)",
+              boxShadow: "0 6px 20px rgba(17,24,39,0.05)",
             }}
           >
             <div
@@ -738,16 +920,14 @@ export default function DashboardPage() {
                 marginBottom: "0.5rem",
               }}
             >
-              <h2
-                style={{
-                  fontSize: "1.15rem",
-                  fontWeight: 800,
-                  color: "var(--text-base)",
-                  margin: 0,
-                }}
-              >
-                Weekly Progress
-              </h2>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                <div style={{ width: 36, height: 36, borderRadius: 11, flexShrink: 0, background: "#8b5cf61f", color: "#8b5cf6", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <i className="fas fa-chart-bar" />
+                </div>
+                <h2 style={{ fontSize: "1.15rem", fontWeight: 800, color: "var(--text-base)", margin: 0 }}>
+                  Weekly Progress
+                </h2>
+              </div>
               <span
                 style={{
                   fontSize: "0.78rem",
@@ -774,12 +954,15 @@ export default function DashboardPage() {
             {/* Bar chart container */}
             <div
               style={{
-                height: "160px",
+                height: "170px",
                 display: "flex",
                 alignItems: "flex-end",
                 gap: "8px",
                 paddingTop: "2rem",
                 position: "relative",
+                backgroundImage:
+                  "repeating-linear-gradient(to top, transparent, transparent 41px, var(--border) 41px, var(--border) 42px)",
+                backgroundPosition: "bottom",
               }}
             >
               {chartLoading
@@ -855,13 +1038,56 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* ── CEFR skill mastery ── */}
+        <div className="dash-bento">
+          <div className="col-12 dash-card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem", flexWrap: "wrap", gap: "0.75rem" }}>
+              <h2 style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--text-base)", margin: 0 }}>
+                Skill Mastery <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-faint)" }}>· CEFR by skill</span>
+              </h2>
+              <button className="btn btn-outline" onClick={() => navigate("/assessment")} style={{ fontSize: "0.82rem", padding: "0.4rem 0.875rem" }}>
+                {hasAnyMastery ? "Retake assessment" : "Take assessment"}
+              </button>
+            </div>
+            {!hasAnyMastery ? (
+              <div style={{ textAlign: "center", padding: "1.5rem 0" }}>
+                <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🎯</div>
+                <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", margin: 0 }}>
+                  Take the assessment to see your CEFR level in each skill.
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1.1rem" }}>
+                {skillMastery.map((s) => (
+                  <div key={s.key} style={{ background: "var(--bg-subtle)", border: "1px solid var(--border)", borderRadius: 16, padding: "1rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.7rem" }}>
+                      <div style={{ width: 34, height: 34, borderRadius: 10, background: s.color + "1f", color: s.color, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <i className={`fas ${s.icon}`} />
+                      </div>
+                      <span style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text-base)", flex: 1 }}>{s.label}</span>
+                      <span style={{ fontWeight: 800, fontSize: "0.95rem", color: s.score == null ? "var(--text-faint)" : s.color }}>{s.cefr || "—"}</span>
+                    </div>
+                    <div style={{ height: 8, background: "var(--border)", borderRadius: 99, overflow: "hidden" }}>
+                      <div style={{ width: `${s.score || 0}%`, height: "100%", background: `linear-gradient(90deg, ${s.color}, ${s.color}aa)`, borderRadius: 99, transition: "width 0.7s ease" }} />
+                    </div>
+                    <div style={{ fontSize: "0.72rem", color: "var(--text-faint)", marginTop: 6 }}>
+                      {s.score == null ? "Not assessed yet" : `${s.score}%`}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* ── Leaderboard ── */}
         <div
           style={{
             background: "var(--bg-card)",
             borderRadius: "20px",
             padding: "1.75rem",
-            boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+            border: "1px solid var(--border)",
+            boxShadow: "0 6px 20px rgba(17,24,39,0.05)",
           }}
         >
           <div
@@ -880,7 +1106,12 @@ export default function DashboardPage() {
                 margin: 0,
               }}
             >
-              Weekly Leaderboard
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "0.6rem" }}>
+                <span style={{ width: 36, height: 36, borderRadius: 11, flexShrink: 0, background: "#f59e0b1f", color: "#f59e0b", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                  <i className="fas fa-trophy" />
+                </span>
+                Weekly Leaderboard
+              </span>
             </h2>
             <button
               className="btn btn-outline"
@@ -906,45 +1137,58 @@ export default function DashboardPage() {
                   display: "flex",
                   alignItems: "center",
                   gap: "0.875rem",
-                  padding: "0.875rem 1rem",
-                  borderRadius: "12px",
+                  padding: "0.7rem 1rem",
+                  borderRadius: "14px",
                   background: item.isUser
-                    ? "rgba(99,102,241,0.12)"
+                    ? "color-mix(in srgb, #6366f1 12%, var(--bg-card))"
                     : "var(--bg-subtle)",
                   border: item.isUser
-                    ? "1.5px solid rgba(99,102,241,0.2)"
-                    : "1.5px solid transparent",
+                    ? "1.5px solid color-mix(in srgb, #6366f1 35%, transparent)"
+                    : "1.5px solid var(--border)",
+                  transition: "transform 0.16s ease, box-shadow 0.16s ease",
                 }}
+                onMouseOver={(e) => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 6px 16px rgba(17,24,39,0.07)"; }}
+                onMouseOut={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "none"; }}
               >
+                {/* Rank / medal badge */}
                 <div
                   style={{
-                    width: "32px",
-                    height: "32px",
-                    borderRadius: "50%",
+                    width: "26px",
+                    textAlign: "center",
                     flexShrink: 0,
-                    background:
-                      item.rank === 1
-                        ? "#fef3c7"
-                        : item.rank === 2
-                          ? "#f1f5f9"
-                          : item.rank === 3
-                            ? "#fde8d0"
-                            : "#f1f5f9",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: item.medal ? "1rem" : "0.8rem",
+                    fontSize: item.medal ? "1.15rem" : "0.85rem",
                     fontWeight: 800,
-                    color: "var(--text-muted)",
+                    color: "var(--text-faint)",
                   }}
                 >
                   {item.medal || item.rank}
                 </div>
+                {/* Avatar with initials */}
+                <div
+                  style={{
+                    width: "38px",
+                    height: "38px",
+                    borderRadius: "50%",
+                    flexShrink: 0,
+                    background: item.isUser
+                      ? "linear-gradient(135deg,#6366f1,#8b5cf6)"
+                      : "linear-gradient(135deg,#cbd5e1,#94a3b8)",
+                    color: "#fff",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "0.82rem",
+                    fontWeight: 800,
+                    boxShadow: "0 2px 8px rgba(17,24,39,0.12)",
+                  }}
+                >
+                  {item.name.replace(/\s*\(You\)\s*$/, "").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
+                </div>
                 <span
                   style={{
                     flex: 1,
-                    fontWeight: item.isUser ? 800 : 500,
-                    color: item.isUser ? "#6366f1" : "#374151",
+                    fontWeight: item.isUser ? 800 : 600,
+                    color: item.isUser ? "#6366f1" : "var(--text-base)",
                     fontSize: "0.92rem",
                   }}
                 >
@@ -952,9 +1196,13 @@ export default function DashboardPage() {
                 </span>
                 <span
                   style={{
-                    fontWeight: 700,
+                    fontWeight: 800,
                     color: "#6366f1",
-                    fontSize: "0.9rem",
+                    fontSize: "0.82rem",
+                    background: "color-mix(in srgb, #6366f1 12%, transparent)",
+                    padding: "0.3rem 0.7rem",
+                    borderRadius: "99px",
+                    flexShrink: 0,
                   }}
                 >
                   {item.pts} pts

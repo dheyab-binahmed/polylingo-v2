@@ -1,0 +1,469 @@
+/* =====================================================================
+   polish.css — visual-only refinements for Dashboard, Practice, Profile,
+   Community and Assessment pages.
+
+   SCOPED on purpose: every rule sits under a page root
+   (.pg-wrapper / #practice-page / #testing-page / .plg-root / .pp-* )
+   or a page-specific component class, so Home / Login / About are
+   untouched. No layout structure, logic, or content is changed here —
+   this only refines spacing, depth, hover/focus feedback and rhythm to
+   make the existing indigo/amber identity feel more premium.
+
+   To revert: delete this file and remove its imports from the 5 pages.
+   ===================================================================== */
+
+/* ---- shared polish tokens (local, do not override globals) ---------- */
+:root {
+  --pl-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --pl-lift: 0 14px 34px rgba(17, 24, 39, 0.10);
+  --pl-lift-strong: 0 20px 48px rgba(17, 24, 39, 0.14);
+  --pl-ring: 0 0 0 3px rgba(99, 102, 241, 0.28);
+}
+
+/* =====================================================================
+   1. CROSS-PAGE NICETIES (scoped to the five page roots)
+   ===================================================================== */
+.pg-wrapper, #practice-page, #testing-page, .plg-root {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Smooth, consistent interaction feedback on anything clickable */
+.pg-wrapper button, .pg-wrapper a.btn,
+#practice-page button, #practice-page a.btn,
+#testing-page button, #testing-page a.btn,
+.plg-root button, .plg-root a.btn {
+  transition: transform 0.16s var(--pl-ease), box-shadow 0.16s var(--pl-ease),
+              background-color 0.16s var(--pl-ease), border-color 0.16s var(--pl-ease),
+              filter 0.16s var(--pl-ease);
+}
+.pg-wrapper button:not(:disabled):hover, .pg-wrapper a.btn:hover,
+#practice-page button:not(:disabled):hover, #practice-page a.btn:hover,
+#testing-page button:not(:disabled):hover, #testing-page a.btn:hover,
+.plg-root button:not(:disabled):hover, .plg-root a.btn:hover {
+  transform: translateY(-1px);
+}
+.pg-wrapper button:not(:disabled):active,
+#practice-page button:not(:disabled):active,
+#testing-page button:not(:disabled):active,
+.plg-root button:not(:disabled):active { transform: translateY(0); }
+
+/* Clear, accessible keyboard focus rings */
+.pg-wrapper :focus-visible, #practice-page :focus-visible,
+#testing-page :focus-visible, .plg-root :focus-visible,
+.pp-prefs :focus-visible {
+  outline: none;
+  box-shadow: var(--pl-ring);
+  border-radius: 10px;
+}
+
+/* Refined, theme-aware scrollbars inside these pages */
+.pg-wrapper *::-webkit-scrollbar, #practice-page *::-webkit-scrollbar,
+#testing-page *::-webkit-scrollbar, .plg-root *::-webkit-scrollbar { width: 10px; height: 10px; }
+.pg-wrapper *::-webkit-scrollbar-thumb, #practice-page *::-webkit-scrollbar-thumb,
+#testing-page *::-webkit-scrollbar-thumb, .plg-root *::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--primary) 35%, transparent);
+  border-radius: 999px;
+}
+.pg-wrapper *::-webkit-scrollbar-thumb:hover, #practice-page *::-webkit-scrollbar-thumb:hover,
+#testing-page *::-webkit-scrollbar-thumb:hover, .plg-root *::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+/* =====================================================================
+   2. DASHBOARD  (.pg-wrapper)
+   ===================================================================== */
+.pg-wrapper h1 { letter-spacing: -0.02em; }
+.pg-wrapper .container { padding-top: 0.25rem; }
+
+/* Generic card surfaces if present */
+.pg-wrapper .card {
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow);
+  transition: transform 0.2s var(--pl-ease), box-shadow 0.2s var(--pl-ease);
+}
+.pg-wrapper .card:hover { transform: translateY(-2px); box-shadow: var(--pl-lift); }
+
+/* Outline buttons get a touch more presence on hover */
+.pg-wrapper .btn-outline:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+}
+
+/* =====================================================================
+   3. PRACTICE  (#practice-page)
+   ===================================================================== */
+/* Tab / category bar */
+#practice-page .practice-categories { gap: 0.5rem; }
+#practice-page .practice-categories > * {
+  transition: transform 0.16s var(--pl-ease), box-shadow 0.16s var(--pl-ease),
+              background-color 0.16s var(--pl-ease);
+  border-radius: 12px;
+}
+#practice-page .practice-categories > *:hover { transform: translateY(-1px); }
+
+/* Card footer stats — one clean strip with a centered divider (no boxes) */
+#practice-page .practice-stats-row {
+  display: flex;
+  border-top: none;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.7rem 0;
+  margin-top: 0.5rem;
+}
+#practice-page .pstat {
+  flex: 1;
+  text-align: center;
+  border: none;
+  border-radius: 0;
+  padding: 0 0.5rem;
+}
+#practice-page .pstat + .pstat { border-left: 1px solid var(--border); }
+#practice-page .pstat-value { font-size: 1.2rem; font-weight: 800; color: var(--text-base); letter-spacing: -0.01em; }
+#practice-page .pstat-label { font-size: 0.72rem; color: var(--text-faint); margin-top: 2px; }
+
+/* Tool buttons (TTS, refresh, etc.) */
+#practice-page .tool-btn {
+  border-radius: 10px;
+  transition: transform 0.15s var(--pl-ease), background-color 0.15s var(--pl-ease),
+              color 0.15s var(--pl-ease);
+}
+#practice-page .tool-btn:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
+}
+
+/* Flashcards, grammar & listening blocks: softer, lifted surfaces */
+#practice-page .flashcard,
+#practice-page .grammar-question,
+#practice-page .grammar-summary,
+#practice-page .listening-exercise {
+  border-radius: var(--border-radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  transition: transform 0.2s var(--pl-ease), box-shadow 0.2s var(--pl-ease);
+}
+#practice-page .flashcard:hover { box-shadow: var(--pl-lift-strong); }
+#practice-page .grammar-options > * {
+  border-radius: 12px;
+  transition: border-color 0.15s var(--pl-ease), background-color 0.15s var(--pl-ease),
+              transform 0.15s var(--pl-ease);
+}
+#practice-page .grammar-options > *:hover {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+
+/* =====================================================================
+   4. ASSESSMENT  (#testing-page)
+   ===================================================================== */
+/* Card shell — a little more depth + a hairline border */
+#testing-page .test-container {
+  border: 1px solid var(--border);
+  box-shadow: var(--pl-lift);
+}
+
+/* Stepper */
+#testing-page .step-circle {
+  transition: background-color 0.25s var(--pl-ease), color 0.25s var(--pl-ease),
+              box-shadow 0.25s var(--pl-ease), transform 0.25s var(--pl-ease);
+}
+#testing-page .progress-step.active .step-circle {
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--primary) 18%, transparent);
+  transform: scale(1.05);
+}
+#testing-page .progress-step.completed .step-circle {
+  background: var(--primary);
+  color: #fff;
+}
+
+/* MCQ options — clearer hover + selected affordance */
+#testing-page .test-options > *,
+#testing-page .option-letter {
+  transition: border-color 0.15s var(--pl-ease), background-color 0.15s var(--pl-ease),
+              transform 0.15s var(--pl-ease), box-shadow 0.15s var(--pl-ease);
+}
+#testing-page .test-options > *:hover {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+  transform: translateY(-1px);
+}
+#testing-page .test-options > *:hover .option-letter {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* Speaking-tutor chat bubbles */
+#testing-page .sp-body { border-radius: 16px; }
+#testing-page .sp-row.ai .sp-body {
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+}
+#testing-page .sp-typing { opacity: 0.85; }
+
+/* =====================================================================
+   5. COMMUNITY  (.plg-root)
+   ===================================================================== */
+.plg-root .partner-grid { gap: 1rem; }
+.plg-root .partner-grid > * {
+  border-radius: var(--border-radius-lg);
+  transition: transform 0.2s var(--pl-ease), box-shadow 0.2s var(--pl-ease),
+              border-color 0.2s var(--pl-ease);
+}
+.plg-root .partner-grid > *:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--pl-lift);
+}
+.plg-root .ava { box-shadow: 0 2px 8px rgba(17, 24, 39, 0.12); }
+.plg-root .btn-ghost {
+  border-radius: 10px;
+  transition: background-color 0.15s var(--pl-ease), color 0.15s var(--pl-ease),
+              transform 0.15s var(--pl-ease);
+}
+.plg-root .btn-ghost:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.plg-root .btn-coral {
+  transition: transform 0.15s var(--pl-ease), filter 0.15s var(--pl-ease),
+              box-shadow 0.15s var(--pl-ease);
+}
+.plg-root .btn-coral:hover { transform: translateY(-1px); filter: brightness(1.05); }
+
+/* =====================================================================
+   6. PROFILE  (.pp-* — profile-only classes)
+   ===================================================================== */
+.pp-prefs, .pp-group {
+  border-radius: var(--border-radius-lg);
+}
+.pp-group {
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  transition: box-shadow 0.2s var(--pl-ease);
+}
+.pp-group:hover { box-shadow: var(--pl-lift); }
+.pp-eyebrow { letter-spacing: 0.06em; text-transform: uppercase; }
+.pp-pref {
+  border-radius: 14px;
+  transition: background-color 0.15s var(--pl-ease), transform 0.15s var(--pl-ease);
+}
+.pp-pref:hover {
+  background: color-mix(in srgb, var(--primary) 5%, transparent);
+  transform: translateY(-1px);
+}
+.pp-stamp {
+  transition: transform 0.2s var(--pl-ease), box-shadow 0.2s var(--pl-ease);
+}
+.pp-stamp:hover { transform: translateY(-2px) rotate(-1deg); box-shadow: var(--pl-lift); }
+
+/* =====================================================================
+   7. DASHBOARD BENTO GRID (12-col, responsive) — scoped to .pg-wrapper
+   ===================================================================== */
+.pg-wrapper .dash-bento {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+.pg-wrapper .dash-bento > .col-3  { grid-column: span 3; }
+.pg-wrapper .dash-bento > .col-4  { grid-column: span 4; }
+.pg-wrapper .dash-bento > .col-5  { grid-column: span 5; }
+.pg-wrapper .dash-bento > .col-6  { grid-column: span 6; }
+.pg-wrapper .dash-bento > .col-7  { grid-column: span 7; }
+.pg-wrapper .dash-bento > .col-8  { grid-column: span 8; }
+.pg-wrapper .dash-bento > .col-12 { grid-column: span 12; }
+
+/* A card surface used by the new bento blocks */
+.pg-wrapper .dash-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 1.5rem;
+  box-shadow: 0 6px 20px rgba(17, 24, 39, 0.05);
+}
+
+/* Tablet: collapse to a 6-col grid */
+@media (max-width: 1024px) {
+  .pg-wrapper .dash-bento { grid-template-columns: repeat(6, 1fr); }
+  .pg-wrapper .dash-bento > .col-3 { grid-column: span 3; }
+  .pg-wrapper .dash-bento > .col-4,
+  .pg-wrapper .dash-bento > .col-5,
+  .pg-wrapper .dash-bento > .col-6,
+  .pg-wrapper .dash-bento > .col-7,
+  .pg-wrapper .dash-bento > .col-8 { grid-column: span 6; }
+}
+
+/* Phone: single column */
+@media (max-width: 640px) {
+  .pg-wrapper .dash-bento { grid-template-columns: 1fr; gap: 1rem; }
+  .pg-wrapper .dash-bento > * { grid-column: span 1 !important; }
+}
+
+/* =====================================================================
+   8. PRACTICE — bolder, visible-at-rest restyle (#practice-page)
+   ===================================================================== */
+#practice-page .practice-category {
+  border-radius: 22px;
+  border: 1.5px solid var(--border);
+  box-shadow: 0 6px 20px rgba(17, 24, 39, 0.05);
+}
+#practice-page .practice-category:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 18px 38px rgba(17, 24, 39, 0.13);
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+#practice-page .practice-category.active-cat {
+  border-color: transparent;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 16%, var(--bg-card)), var(--bg-card) 70%);
+  box-shadow: 0 16px 34px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+#practice-page .practice-category .practice-icon {
+  border-radius: 16px;
+  box-shadow: 0 8px 18px rgba(99, 102, 241, 0.32);
+}
+/* Pronunciation is the 8th card — index.css only colours 1–7, so its icon box
+   was blank (white icon on no background). Give it an orange gradient. */
+#practice-page .practice-category:nth-child(8) .practice-icon {
+  background: linear-gradient(135deg, #f97316, #fb923c);
+}
+#practice-page .practice-category h3 { letter-spacing: -0.01em; }
+#practice-page .practice-stats-row { border-top-color: var(--border); }
+
+/* The active exercise panel */
+#practice-page .practice-exercises {
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: 0 10px 30px rgba(17, 24, 39, 0.06);
+}
+
+/* =====================================================================
+   9. ASSESSMENT — bolder restyle (#testing-page)
+   ===================================================================== */
+#testing-page .test-container {
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--primary);
+  border-radius: 26px;
+  box-shadow: 0 16px 40px rgba(17, 24, 39, 0.08);
+}
+#testing-page .test-header h2 {
+  background: linear-gradient(135deg, var(--primary), #8b5cf6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+/* Stepper rail + nodes */
+#testing-page .progress-steps::before { height: 5px; border-radius: 99px; }
+#testing-page .progress-bar {
+  height: 5px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--primary), #8b5cf6);
+}
+#testing-page .step-circle {
+  width: 44px;
+  height: 44px;
+  box-shadow: 0 4px 12px rgba(17, 24, 39, 0.06);
+  transition: all 0.25s var(--pl-ease);
+}
+#testing-page .progress-step.active .step-circle,
+#testing-page .progress-step.completed .step-circle {
+  background: linear-gradient(135deg, var(--primary), #8b5cf6);
+  border-color: transparent;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--primary) 16%, transparent);
+}
+/* Options */
+#testing-page .test-option { border-radius: 16px; border-width: 2px; }
+#testing-page .test-option:hover {
+  transform: translateX(6px);
+  border-color: var(--primary);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--primary) 16%, transparent);
+}
+#testing-page .test-option.selected {
+  background: color-mix(in srgb, var(--primary) 8%, var(--bg-card));
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+#testing-page .test-option .option-letter { border-radius: 12px; font-weight: 800; }
+
+/* =====================================================================
+   10. PRACTICE — sidebar workspace layout (#practice-page)
+   ===================================================================== */
+#practice-page .practice-workspace {
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+  margin-bottom: 3rem;
+}
+#practice-page .practice-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  position: sticky;
+  top: 90px;
+}
+#practice-page .pside-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.7rem 0.85rem;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-base);
+  font-family: inherit;
+  transition: transform 0.16s var(--pl-ease), background-color 0.16s var(--pl-ease), box-shadow 0.16s var(--pl-ease);
+}
+#practice-page .pside-item:hover { background: var(--bg-subtle); transform: translateX(2px); }
+#practice-page .pside-item.active {
+  background: linear-gradient(135deg, var(--primary), #8b5cf6);
+  color: #fff;
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+#practice-page .pside-icon {
+  width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--primary) 12%, var(--bg-card));
+  color: var(--primary); font-size: 1rem;
+}
+#practice-page .pside-item.active .pside-icon { background: rgba(255,255,255,0.22); color: #fff; }
+#practice-page .pside-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+#practice-page .pside-title { font-weight: 700; font-size: 0.92rem; }
+#practice-page .pside-sub { font-size: 0.72rem; opacity: 0.7; }
+#practice-page .pside-item.active .pside-sub { color: rgba(255,255,255,0.9); opacity: 1; }
+#practice-page .pside-badge {
+  margin-left: auto; flex-shrink: 0;
+  font-size: 0.66rem; font-weight: 800; color: #fff; background: #ef4444;
+  border-radius: 99px; padding: 0.1rem 0.45rem;
+}
+/* Let grid items shrink so content wraps instead of overflowing the column */
+#practice-page .practice-workspace > * { min-width: 0; }
+#practice-page .practice-workspace .practice-exercises {
+  margin-bottom: 0;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+#practice-page .practice-exercises .listening-exercise,
+#practice-page .practice-exercises .grammar-question,
+#practice-page .practice-exercises .flashcard { max-width: 100%; }
+
+/* Mobile: sidebar becomes a horizontal scroller on top */
+@media (max-width: 860px) {
+  #practice-page .practice-workspace { grid-template-columns: 1fr; }
+  #practice-page .practice-sidebar {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+  #practice-page .pside-item { flex-direction: column; min-width: 96px; text-align: center; gap: 0.35rem; }
+  #practice-page .pside-text { align-items: center; }
+  #practice-page .pside-sub { display: none; }
+}

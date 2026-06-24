@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import CommunityStyles from "../styles/CommunityStyles";
+import "./polish.css";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import {
