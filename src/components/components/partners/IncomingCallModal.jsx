@@ -53,7 +53,9 @@ function IncomingCallModal({ caller, callType, onAccept, onDecline }) {
           {caller?.name ?? "Someone"}
         </div>
         <div style={{ color: "#9ca3af", fontSize: 13, marginTop: 4 }}>
-          Incoming {callType === "video" ? "📹 Video" : "📞 Audio"} Call
+          Incoming{" "}
+          <i className={`fas ${callType === "video" ? "fa-video" : "fa-phone"}`} style={{ margin: "0 2px" }} />
+          {callType === "video" ? "Video" : "Audio"} Call
         </div>
       </div>
 
@@ -74,8 +76,10 @@ function IncomingCallModal({ caller, callType, onAccept, onDecline }) {
             justifyContent: "center",
           }}
           type="button"
+          title="Decline"
+          aria-label="Decline call"
         >
-          ✕
+          <i className="fas fa-phone-slash" />
         </button>
         <button
           onClick={onAccept}
@@ -93,8 +97,10 @@ function IncomingCallModal({ caller, callType, onAccept, onDecline }) {
             justifyContent: "center",
           }}
           type="button"
+          title="Accept"
+          aria-label="Accept call"
         >
-          ✓
+          <i className="fas fa-phone" />
         </button>
       </div>
     </div>

@@ -510,18 +510,22 @@ const CommunityStyles = () => (
         padding: 8px; 
       }
 
-      /* Group interface: fullscreen */
-      .gi-overlay { 
-        padding: 20px; 
-        align-items: center; 
+      /* Group interface: fills the small screen with safe gutters */
+      .gi-overlay {
+        padding: 12px;
+        align-items: center;
       }
       .gi-box {
-        border-radius: 20px;
-        width: 400px;
-        height: 80dvh;
-        max-width: 100vw;
-        max-height: 80dvh;
+        border-radius: 16px;
+        width: 100%;
+        height: 88dvh;
+        max-width: 100%;
+        max-height: 88dvh;
         animation: slideUp .3s ease;
+      }
+      /* tighten the coloured header so it doesn't crowd on narrow screens */
+      .gi-header {
+        padding: 12px 14px !important;
       }
 
       /* Create group: fullscreen */

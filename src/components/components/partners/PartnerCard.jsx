@@ -32,7 +32,7 @@ const PartnerCard = ({ partner, onConnect, onMessage, onDisconnect, onCall }) =>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text-base)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{partner.name}</div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2, display: "flex", alignItems: "center", gap: 5 }}>
-            <span>🌍 {partner.country}</span>
+            <span><i className="fas fa-location-dot" style={{ marginRight: 4 }} />{partner.country}</span>
             <span style={{ color: partner.online ? "#10b981" : "#d1d5db" }}>●</span>
             <span style={{ color: partner.online ? "#10b981" : "var(--text-muted)" }}>{partner.online ? "Online" : "Offline"}</span>
           </div>
@@ -43,7 +43,7 @@ const PartnerCard = ({ partner, onConnect, onMessage, onDisconnect, onCall }) =>
       {partner.bio && (
         <div style={{ marginBottom: 10 }}>
           <button onClick={() => setShowBio(s => !s)} style={{ background: "none", border: "none", color: "#6366f1", fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
-            {showBio ? "▲ Hide bio" : "▼ View bio"}
+            {showBio ? <><i className="fas fa-chevron-up" /> Hide bio</> : <><i className="fas fa-chevron-down" /> View bio</>}
           </button>
           {showBio && (
             <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.55, background: "var(--bg-subtle)", borderRadius: 8, padding: "8px 10px" }}>{partner.bio}</div>
@@ -63,7 +63,7 @@ const PartnerCard = ({ partner, onConnect, onMessage, onDisconnect, onCall }) =>
         <div style={{ display: "flex", gap: 6, marginTop: "auto" }}>
           {/* Message */}
           <button className="btn-coral" style={{ flex: 1, justifyContent: "center" }} onClick={() => onMessage?.(partner.id)} title="Send a message">
-            💬 Message
+            <i className="fas fa-comment" /> Message
           </button>
           {/* Video call */}
           <button
@@ -71,16 +71,17 @@ const PartnerCard = ({ partner, onConnect, onMessage, onDisconnect, onCall }) =>
             style={{ padding: "8px 11px", borderColor: "#10b981", color: "#10b981" }}
             onClick={() => onCall?.(partner.id)}
             title="Start video call"
+            aria-label="Start video call"
           >
-            📹
+            <i className="fas fa-video" />
           </button>
           {/* Disconnect */}
-          <button className="btn-ghost" style={{ padding: "8px 10px" }} onClick={() => onDisconnect?.(partner.id)} title="Disconnect">✕</button>
+          <button className="btn-ghost" style={{ padding: "8px 10px" }} onClick={() => onDisconnect?.(partner.id)} title="Disconnect" aria-label="Disconnect"><i className="fas fa-xmark" /></button>
         </div>
       ) : (
         // BACKEND INTEGRATION: POST /api/community/partners/:id/connect
         <button className="btn-coral" style={{ width: "100%", justifyContent: "center", marginTop: "auto" }} onClick={() => onConnect(partner.id)}>
-          💬 Connect
+          <i className="fas fa-user-plus" /> Connect
         </button>
       )}
     </div>

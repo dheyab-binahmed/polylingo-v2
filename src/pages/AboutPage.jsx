@@ -80,37 +80,7 @@ function MemberPhoto({ id, name, accent }) {
   );
 }
 
-/* ── 3D tilt that follows the mouse ── */
-function useTilt(maxDeg = 11) {
-  const ref = useRef(null);
-
-  const onMouseMove = (e) => {
-    const el = ref.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const px = (e.clientX - r.left) / r.width;
-    const py = (e.clientY - r.top) / r.height;
-    el.style.setProperty("--rx", `${(0.5 - py) * maxDeg}deg`);
-    el.style.setProperty("--ry", `${(px - 0.5) * maxDeg}deg`);
-    el.style.setProperty("--gx", `${px * 100}%`);
-    el.style.setProperty("--gy", `${py * 100}%`);
-    el.style.setProperty("--glare", "1");
-  };
-
-  const onMouseLeave = () => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.setProperty("--rx", "0deg");
-    el.style.setProperty("--ry", "0deg");
-    el.style.setProperty("--glare", "0");
-  };
-
-  return { ref, onMouseMove, onMouseLeave };
-}
-
 function TeamCard({ member, index }) {
-  const { ref, onMouseMove, onMouseLeave } = useTilt(member.leader ? 9 : 12);
-
   return (
     <div
       className={`team-card-wrap reveal${member.leader ? " team-card-wrap--leader" : ""}`}
@@ -122,26 +92,14 @@ function TeamCard({ member, index }) {
     >
       {member.leader && <div className="leader-aura" aria-hidden="true" />}
 
-      <article
-        ref={ref}
-        className={`team-card${member.leader ? " team-card--leader" : ""}`}
-        onMouseMove={onMouseMove}
-        onMouseLeave={onMouseLeave}
-      >
-        {/* glare layer that follows the cursor */}
-        <div className="card-glare" aria-hidden="true" />
-
+      <article className={`team-card${member.leader ? " team-card--leader" : ""}`}>
         {member.leader && (
           <div className="leader-badge">
             <i className="fas fa-crown" /> Team Leader
           </div>
         )}
 
-        {/* 3D photo stage: gyroscope rings orbit the portrait */}
         <div className="photo-stage">
-          <div className="gyro gyro-1" aria-hidden="true" />
-          <div className="gyro gyro-2" aria-hidden="true" />
-          <div className="gyro gyro-3" aria-hidden="true" />
           <div className="photo-ring">
             <MemberPhoto
               id={member.id}
@@ -149,8 +107,6 @@ function TeamCard({ member, index }) {
               accent={member.accent}
             />
           </div>
-          <div className="photo-spark spark-a" aria-hidden="true" />
-          <div className="photo-spark spark-b" aria-hidden="true" />
         </div>
 
         <div className="card-body">
@@ -161,15 +117,6 @@ function TeamCard({ member, index }) {
           </div>
           <div className="member-divider" aria-hidden="true" />
           <p className="member-intro">{member.intro}</p>
-        </div>
-
-        <div className="card-footer" aria-hidden="true">
-          <span className="member-tag">{member.id}</span>
-          <span className="member-dots">
-            <i />
-            <i />
-            <i />
-          </span>
         </div>
       </article>
     </div>
@@ -266,7 +213,7 @@ export default function AboutPage() {
             <h2>
               Our <em>Team</em>
             </h2>
-            <p>Hover over a card — it sees you. 👀</p>
+            <p>Three students. One platform. A shared obsession with languages.</p>
           </div>
 
           <div className="team-grid">

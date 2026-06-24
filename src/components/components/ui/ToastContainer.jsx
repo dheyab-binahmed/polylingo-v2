@@ -1,8 +1,8 @@
 const COLORS = {
-  success: { border: "#059669", icon: "✓", bg: "rgba(5,150,105,.08)" },
-  error:   { border: "#DC2626", icon: "✕", bg: "rgba(220,38,38,.08)"  },
-  info:    { border: "#6366f1", icon: "ℹ", bg: "rgba(99,102,241,.08)" },
-  warning: { border: "#f59e0b", icon: "⚠", bg: "rgba(245,158,11,.08)" },
+  success: { border: "#059669", icon: "fa-circle-check",        bg: "rgba(5,150,105,.08)" },
+  error:   { border: "#DC2626", icon: "fa-circle-xmark",        bg: "rgba(220,38,38,.08)"  },
+  info:    { border: "#6366f1", icon: "fa-circle-info",         bg: "rgba(99,102,241,.08)" },
+  warning: { border: "#f59e0b", icon: "fa-triangle-exclamation", bg: "rgba(245,158,11,.08)" },
 };
 
 const ToastContainer = ({ toasts }) => (
@@ -28,7 +28,7 @@ const ToastContainer = ({ toasts }) => (
           gap: 10,
           pointerEvents: "all",
         }}>
-          <span style={{ fontSize:16, color: c.border, flexShrink:0 }}>{c.icon}</span>
+          <span style={{ fontSize:16, color: c.border, flexShrink:0 }}><i className={`fas ${c.icon}`} /></span>
           {t.message}
         </div>
       );

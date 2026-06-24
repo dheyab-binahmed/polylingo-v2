@@ -42,3 +42,7 @@ build
 *.local.json
 secrets.json
 config/*.json
+
+.agents/
+.claude/skills/
+skills-lock.json

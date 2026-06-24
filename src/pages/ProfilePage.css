@@ -1,0 +1,569 @@
+/* ============================================================
+   ProfilePage — "Language Passport"
+   Hero: the inked passport identity band (avatar fluency ring +
+   monospaced data fields). Settings below are a grouped
+   preference list with helper text. All content areas use
+   semantic tokens so dark mode works.
+   ============================================================ */
+
+.pp-page {
+  --pp-accent: var(--primary);
+  --pp-ink-1: #312e81;
+  --pp-ink-2: #4f46e5;
+  --pp-ink-3: #7c3aed;
+  --pp-gold:  #f59e0b;
+  --pp-mono:  ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Consolas", monospace;
+
+  min-height: 100vh;
+  padding: 92px 0 4rem;
+  background: var(--bg-page);
+}
+
+.pp-shell {
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* Shared tracked-mono eyebrow */
+.pp-eyebrow {
+  font-family: var(--pp-mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+/* ════════════════════════════════════════════
+   PASSPORT IDENTITY BAND  (the hero / thesis)
+   ════════════════════════════════════════════ */
+
+.pp-passport {
+  position: relative;
+  overflow: hidden;
+  border-radius: 26px;
+  padding: 2.25rem 2.25rem 1.75rem;
+  color: #fff;
+  background:
+    linear-gradient(135deg, var(--pp-ink-1) 0%, var(--pp-ink-2) 48%, var(--pp-ink-3) 100%);
+  box-shadow: 0 24px 60px -20px rgba(49, 46, 129, 0.65);
+  isolation: isolate;
+}
+
+/* Guilloché-style security texture — faint, ambient */
+.pp-passport::before {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  z-index: -1;
+  background:
+    repeating-radial-gradient(circle at 78% 18%,
+      rgba(255, 255, 255, 0.05) 0,
+      rgba(255, 255, 255, 0.05) 1px,
+      transparent 1px,
+      transparent 13px),
+    repeating-linear-gradient(115deg,
+      rgba(255, 255, 255, 0.035) 0,
+      rgba(255, 255, 255, 0.035) 1px,
+      transparent 1px,
+      transparent 9px);
+  pointer-events: none;
+}
+
+/* Inner hairline like a document border */
+.pp-passport::after {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  pointer-events: none;
+}
+
+.pp-passport__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.pp-passport__doc { color: rgba(255, 255, 255, 0.62); }
+
+.pp-passport__seal {
+  font-family: var(--pp-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.18em;
+  color: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 99px;
+  padding: 0.28rem 0.7rem;
+  white-space: nowrap;
+}
+
+.pp-identity {
+  display: flex;
+  align-items: center;
+  gap: 1.6rem;
+}
+
+/* Avatar with fluency ring */
+.pp-avatar {
+  position: relative;
+  width: 116px;
+  height: 116px;
+  flex-shrink: 0;
+}
+
+.pp-avatar__ring {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+
+.pp-avatar__face {
+  position: absolute;
+  inset: 11px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #a5b4fc, #c4b5fd);
+  color: #312e81;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Montserrat", sans-serif;
+  font-weight: 800;
+  font-size: 2rem;
+  letter-spacing: 1px;
+  box-shadow: inset 0 2px 6px rgba(255, 255, 255, 0.4);
+}
+
+.pp-avatar__pct {
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--pp-mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: var(--pp-gold);
+  color: #3b2607;
+  padding: 0.12rem 0.5rem;
+  border-radius: 99px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+  white-space: nowrap;
+}
+
+.pp-id__name {
+  font-family: "Montserrat", sans-serif;
+  font-size: clamp(1.6rem, 4.5vw, 2.2rem);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.35rem;
+  color: #fff;
+}
+
+.pp-id__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.85rem;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.86rem;
+}
+
+.pp-id__handle {
+  font-family: var(--pp-mono);
+  font-weight: 600;
+  color: #fde68a;
+}
+
+.pp-id__lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 99px;
+  padding: 0.22rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin-top: 0.55rem;
+}
+
+.pp-edit {
+  margin-left: auto;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--pp-ink-2);
+  border: none;
+  border-radius: 11px;
+  padding: 0.6rem 1.05rem;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Monospaced passport data band — replaces stat cards */
+.pp-fields {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin-top: 1.6rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.pp-field {
+  padding: 1rem 0.5rem 0.2rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  text-align: left;
+}
+
+.pp-field:first-child {
+  border-left: none;
+  padding-left: 0;
+}
+
+.pp-field__label {
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 0.4rem;
+}
+
+.pp-field__value {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 800;
+  font-size: 1.45rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem;
+}
+
+.pp-field__unit {
+  font-family: var(--pp-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* ════════════════════════════════════════════
+   CONTENT SECTIONS
+   ════════════════════════════════════════════ */
+
+.pp-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin-top: 1.25rem;
+}
+
+.pp-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 1.6rem 1.75rem;
+  box-shadow: var(--shadow);
+}
+
+.pp-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.pp-card__label { color: var(--text-faint); }
+
+.pp-card__title {
+  font-family: "Montserrat", sans-serif;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text-base);
+  margin: 0.15rem 0 0;
+}
+
+.pp-count {
+  font-family: var(--pp-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--pp-accent);
+  background: rgba(99, 102, 241, 0.1);
+  padding: 0.25rem 0.7rem;
+  border-radius: 99px;
+}
+
+/* ── Stamps (achievements) ── */
+.pp-stamps {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+  gap: 1.1rem 0.75rem;
+}
+
+.pp-stamp { text-align: center; cursor: default; }
+
+.pp-stamp__seal {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 0.5rem;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  position: relative;
+  border: 1.5px dashed currentColor;
+}
+
+.pp-stamp__seal::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 11px;
+  border: 1px solid currentColor;
+  opacity: 0.35;
+}
+
+.pp-stamp__name {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+.pp-empty { text-align: center; padding: 1.5rem 0; color: var(--text-muted); }
+.pp-empty__mark { font-size: 2rem; margin-bottom: 0.5rem; }
+
+.pp-skel {
+  border-radius: 14px;
+  background: var(--bg-subtle);
+  animation: pp-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pp-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* ── Assessment bars ── */
+.pp-bars {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.1rem 1.5rem;
+}
+
+.pp-bar__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.4rem;
+}
+
+.pp-bar__label { font-size: 0.84rem; font-weight: 600; color: var(--text-muted); }
+
+.pp-bar__val {
+  font-family: var(--pp-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.pp-bar__track {
+  height: 8px;
+  background: var(--bg-subtle);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.pp-bar__fill { height: 100%; border-radius: 99px; }
+
+/* ════════════════════════════════════════════
+   SETTINGS — grouped preference list
+   ════════════════════════════════════════════ */
+
+.pp-group + .pp-group { margin-top: 1.4rem; }
+
+.pp-group__title {
+  color: var(--text-faint);
+  margin-bottom: 0.6rem;
+  padding-left: 0.15rem;
+}
+
+.pp-prefs {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.pp-pref {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.18s;
+}
+
+.pp-pref:last-child { border-bottom: none; }
+.pp-pref:hover { background: var(--bg-subtle); }
+
+.pp-pref__icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+}
+
+.pp-pref__text { flex: 1; min-width: 0; }
+
+.pp-pref__label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--text-base);
+}
+
+.pp-pref__desc {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  margin-top: 0.1rem;
+}
+
+.pp-pref__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--pp-accent);
+  font-weight: 700;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+/* Accessible toggle: real checkbox (sr-only) + visual switch */
+.pp-sr {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.pp-switch2 {
+  width: 44px;
+  height: 25px;
+  border-radius: 99px;
+  flex-shrink: 0;
+  position: relative;
+  background: var(--border);
+  transition: background 0.25s;
+}
+
+.pp-switch2[data-on="true"] { background: var(--pp-accent); }
+
+.pp-switch2__knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  transition: left 0.25s;
+}
+
+.pp-switch2[data-on="true"] .pp-switch2__knob { left: 22px; }
+
+.pp-pref input:focus-visible ~ .pp-switch2 {
+  outline: 2px solid var(--pp-accent);
+  outline-offset: 2px;
+}
+
+/* Password form fields */
+.pp-field-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.75rem 0.875rem 0.75rem 2.25rem;
+  border-radius: 11px;
+  border: 1.5px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-base);
+  font-size: 0.9rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.pp-field-input:focus { border-color: var(--pp-accent); }
+
+/* ── Toast ── */
+.pp-toast {
+  position: fixed;
+  top: 90px;
+  right: 1.5rem;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #fff;
+  padding: 0.8rem 1.25rem;
+  border-radius: 13px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+/* ════════════════════════════════════════════
+   RESPONSIVE
+   ════════════════════════════════════════════ */
+
+@media (max-width: 640px) {
+  .pp-passport { padding: 1.75rem 1.4rem 1.4rem; }
+  .pp-identity {
+    flex-direction: column;
+    text-align: center;
+    gap: 1rem;
+  }
+  .pp-id__meta { justify-content: center; }
+  .pp-edit { margin-left: 0; align-self: center; }
+
+  .pp-fields {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0;
+  }
+  .pp-field { padding-left: 0.5rem; }
+  .pp-field:nth-child(odd) {
+    border-left: none;
+    padding-left: 0;
+  }
+}
+
+/* ════════════════════════════════════════════
+   REDUCED MOTION
+   ════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  .pp-skel { animation: none; }
+  .pp-switch2, .pp-switch2__knob, .pp-pref, .pp-field-input, .pp-edit { transition: none; }
+}

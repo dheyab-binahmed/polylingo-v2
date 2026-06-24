@@ -88,7 +88,7 @@ const PostForm = ({ onPost }) => {
       {/* Text area */}
       <textarea
         className="fc-area" rows={4}
-        placeholder="Share your language learning journey, ask questions, or celebrate achievements... ✨"
+        placeholder="Share your language learning journey, ask questions, or celebrate achievements..."
         value={content}
         onChange={e => setContent(e.target.value)}
       />
@@ -99,7 +99,7 @@ const PostForm = ({ onPost }) => {
           {tags.map(t => (
             <span key={t} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#eef2ff", color: "#4338ca", padding: "2px 9px", borderRadius: 20, fontSize: 12, fontWeight: 600 }}>
               #{t}
-              <button onClick={() => removeTag(t)} style={{ background: "none", border: "none", cursor: "pointer", color: "#6366f1", fontSize: 12, padding: 0, lineHeight: 1 }}>×</button>
+              <button onClick={() => removeTag(t)} aria-label="Remove tag" style={{ background: "none", border: "none", cursor: "pointer", color: "#6366f1", fontSize: 12, padding: 0, lineHeight: 1 }}><i className="fas fa-xmark" /></button>
             </span>
           ))}
         </div>
@@ -110,7 +110,8 @@ const PostForm = ({ onPost }) => {
         <div style={{ marginTop: 10, position: "relative", display: "inline-block" }}>
           <img src={photoPreview} alt="preview" style={{ maxHeight: 180, maxWidth: "100%", borderRadius: 10, display: "block", border: "1.5px solid var(--border)" }} />
           <button onClick={() => { setPhotoPreview(null); setPhotoFile(null); setPhotoMode(false); if (fileRef.current) fileRef.current.value = ""; }}
-            style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,.55)", color: "#fff", border: "none", borderRadius: "50%", width: 22, height: 22, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+            aria-label="Remove photo"
+            style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,.55)", color: "#fff", border: "none", borderRadius: "50%", width: 22, height: 22, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}><i className="fas fa-xmark" /></button>
         </div>
       )}
 
@@ -134,12 +135,12 @@ const PostForm = ({ onPost }) => {
       {/* Poll builder */}
       {pollMode && (
         <div style={{ marginTop: 12, background: "var(--bg-card)", border: "1.5px solid var(--border)", borderRadius: 12, padding: "14px 16px" }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-base)", marginBottom: 10 }}>📊 Poll Options</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-base)", marginBottom: 10 }}><i className="fas fa-square-poll-vertical" style={{ marginRight: 5 }} />Poll Options</div>
           {pollOptions.map((opt, i) => (
             <div key={i} style={{ display: "flex", gap: 6, marginBottom: 8, alignItems: "center" }}>
               <input className="fc" placeholder={`Option ${i + 1}`} value={opt} onChange={e => setPollOption(i, e.target.value)} style={{ flex: 1, padding: "6px 10px", fontSize: 13 }} />
               {pollOptions.length > 2 && (
-                <button onClick={() => removePollOption(i)} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 15 }}>×</button>
+                <button onClick={() => removePollOption(i)} aria-label="Remove option" style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 15 }}><i className="fas fa-xmark" /></button>
               )}
             </div>
           ))}
@@ -154,12 +155,12 @@ const PostForm = ({ onPost }) => {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, flexWrap: "wrap", gap: 8 }}>
         <div style={{ display: "flex", gap: 6 }}>
           <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileChange} />
-          <button className={photoMode ? "btn-coral" : "btn-ghost"} style={{ padding: "5px 11px", fontSize: 13 }} onClick={handlePhotoClick} title="Attach a photo">📷 Photo</button>
-          <button className={tagMode ? "btn-coral" : "btn-ghost"} style={{ padding: "5px 11px", fontSize: 13 }} onClick={() => { setTagMode(t => !t); setPollMode(false); }} title="Add tags">🏷️ Tag</button>
-          <button className={pollMode ? "btn-coral" : "btn-ghost"} style={{ padding: "5px 11px", fontSize: 13 }} onClick={() => { setPollMode(t => !t); setTagMode(false); setPhotoMode(false); setPhotoPreview(null); setPhotoFile(null); }} title="Add a poll">📊 Poll</button>
+          <button className={photoMode ? "btn-coral" : "btn-ghost"} style={{ padding: "5px 11px", fontSize: 13 }} onClick={handlePhotoClick} title="Attach a photo"><i className="fas fa-image" /> Photo</button>
+          <button className={tagMode ? "btn-coral" : "btn-ghost"} style={{ padding: "5px 11px", fontSize: 13 }} onClick={() => { setTagMode(t => !t); setPollMode(false); }} title="Add tags"><i className="fas fa-tag" /> Tag</button>
+          <button className={pollMode ? "btn-coral" : "btn-ghost"} style={{ padding: "5px 11px", fontSize: 13 }} onClick={() => { setPollMode(t => !t); setTagMode(false); setPhotoMode(false); setPhotoPreview(null); setPhotoFile(null); }} title="Add a poll"><i className="fas fa-square-poll-vertical" /> Poll</button>
         </div>
         <button className="btn-coral" onClick={handlePost} disabled={!valid || submitting}>
-          {submitting ? "Posting…" : "✈️ Post"}
+          {submitting ? "Posting…" : <><i className="fas fa-paper-plane" /> Post</>}
         </button>
       </div>
     </div>

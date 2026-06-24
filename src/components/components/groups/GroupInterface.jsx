@@ -15,12 +15,12 @@ import { updateGroup, deleteGroup } from "../../../services/api";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ALL_TABS = [
-  { id: "chat", icon: "💬", label: "Chat" },
-  { id: "members", icon: "👥", label: "Members" },
-  { id: "video", icon: "📹", label: "Video Room" },
-  { id: "resources", icon: "📁", label: "Resources" },
-  { id: "events", icon: "📅", label: "Events" },
-  { id: "settings", icon: "⚙️", label: "Settings" },
+  { id: "chat", icon: "fa-comment-dots", label: "Chat" },
+  { id: "members", icon: "fa-user-group", label: "Members" },
+  { id: "video", icon: "fa-video", label: "Video Room" },
+  { id: "resources", icon: "fa-folder", label: "Resources" },
+  { id: "events", icon: "fa-calendar-days", label: "Events" },
+  { id: "settings", icon: "fa-gear", label: "Settings" },
 ];
 
 const GroupInterface = ({
@@ -65,7 +65,7 @@ const GroupInterface = ({
   const startCall = () => {
     setTab("video");
     // BACKEND INTEGRATION: POST /api/community/groups/:id/call/notify
-    notify("Opening video room… 📹", "info");
+    notify("Opening video room…", "info");
   };
 
   const handleTabChange = (id) => {
@@ -160,8 +160,8 @@ const GroupInterface = ({
                   flexWrap: "wrap",
                 }}
               >
-                <span>👥 {groupData.members}</span>
-                <span>🌐 {groupData.language}</span>
+                <span><i className="fas fa-user-group" style={{ marginRight: 4 }} />{groupData.members}</span>
+                <span><i className="fas fa-globe" style={{ marginRight: 4 }} />{groupData.language}</span>
                 {groupData.is_private && (
                   <span
                     style={{
@@ -170,7 +170,7 @@ const GroupInterface = ({
                       borderRadius: 10,
                     }}
                   >
-                    🔒 Private
+                    <i className="fas fa-lock" style={{ marginRight: 4 }} />Private
                   </span>
                 )}
                 {tab === "video" && (
@@ -212,10 +212,12 @@ const GroupInterface = ({
                 transition: "all .2s",
               }}
             >
-              📞
+              <i className="fas fa-video" />
             </button>
             <button
               onClick={onClose}
+              title="Close"
+              aria-label="Close"
               style={{
                 background: "rgba(255,255,255,.2)",
                 border: "none",
@@ -224,13 +226,13 @@ const GroupInterface = ({
                 borderRadius: "50%",
                 color: "#fff",
                 cursor: "pointer",
-                fontSize: 17,
+                fontSize: 15,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              ×
+              <i className="fas fa-xmark" />
             </button>
           </div>
         </div>
@@ -276,7 +278,7 @@ const GroupInterface = ({
               style={{ position: "relative" }}
               title={t.label}
             >
-              {t.icon} <span className="gtab-label">{t.label}</span>
+              <i className={`fas ${t.icon}`} /> <span className="gtab-label">{t.label}</span>
               {t.id === "chat" && unread > 0 && (
                 <span
                   style={{
@@ -340,7 +342,7 @@ const GroupInterface = ({
                 gap: 14,
               }}
             >
-              <div style={{ fontSize: 48 }}>🔒</div>
+              <i className="fas fa-lock" style={{ fontSize: 42, color: "var(--text-faint)" }} />
               <div style={{ fontWeight: 800, fontSize: 18, color: "var(--text-base)" }}>
                 Private Group
               </div>
@@ -360,7 +362,7 @@ const GroupInterface = ({
                     borderRadius: 20,
                   }}
                 >
-                  ⏳ Pending Approval
+                  <i className="fas fa-hourglass-half" style={{ marginRight: 5 }} />Pending Approval
                 </span>
               )}
             </div>

@@ -5,7 +5,7 @@ const Hero = ({ onCreateGroup, onFindPartners }) => (
 
     <div style={{ position:"relative", zIndex:1 }}>
       <span style={{ display:"inline-flex", alignItems:"center", gap:6, background:"rgba(165,180,252,0.15)", color:"#a5b4fc", padding:"5px 16px", borderRadius:20, fontSize:13, fontWeight:600, marginBottom:18, border:"1px solid rgba(165,180,252,0.25)" }}>
-        🌍 FluentPeak Community
+        <i className="fas fa-earth-americas" /> FluentPeak Community
       </span>
       <h1 style={{ fontSize:"clamp(1.6rem,5vw,2.8rem)", fontWeight:900, margin:"0 0 14px", lineHeight:1.1, letterSpacing:"-1px", background:"linear-gradient(135deg,#fff 0%,#a5b4fc 100%)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>
         Connect &amp; Grow<br />
@@ -16,14 +16,14 @@ const Hero = ({ onCreateGroup, onFindPartners }) => (
       </p>
       <div style={{ display:"flex", gap:12, justifyContent:"center", flexWrap:"wrap" }}>
         <button className="btn-coral" onClick={onCreateGroup} style={{ padding:"11px 24px", fontSize:15 }}>
-          ＋ Create Group
+          <i className="fas fa-plus" /> Create Group
         </button>
         <button onClick={onFindPartners}
           style={{ background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.25)", color:"#fff", padding:"11px 24px", fontSize:15, borderRadius:10, cursor:"pointer", fontFamily:"inherit", fontWeight:600, transition:"all .2s", backdropFilter:"blur(4px)" }}
           onMouseOver={e => e.currentTarget.style.background="rgba(255,255,255,0.18)"}
           onMouseOut={e => e.currentTarget.style.background="rgba(255,255,255,0.1)"}
         >
-          🤝 Find Partners
+          <i className="fas fa-handshake" /> Find Partners
         </button>
       </div>
     </div>

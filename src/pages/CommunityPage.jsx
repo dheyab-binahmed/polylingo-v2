@@ -329,7 +329,7 @@ export default function CommunityPage() {
         setPosts((prev) =>
           prev.map((it) => (it.id === tempId ? { ...it, id: res.id } : it)),
         );
-        notify("Post published! 🎉", "success");
+        notify("Post published!", "success");
       } catch (err) {
         setPosts((p) => p.filter((it) => it.id !== tempId));
         notify("Failed to publish post", "danger");
@@ -584,7 +584,7 @@ export default function CommunityPage() {
   const handleCall = (id) => {
     // BACKEND INTEGRATION: POST /api/community/dm/:id/call → { roomToken }
     const p = partners.find((x) => x.id === id);
-    notify(`Starting call with ${p?.name}… 📞`, "info");
+    notify(`Starting call with ${p?.name}…`, "info");
   };
 
   const handleRefreshPartners = () => {
@@ -624,7 +624,7 @@ export default function CommunityPage() {
         setGroups((prev) =>
           prev.map((it) => (it.id === tempId ? { ...it, id: res.id } : it)),
         );
-        notify(`"${form.name}" created! 🎉`, "success");
+        notify(`"${form.name}" created!`, "success");
       } catch (err) {
         setGroups((p) => p.filter((g) => g.id !== tempId));
         notify("Failed to create group", "danger");
@@ -655,7 +655,7 @@ export default function CommunityPage() {
               gr.id === id ? { ...gr, pendingRequest: true } : gr,
             ),
           );
-          notify(`Join request sent to "${groupName}". Waiting for admin approval. ⏳`, "info");
+          notify(`Join request sent to "${groupName}". Waiting for admin approval.`, "info");
         } else {
           setGroups((g) =>
             g.map((gr) =>
@@ -664,7 +664,7 @@ export default function CommunityPage() {
                 : gr,
             ),
           );
-          notify(`Joined "${groupName}"! 🎉`, "success");
+          notify(`Joined "${groupName}"!`, "success");
         }
       } catch (err) {
         notify("Failed to join group", "danger");
@@ -860,8 +860,9 @@ export default function CommunityPage() {
                       style={{ padding: "5px 10px", fontSize: 12 }}
                       onClick={() => handleMessage(p.id)}
                       title="Message"
+                      aria-label="Message"
                     >
-                      💬
+                      <i className="fas fa-comment" />
                     </button>
                     <button
                       className="btn-ghost"
@@ -873,16 +874,18 @@ export default function CommunityPage() {
                       }}
                       onClick={() => handleCall(p.id)}
                       title="Video call"
+                      aria-label="Video call"
                     >
-                      📹
+                      <i className="fas fa-video" />
                     </button>
                     <button
                       className="btn-ghost"
                       style={{ padding: "5px 9px", fontSize: 12 }}
                       onClick={() => handleDisconnect(p.id)}
                       title="Disconnect"
+                      aria-label="Disconnect"
                     >
-                      ✕
+                      <i className="fas fa-xmark" />
                     </button>
                   </div>
                 </div>
@@ -908,7 +911,7 @@ export default function CommunityPage() {
                       color: "#9ca3af",
                     }}
                   >
-                    🔍
+                    <i className="fas fa-magnifying-glass" />
                   </span>
                   <input
                     type="text"
@@ -936,8 +939,10 @@ export default function CommunityPage() {
                   className="btn-ghost"
                   onClick={handleRefreshFeed}
                   disabled={feedLoading}
+                  title="Refresh"
+                  aria-label="Refresh feed"
                 >
-                  {feedLoading ? "⏳" : "🔄"}
+                  <i className={`fas ${feedLoading ? "fa-spinner fa-spin" : "fa-rotate-right"}`} />
                 </button>
               </div>
             }
@@ -951,7 +956,7 @@ export default function CommunityPage() {
                   color: "var(--text-muted)",
                 }}
               >
-                <div style={{ fontSize: 28, marginBottom: 8 }}>🔍</div>
+                <div style={{ fontSize: 26, marginBottom: 8, color: "var(--text-faint)" }}><i className="fas fa-magnifying-glass" /></div>
                 <div style={{ fontWeight: 600 }}>
                   No posts match "{feedSearch}"
                 </div>
@@ -977,11 +982,13 @@ export default function CommunityPage() {
                     onClick={handleLoadMorePosts}
                     disabled={loadingMorePosts}
                   >
-                    {loadingMorePosts ? "⏳ Loading…" : "⬇ Load More Posts"}
+                    {loadingMorePosts
+                      ? <><i className="fas fa-spinner fa-spin" /> Loading…</>
+                      : <><i className="fas fa-chevron-down" /> Load More Posts</>}
                   </button>
                 ) : (
                   <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                    ✅ You've seen all posts
+                    <i className="fas fa-circle-check" style={{ marginRight: 5 }} />You've seen all posts
                   </div>
                 )}
               </div>
@@ -999,7 +1006,7 @@ export default function CommunityPage() {
                 onClick={handleRefreshPartners}
                 disabled={partnerLoading}
               >
-                {partnerLoading ? "⏳" : "🔄"} Refresh
+                <i className={`fas ${partnerLoading ? "fa-spinner fa-spin" : "fa-rotate-right"}`} /> Refresh
               </button>
             }
           >
@@ -1029,7 +1036,7 @@ export default function CommunityPage() {
                     fontSize: 13,
                   }}
                 >
-                  🔍
+                  <i className="fas fa-magnifying-glass" />
                 </span>
                 <input
                   type="text"
@@ -1202,7 +1209,7 @@ export default function CommunityPage() {
                   border: "1.5px dashed var(--border)",
                 }}
               >
-                <div style={{ fontSize: 32, marginBottom: 8 }}>🔍</div>
+                <div style={{ fontSize: 30, marginBottom: 8, color: "var(--text-faint)" }}><i className="fas fa-magnifying-glass" /></div>
                 <div
                   style={{
                     fontWeight: 700,
@@ -1272,7 +1279,7 @@ export default function CommunityPage() {
                     fontSize: 13,
                   }}
                 >
-                  🔍
+                  <i className="fas fa-magnifying-glass" />
                 </span>
                 <input
                   type="text"
@@ -1334,7 +1341,7 @@ export default function CommunityPage() {
                   border: "1.5px dashed var(--border)",
                 }}
               >
-                <div style={{ fontSize: 28, marginBottom: 8 }}>👥</div>
+                <div style={{ fontSize: 26, marginBottom: 8, color: "var(--text-faint)" }}><i className="fas fa-user-group" /></div>
                 <div style={{ fontWeight: 600, color: "var(--text-base)" }}>
                   No groups found
                 </div>
@@ -1379,7 +1386,7 @@ export default function CommunityPage() {
                   className="btn-ghost"
                   onClick={() => setGroupsShown((s) => s + GROUPS_PAGE_SZ)}
                 >
-                  ⬇ Show More ({filteredGroups.length - groupsShown} remaining)
+                  <i className="fas fa-chevron-down" /> Show More ({filteredGroups.length - groupsShown} remaining)
                 </button>
               )}
               {groupsShown > GROUPS_PAGE_SZ && (
@@ -1387,7 +1394,7 @@ export default function CommunityPage() {
                   className="btn-ghost"
                   onClick={() => setGroupsShown(GROUPS_PAGE_SZ)}
                 >
-                  ⬆ Show Less
+                  <i className="fas fa-chevron-up" /> Show Less
                 </button>
               )}
             </div>

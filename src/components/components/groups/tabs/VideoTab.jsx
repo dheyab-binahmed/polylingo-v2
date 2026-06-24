@@ -410,12 +410,12 @@ const VideoTab = ({ group, onLeave }) => {
 
         <div style={{ display: "flex", gap: 14 }}>
           {[
-            { icon: micOn ? "🎙️" : "🔇", active: micOn, toggle: () => setMicOn((m) => !m), label: micOn ? "Mic on" : "Mic off" },
-            { icon: camOn ? "📹" : "📷", active: camOn, toggle: () => setCamOn((c) => !c), label: camOn ? "Cam on" : "Cam off" },
+            { icon: micOn ? "fa-microphone" : "fa-microphone-slash", active: micOn, toggle: () => setMicOn((m) => !m), label: micOn ? "Mic on" : "Mic off" },
+            { icon: camOn ? "fa-video" : "fa-video-slash", active: camOn, toggle: () => setCamOn((c) => !c), label: camOn ? "Cam on" : "Cam off" },
           ].map((btn, i) => (
             <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
-              <button onClick={btn.toggle} style={{ background: btn.active ? "rgba(99,102,241,.5)" : "rgba(255,255,255,.1)", border: "none", color: "#fff", width: 50, height: 50, borderRadius: "50%", cursor: "pointer", fontSize: 20, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {btn.icon}
+              <button onClick={btn.toggle} title={btn.label} aria-label={btn.label} style={{ background: btn.active ? "rgba(99,102,241,.5)" : "rgba(255,255,255,.1)", border: "none", color: "#fff", width: 50, height: 50, borderRadius: "50%", cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <i className={`fas ${btn.icon}`} />
               </button>
               <span style={{ color: "rgba(255,255,255,.45)", fontSize: 11 }}>{btn.label}</span>
             </div>
@@ -424,7 +424,7 @@ const VideoTab = ({ group, onLeave }) => {
 
         {permError && (
           <div style={{ background: "rgba(239,68,68,.15)", border: "1px solid rgba(239,68,68,.4)", borderRadius: 12, padding: "12px 18px", maxWidth: 360, textAlign: "center" }}>
-            <div style={{ fontSize: 24, marginBottom: 6 }}>⚠️</div>
+            <div style={{ fontSize: 22, marginBottom: 6, color: "#fca5a5" }}><i className="fas fa-triangle-exclamation" /></div>
             <div style={{ color: "#fca5a5", fontSize: 13, lineHeight: 1.5 }}>{permError}</div>
           </div>
         )}
@@ -438,7 +438,9 @@ const VideoTab = ({ group, onLeave }) => {
         </div>
 
         <button onClick={joinCall} disabled={joining} style={{ background: "linear-gradient(135deg,#22c55e,#16a34a)", color: "#fff", border: "none", borderRadius: 14, padding: "13px 44px", fontSize: 16, fontWeight: 700, cursor: joining ? "not-allowed" : "pointer", boxShadow: "0 6px 20px rgba(34,197,94,.4)", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 8 }}>
-          {joining ? "⏳ Connecting…" : "📞 Join Call"}
+          {joining
+            ? <><i className="fas fa-hourglass-half" /> Connecting…</>
+            : <><i className="fas fa-video" /> Join Call</>}
         </button>
       </div>
     );
@@ -447,12 +449,12 @@ const VideoTab = ({ group, onLeave }) => {
   // ── IN-CALL ───────────────────────────────────────────────────────────────
   const remotePeerList = Object.entries(peers);
   const controls = [
-    { icon: micOn ? "🎙️" : "🔇", label: micOn ? "Mute" : "Unmute", active: micOn, toggle: toggleMic, danger: false },
-    { icon: camOn ? "📹" : "📷", label: camOn ? "Stop cam" : "Start cam", active: camOn, toggle: toggleCam, danger: false },
-    { icon: screenOn ? "🖥️" : "💻", label: screenOn ? "Stop share" : "Share", active: screenOn, toggle: toggleScreen, danger: false },
-    { icon: handRaised ? "✋" : "🤚", label: handRaised ? "Lower" : "Hand", active: handRaised, toggle: toggleHand, danger: false },
-    { icon: "💬", label: "Chat", active: showChat, toggle: () => setShowChat((s) => !s), danger: false },
-    { icon: "📞", label: "Leave", active: false, toggle: leaveCall, danger: true },
+    { icon: micOn ? "fa-microphone" : "fa-microphone-slash", label: micOn ? "Mute" : "Unmute", active: micOn, toggle: toggleMic, danger: false },
+    { icon: camOn ? "fa-video" : "fa-video-slash", label: camOn ? "Stop cam" : "Start cam", active: camOn, toggle: toggleCam, danger: false },
+    { icon: screenOn ? "fa-circle-stop" : "fa-desktop", label: screenOn ? "Stop share" : "Share", active: screenOn, toggle: toggleScreen, danger: false },
+    { icon: "fa-hand", label: handRaised ? "Lower" : "Hand", active: handRaised, toggle: toggleHand, danger: false },
+    { icon: "fa-comment", label: "Chat", active: showChat, toggle: () => setShowChat((s) => !s), danger: false },
+    { icon: "fa-phone-slash", label: "Leave", active: false, toggle: leaveCall, danger: true },
   ];
 
   return (
@@ -466,17 +468,17 @@ const VideoTab = ({ group, onLeave }) => {
             Live · {1 + remotePeerList.length} participant{1 + remotePeerList.length !== 1 ? "s" : ""}
           </span>
         </div>
-        <span style={{ color: "rgba(255,255,255,.6)", fontSize: 13, fontFamily: "monospace", fontWeight: 600 }}>⏱ {fmt(duration)}</span>
+        <span style={{ color: "rgba(255,255,255,.6)", fontSize: 13, fontFamily: "monospace", fontWeight: 600 }}><i className="fas fa-clock" style={{ marginRight: 5 }} />{fmt(duration)}</span>
         {handRaised && (
           <span style={{ background: "rgba(245,158,11,.2)", color: "#fbbf24", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600 }}>
-            ✋ You raised your hand
+            <i className="fas fa-hand" style={{ marginRight: 5 }} />You raised your hand
           </span>
         )}
       </div>
 
       {screenOn && (
         <div style={{ padding: "7px 16px", background: "rgba(99,102,241,.2)", borderBottom: "1px solid rgba(99,102,241,.3)", display: "flex", alignItems: "center", flexShrink: 0 }}>
-          <span style={{ color: "#a5b4fc", fontSize: 13, fontWeight: 600 }}>🖥️ You are sharing your screen</span>
+          <span style={{ color: "#a5b4fc", fontSize: 13, fontWeight: 600 }}><i className="fas fa-desktop" style={{ marginRight: 6 }} />You are sharing your screen</span>
           <button onClick={toggleScreen} style={{ marginLeft: "auto", background: "none", border: "1px solid rgba(165,180,252,.4)", color: "#a5b4fc", borderRadius: 6, padding: "2px 10px", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Stop sharing</button>
         </div>
       )}
@@ -494,14 +496,14 @@ const VideoTab = ({ group, onLeave }) => {
             ) : (
               <div style={{ height: 140, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", background: "#1e293b" }}>
                 <div style={{ width: 48, height: 48, borderRadius: "50%", background: group.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 700, color: "#fff" }}>ME</div>
-                <div style={{ marginTop: 8, fontSize: 11, color: "rgba(255,255,255,.4)" }}>📷 Camera off</div>
+                <div style={{ marginTop: 8, fontSize: 11, color: "rgba(255,255,255,.4)" }}><i className="fas fa-video-slash" style={{ marginRight: 4 }} />Camera off</div>
               </div>
             )}
             <div style={{ padding: "5px 10px", background: "rgba(0,0,0,.7)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span style={{ color: "#fff", fontSize: 12, fontWeight: 600 }}>You</span>
               <div style={{ display: "flex", gap: 4 }}>
-                <span style={{ fontSize: 11, opacity: micOn ? 1 : 0.35 }}>{micOn ? "🎙️" : "🔇"}</span>
-                <span style={{ fontSize: 11, opacity: camOn ? 1 : 0.35 }}>{camOn ? "📹" : "📷"}</span>
+                <span style={{ fontSize: 11, color: "#fff", opacity: micOn ? 1 : 0.35 }}><i className={`fas ${micOn ? "fa-microphone" : "fa-microphone-slash"}`} /></span>
+                <span style={{ fontSize: 11, color: "#fff", opacity: camOn ? 1 : 0.35 }}><i className={`fas ${camOn ? "fa-video" : "fa-video-slash"}`} /></span>
               </div>
             </div>
           </div>
@@ -533,7 +535,7 @@ const VideoTab = ({ group, onLeave }) => {
           {/* Empty state when alone */}
           {remotePeerList.length === 0 && (
             <div style={{ background: "rgba(255,255,255,.04)", borderRadius: 12, border: "2px dashed rgba(255,255,255,.12)", height: 140, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8 }}>
-              <div style={{ fontSize: 28 }}>👥</div>
+              <div style={{ fontSize: 26, color: "rgba(255,255,255,.5)" }}><i className="fas fa-users" /></div>
               <div style={{ color: "rgba(255,255,255,.35)", fontSize: 12 }}>Waiting for others to join…</div>
             </div>
           )}
@@ -560,7 +562,7 @@ const VideoTab = ({ group, onLeave }) => {
             <div style={{ padding: "8px 10px", borderTop: "1px solid rgba(255,255,255,.1)", display: "flex", gap: 6 }}>
               <input value={chatVal} onChange={(e) => setChatVal(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendChatMsg()} placeholder="Message…"
                 style={{ flex: 1, background: "rgba(255,255,255,.1)", border: "none", borderRadius: 8, padding: "6px 9px", color: "#fff", fontSize: 12, fontFamily: "inherit", outline: "none" }} />
-              <button onClick={sendChatMsg} disabled={!chatVal.trim()} style={{ background: "#6366f1", border: "none", color: "#fff", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 13 }}>✈️</button>
+              <button onClick={sendChatMsg} disabled={!chatVal.trim()} title="Send" aria-label="Send" style={{ background: "#6366f1", border: "none", color: "#fff", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 13 }}><i className="fas fa-paper-plane" /></button>
             </div>
           </div>
         )}
@@ -571,8 +573,9 @@ const VideoTab = ({ group, onLeave }) => {
         {controls.map((btn, i) => (
           <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
             <button onClick={btn.toggle} title={btn.label}
-              style={{ background: btn.danger ? "#DC2626" : btn.active ? "rgba(99,102,241,.8)" : "rgba(255,255,255,.14)", border: "none", color: "#fff", width: 46, height: 46, borderRadius: "50%", cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", transition: "all .2s", boxShadow: btn.active && !btn.danger ? "0 0 0 2px rgba(99,102,241,.6)" : "none" }}>
-              {btn.icon}
+              aria-label={btn.label}
+              style={{ background: btn.danger ? "#DC2626" : btn.active ? "rgba(99,102,241,.8)" : "rgba(255,255,255,.14)", border: "none", color: "#fff", width: 46, height: 46, borderRadius: "50%", cursor: "pointer", fontSize: 17, display: "flex", alignItems: "center", justifyContent: "center", transition: "all .2s", boxShadow: btn.active && !btn.danger ? "0 0 0 2px rgba(99,102,241,.6)" : "none" }}>
+              <i className={`fas ${btn.icon}`} />
             </button>
             <span style={{ fontSize: 9, color: "rgba(255,255,255,.45)", userSelect: "none" }}>{btn.label}</span>
           </div>

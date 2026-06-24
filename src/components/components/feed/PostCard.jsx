@@ -103,7 +103,7 @@ const PostCard = ({ post, onLike, onShare, onComment, onDelete, onReport, curren
           <div style={{ fontWeight:700, fontSize:15, marginBottom:4, color:"var(--text-base)" }}>{post.author}</div>
           <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
             <span style={{ fontSize:12, color:"var(--text-muted)" }}>{post.time}</span>
-            <span className="tag tag-green">📚 {post.language}</span>
+            <span className="tag tag-green"><i className="fas fa-book" style={{ marginRight: 4 }} />{post.language}</span>
             {(post.tags||[]).map(tag=>(
               <span key={tag} className="tag tag-blue" style={{ fontSize:11 }}>#{tag}</span>
             ))}
@@ -111,10 +111,10 @@ const PostCard = ({ post, onLike, onShare, onComment, onDelete, onReport, curren
         </div>
         {post.ownedByCurrentUser && (
           <div style={{ display:"flex", gap:4 }}>
-            <button onClick={()=>{ setEditing(e=>!e); setTimeout(()=>editRef.current?.focus(),60); }} title="Edit"
-              style={{ background:"none", border:"none", cursor:"pointer", color:"var(--text-muted)", fontSize:13, padding:"4px 6px", borderRadius:6 }}>✏️</button>
-            <button onClick={()=>onDelete?.(post.id)} title="Delete"
-              style={{ background:"none", border:"none", cursor:"pointer", color:"var(--text-muted)", fontSize:13, padding:"4px 6px", borderRadius:6 }}>🗑</button>
+            <button onClick={()=>{ setEditing(e=>!e); setTimeout(()=>editRef.current?.focus(),60); }} title="Edit" aria-label="Edit"
+              style={{ background:"none", border:"none", cursor:"pointer", color:"var(--text-muted)", fontSize:13, padding:"4px 6px", borderRadius:6 }}><i className="fas fa-pen" /></button>
+            <button onClick={()=>onDelete?.(post.id)} title="Delete" aria-label="Delete"
+              style={{ background:"none", border:"none", cursor:"pointer", color:"var(--text-muted)", fontSize:13, padding:"4px 6px", borderRadius:6 }}><i className="fas fa-trash" /></button>
           </div>
         )}
       </div>
@@ -143,7 +143,7 @@ const PostCard = ({ post, onLike, onShare, onComment, onDelete, onReport, curren
       {/* Poll */}
       {hasPoll && !editing && (
         <div style={{ marginBottom:14, background:"var(--bg-subtle)", borderRadius:12, padding:"14px 16px", border:"1px solid var(--border)" }}>
-          <div style={{ fontSize:13, fontWeight:700, color:"var(--text-muted)", marginBottom:10 }}>📊 Poll · {totalVotes} vote{totalVotes!==1?"s":""}</div>
+          <div style={{ fontSize:13, fontWeight:700, color:"var(--text-muted)", marginBottom:10 }}><i className="fas fa-square-poll-vertical" style={{ marginRight: 5 }} />Poll · {totalVotes} vote{totalVotes!==1?"s":""}</div>
           {post.pollOptions.map((opt,i) => {
             const pct   = totalVotes > 0 ? Math.round((pollVotes[i]/totalVotes)*100) : 0;
             const voted = pollVote===i;
@@ -152,7 +152,7 @@ const PostCard = ({ post, onLike, onShare, onComment, onDelete, onReport, curren
               <div key={i} onClick={()=>!locked&&voteOption(i)} style={{ position:"relative", marginBottom:8, borderRadius:8, overflow:"hidden", border:`1.5px solid ${voted?"#6366f1":"var(--border)"}`, cursor:locked?"default":"pointer", transition:"border-color .2s" }}>
                 {locked && <div style={{ position:"absolute", inset:0, width:`${pct}%`, background:voted?"rgba(99,102,241,.15)":"rgba(0,0,0,.04)", transition:"width .4s ease" }}/>}
                 <div style={{ position:"relative", padding:"9px 12px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                  <span style={{ fontSize:13, fontWeight:voted?700:500, color:voted?"#6366f1":"var(--text-base)" }}>{voted?"✓ ":""}{opt}</span>
+                  <span style={{ fontSize:13, fontWeight:voted?700:500, color:voted?"#6366f1":"var(--text-base)" }}>{voted?<i className="fas fa-check" style={{ marginRight: 5 }} />:null}{opt}</span>
                   {locked && <span style={{ fontSize:12, fontWeight:600, color:"var(--text-muted)" }}>{pct}%</span>}
                 </div>
               </div>
@@ -167,12 +167,12 @@ const PostCard = ({ post, onLike, onShare, onComment, onDelete, onReport, curren
 
         {/* Like */}
         <button className={`pact ${post.liked?"liked":""}`} onClick={()=>onLike(post.id)}>
-          {post.liked?"❤️":"🤍"} {post.likes}
+          <i className={`${post.liked?"fas":"far"} fa-heart`} /> {post.likes}
         </button>
 
         {/* Emoji reaction picker */}
         <div style={{ position:"relative" }}>
-          <button className="pact" onClick={()=>setShowReactions(s=>!s)} title="Add reaction">😊</button>
+          <button className="pact" onClick={()=>setShowReactions(s=>!s)} title="Add reaction" aria-label="Add reaction"><i className="far fa-face-smile" /></button>
           {showReactions && (
             <div style={{ position:"absolute", bottom:38, left:0, background:"var(--bg-card)", border:"1.5px solid var(--border)", borderRadius:12, padding:"8px 10px", display:"flex", gap:6, boxShadow:"0 8px 24px rgba(0,0,0,.14)", zIndex:50 }}>
               {EMOJIS.map(emoji=>(
@@ -196,31 +196,31 @@ const PostCard = ({ post, onLike, onShare, onComment, onDelete, onReport, curren
 
         {/* Comment */}
         <button className={`pact ${showComments?"liked":""}`} onClick={toggleComments}>
-          💬 {comments.length}
+          <i className="far fa-comment" /> {comments.length}
         </button>
 
         {/* Share */}
-        <button className="pact" onClick={handleShareClick}>📤 {post.shares}</button>
+        <button className="pact" onClick={handleShareClick}><i className="fas fa-share" /> {post.shares}</button>
 
         {/* Report (only other people's posts) */}
         {!post.ownedByCurrentUser && (
           <button className="pact" onClick={handleReport} title={reported?"Already reported":"Report this post"}
             style={{ color:reported?"#ef4444":"var(--text-muted)", fontSize:12 }}>
-            {reported ? "⚑ Reported" : "⚑"}
+            {reported ? <><i className="fas fa-flag" /> Reported</> : <i className="far fa-flag" />}
           </button>
         )}
 
-        <span style={{ marginLeft:"auto", fontSize:12, color:"var(--text-muted)" }}>👁 {Math.floor(post.likes*2.5)}</span>
+        <span style={{ marginLeft:"auto", fontSize:12, color:"var(--text-muted)" }}><i className="far fa-eye" style={{ marginRight: 4 }} />{Math.floor(post.likes*2.5)}</span>
 
         {/* Share popover */}
         {showShare && (
           <div style={{ position:"absolute", bottom:38, right:0, background:"var(--bg-card)", border:"1.5px solid var(--border)", borderRadius:12, padding:14, boxShadow:"0 8px 28px rgba(0,0,0,.13)", zIndex:50, minWidth:200 }}>
             <div style={{ fontSize:13, fontWeight:700, color:"var(--text-base)", marginBottom:10 }}>Share this post</div>
             <button className="btn-ghost" style={{ width:"100%", justifyContent:"center", marginBottom:7, fontSize:13 }} onClick={copyLink}>
-              {shareCopied ? "✓ Link copied!" : "🔗 Copy link"}
+              {shareCopied ? <><i className="fas fa-check" /> Link copied!</> : <><i className="fas fa-link" /> Copy link</>}
             </button>
             <button className="btn-ghost" style={{ width:"100%", justifyContent:"center", fontSize:13 }} onClick={()=>{ onShare(post.id); setShowShare(false); }}>
-              📢 Share to feed
+              <i className="fas fa-bullhorn" /> Share to feed
             </button>
           </div>
         )}
@@ -257,7 +257,7 @@ const PostCard = ({ post, onLike, onShare, onComment, onDelete, onReport, curren
                 onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submitComment();} }}
                 style={{ fontSize:13, padding:"8px 12px", minHeight:"unset" }}/>
             </div>
-            <button className="btn-coral" onClick={submitComment} disabled={!commentText.trim()||submitting} style={{ padding:"8px 14px", fontSize:13, flexShrink:0 }}>✈️</button>
+            <button className="btn-coral" onClick={submitComment} disabled={!commentText.trim()||submitting} title="Send" aria-label="Send" style={{ padding:"8px 14px", fontSize:13, flexShrink:0 }}><i className="fas fa-paper-plane" /></button>
           </div>
         </div>
       )}
