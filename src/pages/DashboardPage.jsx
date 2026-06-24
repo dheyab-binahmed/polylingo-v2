@@ -321,6 +321,14 @@ export default function DashboardPage() {
       className="pg-wrapper"
       style={{ minHeight: "100vh", paddingTop: "80px", paddingBottom: "3rem" }}
     >
+      {/* ── Futuristic animated background + floating glyphs ── */}
+      <div className="dash-bg" aria-hidden="true" />
+      <div className="dash-glyphs" aria-hidden="true">
+        {["あ", "Ñ", "文", "ß", "한"].map((g, i) => (
+          <span key={i} className="dash-glyph">{g}</span>
+        ))}
+      </div>
+
       {/* ── Email verification banner ── */}
       {user && user.is_verified === false && (
         <div style={{
@@ -400,7 +408,7 @@ export default function DashboardPage() {
         </div>
       )}
       <div className="container">
-        {/* ── Hero Header ── */}
+        {/* ── Hero Header (About-style: transparent on the breathing bg) ── */}
         <div
           style={{
             display: "flex",
@@ -408,67 +416,66 @@ export default function DashboardPage() {
             justifyContent: "space-between",
             flexWrap: "wrap",
             gap: "1rem",
-            marginTop: "0.5rem",
-            marginBottom: "2rem",
-            padding: "1.85rem 1.85rem",
-            background: "linear-gradient(135deg, #6366f1 0%, #7c6cf0 50%, #8b5cf6 100%)",
-            borderRadius: "24px",
-            boxShadow: "0 18px 44px rgba(99,102,241,0.30)",
-            color: "#fff",
-            position: "relative",
-            overflow: "hidden",
+            marginTop: "0.75rem",
+            marginBottom: "2.25rem",
+            padding: "0.5rem 0.25rem",
           }}
         >
-          {/* soft decorative glow — purely visual */}
-          <div
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              top: "-40%",
-              right: "-5%",
-              width: "320px",
-              height: "320px",
-              background: "radial-gradient(circle, rgba(255,255,255,0.18), rgba(255,255,255,0) 70%)",
-              pointerEvents: "none",
-            }}
-          />
-          <div style={{ position: "relative", zIndex: 1 }}>
-            <h1
+          <div>
+            {/* glass eyebrow pill */}
+            <span
               style={{
-                fontSize: "clamp(1.5rem, 4vw, 2.1rem)",
-                fontWeight: 800,
-                color: "#fff",
-                letterSpacing: "-0.02em",
-                marginBottom: "0.35rem",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.45rem",
+                background: "color-mix(in srgb, var(--bg-card) 70%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--primary) 30%, transparent)",
+                color: "var(--primary)",
+                padding: "0.35rem 0.9rem",
+                borderRadius: "99px",
+                fontSize: "0.78rem",
+                fontWeight: 700,
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
+                boxShadow: "0 8px 24px rgba(109,95,247,0.12)",
               }}
             >
-              Welcome back, {firstName}! 👋
+              {streak > 0 ? <><i className="fas fa-fire" style={{ color: "#f59e0b" }} /> {streak}-day streak</> : <><i className="fas fa-bolt" /> Your dashboard</>}
+            </span>
+            <h1
+              className="dash-grad-title"
+              style={{
+                fontSize: "clamp(1.9rem, 5vw, 2.8rem)",
+                fontWeight: 900,
+                letterSpacing: "-0.03em",
+                lineHeight: 1.1,
+                margin: "0.5rem 0 0.4rem",
+              }}
+            >
+              Welcome back, {firstName}!
             </h1>
-            <p style={{ color: "rgba(255,255,255,0.9)", fontSize: "0.98rem" }}>
-              Studying <strong style={{ color: "#fff" }}>{language}</strong>
-              {streak > 0 && <> · <span style={{ color: "#fde68a", fontWeight: 700 }}>🔥 {streak}-day streak</span></>}
+            <p style={{ color: "var(--text-muted)", fontSize: "1rem" }}>
+              Studying <strong style={{ color: "var(--text-base)" }}>{language}</strong> · level <strong style={{ color: "var(--text-base)" }}>{level}</strong>
             </p>
           </div>
           <button
             onClick={() => setShowRetakeConfirm(true)}
             title="Retake assessment to update your level"
             style={{
-              position: "relative",
-              zIndex: 1,
               display: "inline-flex",
               alignItems: "center",
               gap: "0.5rem",
-              background: "rgba(255,255,255,0.16)",
-              color: "#fff",
-              padding: "0.6rem 1.25rem",
+              background: "color-mix(in srgb, var(--bg-card) 70%, transparent)",
+              color: "var(--primary)",
+              padding: "0.65rem 1.3rem",
               borderRadius: "99px",
               fontSize: "0.88rem",
               fontWeight: 700,
-              boxShadow: "0 4px 14px rgba(0,0,0,0.12)",
-              backdropFilter: "blur(6px)",
-              WebkitBackdropFilter: "blur(6px)",
+              boxShadow: "0 8px 24px rgba(109,95,247,0.14)",
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
               flexShrink: 0,
-              border: "1px solid rgba(255,255,255,0.35)",
+              border: "1px solid color-mix(in srgb, var(--primary) 35%, transparent)",
               cursor: "pointer",
             }}
           >
@@ -705,11 +712,13 @@ export default function DashboardPage() {
           {/* Today's Goals */}
           <div
             style={{
-              background: "var(--bg-card)",
+              background: "color-mix(in srgb, var(--bg-card) 64%, transparent)",
+              backdropFilter: "blur(16px)",
+              WebkitBackdropFilter: "blur(16px)",
               borderRadius: "20px",
               padding: "1.75rem",
-              border: "1px solid var(--border)",
-              boxShadow: "0 6px 20px rgba(17,24,39,0.05)",
+              border: "1px solid color-mix(in srgb, var(--text-base) 8%, transparent)",
+              boxShadow: "0 12px 40px rgba(31,38,135,0.10)",
             }}
           >
             <div
@@ -905,11 +914,13 @@ export default function DashboardPage() {
           {/* Weekly Progress Chart */}
           <div
             style={{
-              background: "var(--bg-card)",
+              background: "color-mix(in srgb, var(--bg-card) 64%, transparent)",
+              backdropFilter: "blur(16px)",
+              WebkitBackdropFilter: "blur(16px)",
               borderRadius: "20px",
               padding: "1.75rem",
-              border: "1px solid var(--border)",
-              boxShadow: "0 6px 20px rgba(17,24,39,0.05)",
+              border: "1px solid color-mix(in srgb, var(--text-base) 8%, transparent)",
+              boxShadow: "0 12px 40px rgba(31,38,135,0.10)",
             }}
           >
             <div
@@ -1083,11 +1094,13 @@ export default function DashboardPage() {
         {/* ── Leaderboard ── */}
         <div
           style={{
-            background: "var(--bg-card)",
+            background: "color-mix(in srgb, var(--bg-card) 64%, transparent)",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
             borderRadius: "20px",
             padding: "1.75rem",
-            border: "1px solid var(--border)",
-            boxShadow: "0 6px 20px rgba(17,24,39,0.05)",
+            border: "1px solid color-mix(in srgb, var(--text-base) 8%, transparent)",
+            boxShadow: "0 12px 40px rgba(31,38,135,0.10)",
           }}
         >
           <div

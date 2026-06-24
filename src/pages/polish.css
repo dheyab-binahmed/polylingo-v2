@@ -330,6 +330,90 @@
 #practice-page .practice-category:nth-child(8) .practice-icon {
   background: linear-gradient(135deg, #f97316, #fb923c);
 }
+
+/* =====================================================================
+   11. FUTURISTIC DASHBOARD (About-page aesthetic) — scoped to .pg-wrapper
+   ===================================================================== */
+.pg-wrapper { position: relative; overflow: hidden; }
+.pg-wrapper > * { position: relative; z-index: 1; }
+
+/* Animated breathing gradient + dot grid behind everything */
+.pg-wrapper .dash-bg,
+.pg-wrapper .dash-glyphs { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.pg-wrapper .dash-bg {
+  background:
+    radial-gradient(ellipse 55% 42% at 22% 16%, rgba(124,111,247,0.22) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 82% 50%, rgba(94,201,167,0.14) 0%, transparent 55%),
+    radial-gradient(ellipse 42% 34% at 60% 88%, rgba(240,184,108,0.13) 0%, transparent 55%),
+    linear-gradient(175deg, var(--bg-page) 0%, color-mix(in srgb, var(--primary) 7%, var(--bg-page)) 50%, var(--bg-page) 100%);
+  animation: dashBgBreathe 18s ease-in-out infinite alternate;
+}
+.pg-wrapper .dash-bg::after {
+  content: ''; position: absolute; inset: 0;
+  background-image: radial-gradient(circle, rgba(124,111,247,0.08) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse 85% 70% at 50% 28%, black 10%, transparent 100%);
+  mask-image: radial-gradient(ellipse 85% 70% at 50% 28%, black 10%, transparent 100%);
+}
+@keyframes dashBgBreathe {
+  0%   { opacity: 0.85; transform: scale(1); }
+  100% { opacity: 1;    transform: scale(1.04); }
+}
+
+/* Floating glass glyph tiles */
+.pg-wrapper .dash-glyph {
+  position: absolute;
+  display: flex; align-items: center; justify-content: center;
+  width: 64px; height: 64px; border-radius: 18px;
+  font-size: 1.7rem; font-weight: 800;
+  color: rgba(109,95,247,0.5);
+  background: rgba(255,255,255,0.5);
+  border: 1px solid rgba(155,138,251,0.4);
+  box-shadow: 0 14px 34px rgba(109,95,247,0.14), inset 0 0 14px rgba(255,255,255,0.7);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  animation: dashGlyphFloat 8s ease-in-out infinite;
+}
+.pg-wrapper .dash-glyph:nth-child(1) { top: 11%; left: 4%;  animation-delay: 0s; }
+.pg-wrapper .dash-glyph:nth-child(2) { top: 22%; left: 92%; animation-delay: -1.5s; }
+.pg-wrapper .dash-glyph:nth-child(3) { top: 60%; left: 2%;  animation-delay: -3s; }
+.pg-wrapper .dash-glyph:nth-child(4) { top: 80%; left: 94%; animation-delay: -4.2s; }
+.pg-wrapper .dash-glyph:nth-child(5) { top: 45%; left: 96%; animation-delay: -2.4s; }
+@keyframes dashGlyphFloat {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50%      { transform: translateY(-20px) rotate(3deg); }
+}
+[data-dark="true"] .pg-wrapper .dash-glyph {
+  background: rgba(30,41,59,0.55); color: rgba(155,138,251,0.8);
+  border-color: rgba(129,140,248,0.3);
+  box-shadow: 0 14px 34px rgba(0,0,0,0.4), inset 0 0 14px rgba(129,140,248,0.12);
+}
+
+/* Glassmorphic cards (theme-safe translucency) */
+.pg-wrapper .dash-card {
+  background: color-mix(in srgb, var(--bg-card) 64%, transparent) !important;
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid color-mix(in srgb, var(--text-base) 8%, transparent);
+  box-shadow: 0 12px 40px rgba(31, 38, 135, 0.10);
+}
+
+/* Animated gradient title */
+.pg-wrapper .dash-grad-title {
+  background: linear-gradient(110deg, #6d5ff7 10%, #9b8afb 35%, #5ec9a7 65%, #eba046 90%);
+  background-size: 220% auto;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  animation: dashGradientSlide 6s ease-in-out infinite alternate;
+}
+@keyframes dashGradientSlide {
+  0%   { background-position: 0% center; }
+  100% { background-position: 100% center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-wrapper .dash-bg,
+  .pg-wrapper .dash-glyph,
+  .pg-wrapper .dash-grad-title { animation: none; }
+}
 #practice-page .practice-category h3 { letter-spacing: -0.01em; }
 #practice-page .practice-stats-row { border-top-color: var(--border); }
 
