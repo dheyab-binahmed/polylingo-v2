@@ -31,6 +31,9 @@ const PartnerCard = ({ partner, onConnect, onMessage, onDisconnect, onCall }) =>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text-base)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{partner.name}</div>
+          {partner.username && (
+            <div style={{ fontSize: 12, color: "#6366f1", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>@{partner.username}</div>
+          )}
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2, display: "flex", alignItems: "center", gap: 5 }}>
             <span><i className="fas fa-location-dot" style={{ marginRight: 4 }} />{partner.country}</span>
             <span style={{ color: partner.online ? "#10b981" : "#d1d5db" }}>●</span>

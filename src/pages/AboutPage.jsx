@@ -4,32 +4,35 @@ import "./AboutPage.css";
 
 const TEAM = [
   {
-    id: "S2",
-    name: "MAAZ",
-    role: "Frontend Developer & UI Designer",
-    intro:
-      "Crafts every pixel of the FluentPeak experience. Passionate about clean interfaces, smooth animation and making language learning feel effortless.",
-    accent: "#3ea883",
-    accentSoft: "rgba(62, 168, 131, 0.18)",
-    icon: "fa-palette",
-  },
-  {
     id: "S1",
     name: "DHEYAB",
-    role: "Team Leader & Full-Stack Developer",
+    role: "Team Leader · Full-Stack",
+    quote: "Technology can make fluency reachable for everyone.",
     intro:
-      "The visionary behind FluentPeak. Leads the team, architects the platform end-to-end, and believes technology can make fluency reachable for everyone.",
+      "The visionary behind FluentPeak. Leads the team and architects the platform end-to-end — from the first wireframe to the last line of production code.",
     accent: "#6d5ff7",
     accentSoft: "rgba(109, 95, 247, 0.18)",
     icon: "fa-crown",
     leader: true,
   },
   {
+    id: "S2",
+    name: "MAAZ",
+    role: "Frontend · UI Design",
+    quote: "Every pixel should make learning feel effortless.",
+    intro:
+      "Crafts every screen of the FluentPeak experience. Obsessed with clean interfaces, honest motion, and interfaces that get out of the learner's way.",
+    accent: "#3ea883",
+    accentSoft: "rgba(62, 168, 131, 0.18)",
+    icon: "fa-palette",
+  },
+  {
     id: "S3",
     name: "MOHAMMED",
-    role: "Backend Developer & AI Engineer",
+    role: "Backend · AI Engineering",
+    quote: "The AI should adapt to the learner — never the other way around.",
     intro:
-      "Builds the brains of the platform — from the speech scoring engine to the AI conversation partner that adapts to every learner.",
+      "Builds the brains of the platform — the speech-scoring engine and the AI conversation partner that meets every learner exactly where they are.",
     accent: "#eba046",
     accentSoft: "rgba(235, 160, 70, 0.18)",
     icon: "fa-brain",
@@ -82,44 +85,35 @@ function MemberPhoto({ id, name, accent }) {
 
 function TeamCard({ member, index }) {
   return (
-    <div
-      className={`team-card-wrap reveal${member.leader ? " team-card-wrap--leader" : ""}`}
+    <article
+      className={`tm-entry reveal${member.leader ? " tm-entry--leader" : ""}`}
       style={{
         "--accent": member.accent,
         "--accent-soft": member.accentSoft,
         "--i": index,
       }}
     >
-      {member.leader && <div className="leader-aura" aria-hidden="true" />}
-
-      <article className={`team-card${member.leader ? " team-card--leader" : ""}`}>
+      <div className="tm-portrait">
+        <MemberPhoto id={member.id} name={member.name} accent={member.accent} />
         {member.leader && (
-          <div className="leader-badge">
-            <i className="fas fa-crown" /> Team Leader
-          </div>
+          <span className="tm-leader-tag">
+            <i className="fas fa-crown" /> Team Lead
+          </span>
         )}
+      </div>
 
-        <div className="photo-stage">
-          <div className="photo-ring">
-            <MemberPhoto
-              id={member.id}
-              name={member.name}
-              accent={member.accent}
-            />
-          </div>
+      <div className="tm-body">
+        <div className="tm-kicker">
+          <i className={`fas ${member.icon}`} /> {member.role}
         </div>
-
-        <div className="card-body">
-          <h3 className="member-name">{member.name}</h3>
-          <div className="member-role">
-            <i className={`fas ${member.icon}`} />
-            <span>{member.role}</span>
-          </div>
-          <div className="member-divider" aria-hidden="true" />
-          <p className="member-intro">{member.intro}</p>
-        </div>
-      </article>
-    </div>
+        <h3 className="tm-name">{member.name}</h3>
+        <blockquote className="tm-quote">
+          <span className="tm-quote-mark" aria-hidden="true">&ldquo;</span>
+          {member.quote}
+        </blockquote>
+        <p className="tm-bio">{member.intro}</p>
+      </div>
+    </article>
   );
 }
 
@@ -205,18 +199,23 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* ═════════ TEAM ═════════ */}
+      {/* ═════════ TEAM — editorial spotlight ═════════ */}
       <section className="team-section">
-        <div className="team-section-glow" aria-hidden="true" />
         <div className="container">
-          <div className="team-heading reveal">
-            <h2>
-              Our <em>Team</em>
+          <div className="tm-head reveal">
+            <span className="tm-eyebrow">The People</span>
+            <h2 className="tm-headline">
+              Three students,
+              <br />
+              one shared obsession.
             </h2>
-            <p>Three students. One platform. A shared obsession with languages.</p>
+            <p className="tm-sub">
+              The minds building FluentPeak — and the ideas they refuse to
+              compromise on.
+            </p>
           </div>
 
-          <div className="team-grid">
+          <div className="tm-roster">
             {TEAM.map((m, i) => (
               <TeamCard key={m.id} member={m} index={i} />
             ))}
@@ -224,19 +223,21 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* ═════════ MISSION ═════════ */}
+      {/* ═════════ MISSION — editorial ═════════ */}
       <section className="mission-section">
         <div className="container">
-          <div className="team-heading reveal">
-            <h2>
-              What Drives <em>Us</em>
+          <div className="tm-head reveal">
+            <span className="tm-eyebrow">What drives us</span>
+            <h2 className="tm-headline">
+              The things we won't
+              <br />
+              compromise on.
             </h2>
-            <p>The values we built FluentPeak on</p>
           </div>
 
-          <div className="mission-grid">
-            <div className="mission-card reveal" style={{ "--i": 0 }}>
-              <div className="mission-icon" style={{ "--accent": "#6d5ff7" }}>
+          <div className="mn-grid">
+            <div className="mn-item reveal" style={{ "--accent": "#6d5ff7", "--i": 0 }}>
+              <div className="mn-icon">
                 <i className="fas fa-lightbulb" />
               </div>
               <h3>Innovation</h3>
@@ -245,8 +246,8 @@ export default function AboutPage() {
                 gets feedback that actually helps.
               </p>
             </div>
-            <div className="mission-card reveal" style={{ "--i": 1 }}>
-              <div className="mission-icon" style={{ "--accent": "#3ea883" }}>
+            <div className="mn-item reveal" style={{ "--accent": "#3ea883", "--i": 1 }}>
+              <div className="mn-icon">
                 <i className="fas fa-heart" />
               </div>
               <h3>Passion</h3>
@@ -255,8 +256,8 @@ export default function AboutPage() {
                 feature, every animation, every line of code.
               </p>
             </div>
-            <div className="mission-card reveal" style={{ "--i": 2 }}>
-              <div className="mission-icon" style={{ "--accent": "#eba046" }}>
+            <div className="mn-item reveal" style={{ "--accent": "#eba046", "--i": 2 }}>
+              <div className="mn-icon">
                 <i className="fas fa-rocket" />
               </div>
               <h3>Ambition</h3>

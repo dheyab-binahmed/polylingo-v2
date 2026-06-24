@@ -714,7 +714,8 @@ export default function CommunityPage() {
     if (p.status === "pending" && p.request_direction === "incoming") {
       return false;
     }
-    const query = asText(partnerSearch.trim());
+    // A leading "@" is stripped so "@john" and "john" both match a username.
+    const query = asText(partnerSearch.trim().replace(/^@/, ""));
     const matchLang =
       partnerFilter === "All" ||
       asList(p.languages).some((l) =>
@@ -722,6 +723,7 @@ export default function CommunityPage() {
       );
     const matchSearch =
       !query ||
+      asText(p.username).includes(query) ||
       asText(p.name || p.full_name || p.email).includes(query) ||
       asText(p.country).includes(query);
     return matchLang && matchSearch;
@@ -1040,7 +1042,7 @@ export default function CommunityPage() {
                 </span>
                 <input
                   type="text"
-                  placeholder="Search by name or country…"
+                  placeholder="Search by username, name, or country…"
                   value={partnerSearch}
                   onChange={(e) => setPartnerSearch(e.target.value)}
                   style={{

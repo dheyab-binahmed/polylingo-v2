@@ -3548,11 +3548,22 @@ font-size: 1.5rem;
    18. FOOTER
    ═══════════════════════════════════════════ */
 
+/* Footer — theme-aware (uses semantic tokens so it reads correctly in
+   both light and dark, instead of fixed white-on-dark). */
 footer {
-    background: var(--darker);
-    color: white;
-    padding: 5rem 0 2rem;
+    background: var(--bg-subtle);
+    color: var(--text-muted);
+    padding: 4.5rem 0 2rem;
     margin-top: 0;
+    border-top: 1px solid var(--border);
+}
+
+footer .logo {
+    color: var(--primary) !important;
+}
+
+footer p {
+    color: var(--text-muted);
 }
 
 .footer-content {
@@ -3562,10 +3573,11 @@ footer {
     margin-bottom: 3rem;
 }
 
+footer h3,
 .footer-column h3 {
-    font-size: 1.3rem;
-    margin-bottom: 1.5rem;
-    color: white;
+    font-size: 1.2rem;
+    margin-bottom: 1.25rem;
+    color: var(--text-base);
 }
 
 .footer-links {
@@ -3580,7 +3592,7 @@ footer {
 }
 
 .footer-links a {
-    color: var(--gray-light);
+    color: var(--text-muted);
     text-decoration: none;
     transition: var(--transition);
     display: inline-flex;
@@ -3591,8 +3603,8 @@ footer {
 }
 
 .footer-links a:hover {
-    color: #f9fafb;
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--primary);
+    background: var(--bg-hover);
     padding-left: 0.4rem;
 }
 
@@ -3602,28 +3614,33 @@ footer {
     margin-top: 1.5rem;
 }
 
-.social-links a {
+.social-links a,
+.social-links span {
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
+    color: var(--text-muted);
     transition: var(--transition);
 }
 
-.social-links a:hover {
+.social-links a:hover,
+.social-links span:hover {
     background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
     transform: translateY(-3px);
 }
 
 .footer-bottom {
     text-align: center;
     padding-top: 2rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    color: var(--gray-light);
+    border-top: 1px solid var(--border);
+    color: var(--text-faint);
     font-size: 0.9rem;
 }
 
@@ -4193,9 +4210,8 @@ label.switch, .practice-category, .flashcard-container, .exercise-tab,
 }
 
 /* Footer */
-[data-dark="true"] footer {
-    background: #060d1a;
-}
+/* Footer background is driven by var(--bg-subtle), which already flips
+   for dark mode — no fixed override needed. */
 
 /* Mobile sidebar */
 [data-dark="true"] .mobile-sidebar {
