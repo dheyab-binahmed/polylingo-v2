@@ -311,7 +311,12 @@ export async function updateUserProfile(updates) {
     localStorage.setItem("polylingo_auth_user", JSON.stringify(updated));
     return updated;
   } catch (err) {
-    // Fallback: merge locally so the UI still reflects the change
+    // Validation/conflict errors (e.g. username taken, weekly cooldown) must
+    // reach the UI — don't pretend the change succeeded.
+    if (err.status && err.status >= 400 && err.status < 500) {
+      throw err;
+    }
+    // Network/server hiccup: merge locally so the UI still reflects the change.
     const stored = JSON.parse(
       localStorage.getItem("polylingo_auth_user") || "{}",
     );

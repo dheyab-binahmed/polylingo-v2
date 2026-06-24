@@ -231,6 +231,7 @@ export function AuthProvider({ children }) {
   // ── Update user fields (profile edits, streak bumps, etc.) ──
   const updateUser = async (updates) => {
     // Optimistic update so the UI is instant
+    const previous = user;
     const optimistic = { ...user, ...updates };
     setUser(optimistic);
     localStorage.setItem("polylingo_auth_user", JSON.stringify(optimistic));
@@ -243,7 +244,11 @@ export function AuthProvider({ children }) {
         localStorage.setItem("polylingo_auth_user", JSON.stringify(serverUser));
       }
     } catch (err) {
-      console.warn("Could not sync profile update to server:", err.message);
+      // The server rejected the change (e.g. username taken / weekly limit).
+      // Roll back the optimistic update and let the caller show the message.
+      setUser(previous);
+      localStorage.setItem("polylingo_auth_user", JSON.stringify(previous));
+      throw err;
     }
   };
 

@@ -1,64 +1,109 @@
 /**
- * ProfilePage.jsx
+ * ProfilePage.jsx — "Language Passport"
  *
- * Bugs fixed in this version:
- *  1. CRASH  — React.useEffect used but React was never imported → replaced with useEffect
- *  2. CRASH  — Assessment score bars: value could be undefined → safe fallback with ?? 0
- *  3. WRONG  — Progress bar width could overflow 100% (score > 10) → clamped with Math.min
- *  4. WRONG  — '87%' progress was hardcoded → computed from assessmentResults.overall
- *  5. WRONG  — 'Total Practice' showed hardcoded '45h' → computed from user.totalMinutes
- *  6. WRONG  — user?.streak / achievements fallbacks were strings '14'/'8' → numbers 0
- *  7. STYLE  — Toggle: <label> click + inner <div> onClick = double-fire → removed inner onClick
- *  8. STYLE  — Hardcoded '#f8fafc', '#f1f5f9', 'white' don't follow dark mode CSS vars
- *  9. PERF   — Dark-mode effect ran on every settings change → dependency array fixed
+ * The profile reimagined as the learner's travel document for their language
+ * journey. Signature element: the fluency ring + a monospaced passport data
+ * band (replacing the old generic stat-card grid). Motion is one orchestrated
+ * load sequence (band → ring draws → fields stagger → sections reveal), with
+ * `prefers-reduced-motion` fully respected.
+ *
+ * All prior behaviour is preserved: real backend stats, edit-profile modal,
+ * change-password flow, settings + dark-mode toggles, and save toasts.
  */
 
 import { useState, useEffect } from 'react'
+import { motion, AnimatePresence, useReducedMotion, animate } from 'motion/react'
 import { useAuth } from '../context/AuthContext'
 import { fetchPracticeStats, fetchPracticeProgress, changePassword, saveNotificationPreferences } from '../services/api'
+import './ProfilePage.css'
 
-// ─── Toggle component ─────────────────────────────────────────────────────────
-// FIX #7: Removed inner <div onClick={onChange}> — the outer <label> already handles
-// the click and forwards it to the toggle. Having both caused onChange to fire twice.
-function Toggle({ checked, onChange, label }) {
+// ── Count-up for numeric passport values; instant when motion is reduced ──
+function CountUp({ value, duration = 1.1 }) {
+  const reduce = useReducedMotion()
+  const [display, setDisplay] = useState(reduce ? value : 0)
+  useEffect(() => {
+    if (reduce) { setDisplay(value); return }
+    const controls = animate(0, value, {
+      duration, ease: 'easeOut',
+      onUpdate: (v) => setDisplay(Math.round(v)),
+    })
+    return () => controls.stop()
+  }, [value, reduce, duration])
+  return <>{display}</>
+}
+
+// ── Fluency ring drawn around the avatar (encodes assessment overall %) ──
+function FluencyRing({ pct, initials }) {
+  const reduce = useReducedMotion()
+  const R = 52
+  const C = 2 * Math.PI * R
+  const target = C * (1 - Math.min(100, Math.max(0, pct)) / 100)
   return (
-    <label
-      style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '0.95rem 1.1rem',
-        background: 'var(--bg-subtle)',           // FIX #8: was '#f8fafc'
-        borderRadius: '12px',
-        border: '1.5px solid var(--border)',       // FIX #8: was '#f1f5f9'
-        cursor: 'pointer', userSelect: 'none', transition: 'border-color .2s',
-      }}
-      onMouseOver={e => e.currentTarget.style.borderColor = '#c7d2fe'}
-      onMouseOut={e => e.currentTarget.style.borderColor = 'var(--border)'}
-    >
-      <span style={{ fontWeight: 500, color: 'var(--text-muted)', fontSize: '0.93rem' }}>{label}</span>
-      {/* FIX #7: input[type=checkbox] is hidden — label click toggles it natively */}
-      <input type="checkbox" checked={checked} onChange={onChange} style={{ display: 'none' }} />
-      <div
-        style={{
-          width: '46px', height: '26px', borderRadius: '99px', flexShrink: 0,
-          background: checked ? '#6366f1' : 'var(--border)',
-          position: 'relative', transition: 'background .25s',
-          pointerEvents: 'none', // let the label handle the click
-        }}
-      >
-        <div style={{
-          position: 'absolute', top: '3px',
-          left: checked ? '23px' : '3px',
-          width: '20px', height: '20px', borderRadius: '50%',
-          background: 'var(--bg-card)',             // FIX #8: was 'white'
-          transition: 'left .25s',
-          boxShadow: '0 1px 4px rgba(0,0,0,.2)',
-        }} />
-      </div>
+    <div className="pp-avatar">
+      <svg className="pp-avatar__ring" viewBox="0 0 116 116" width="116" height="116">
+        <circle cx="58" cy="58" r={R} fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="6" />
+        <motion.circle
+          cx="58" cy="58" r={R} fill="none"
+          stroke="#fde68a" strokeWidth="6" strokeLinecap="round"
+          strokeDasharray={C}
+          initial={{ strokeDashoffset: reduce ? target : C }}
+          animate={{ strokeDashoffset: target }}
+          transition={{ duration: reduce ? 0 : 1.4, delay: reduce ? 0 : 0.5, ease: 'easeInOut' }}
+        />
+      </svg>
+      <div className="pp-avatar__face">{initials}</div>
+      <span className="pp-avatar__pct">{pct}% fluent</span>
+    </div>
+  )
+}
+
+// ── Accessible preference row with a toggle switch ──
+function PrefToggle({ icon, tint, label, desc, checked, onChange }) {
+  return (
+    <label className="pp-pref">
+      <span className="pp-pref__icon" style={{ background: `${tint}1a`, color: tint }}>
+        <i className={`fas ${icon}`} />
+      </span>
+      <span className="pp-pref__text">
+        <span className="pp-pref__label">{label}</span>
+        <span className="pp-pref__desc">{desc}</span>
+      </span>
+      <input className="pp-sr" type="checkbox" checked={checked} onChange={onChange} />
+      <span className="pp-switch2" data-on={checked}>
+        <span className="pp-switch2__knob" />
+      </span>
     </label>
   )
 }
 
-// ─── Edit Profile Modal ───────────────────────────────────────────────────────
+// ── Animated score bar — fills when it scrolls into view ──
+function ScoreBar({ label, value, color }) {
+  const reduce = useReducedMotion()
+  const attempted = value != null && !Number.isNaN(value)
+  const safeVal = Math.min(10, Math.max(0, value ?? 0))
+  return (
+    <div className="pp-bar">
+      <div className="pp-bar__top">
+        <span className="pp-bar__label">{label}</span>
+        <span className="pp-bar__val" style={{ color: attempted ? color : 'var(--text-faint)' }}>
+          {attempted ? `${safeVal.toFixed(1)}/10` : 'Not attempted'}
+        </span>
+      </div>
+      <div className="pp-bar__track">
+        <motion.div
+          className="pp-bar__fill"
+          style={{ background: color }}
+          initial={{ width: reduce ? `${(safeVal / 10) * 100}%` : 0 }}
+          whileInView={{ width: `${(safeVal / 10) * 100}%` }}
+          viewport={{ once: true, amount: 0.6 }}
+          transition={{ duration: reduce ? 0 : 0.9, ease: 'easeOut' }}
+        />
+      </div>
+    </div>
+  )
+}
+
+// ── Edit Profile Modal (unchanged logic, animated shell) ──
 function EditProfileModal({ user, onClose, onSave }) {
   const [form, setForm] = useState({
     full_name:          user?.full_name          || '',
@@ -74,7 +119,6 @@ function EditProfileModal({ user, onClose, onSave }) {
     'Spanish','French','German','Italian','Portuguese',
     'Mandarin','Japanese','Korean','Arabic','Russian','Hindi','Dutch',
   ]
-
   const CEFR_LEVELS = [
     { value: 'A1', label: 'A1 — Beginner' },
     { value: 'A2', label: 'A2 — Elementary' },
@@ -97,40 +141,52 @@ function EditProfileModal({ user, onClose, onSave }) {
     onSave({ ...form, username })
   }
 
-  // Close on Escape key
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
+  const inputStyle = {
+    width: '100%', padding: '0.75rem 1rem',
+    border: '2px solid var(--border)', borderRadius: '10px',
+    fontSize: '0.92rem', fontFamily: 'inherit',
+    color: 'var(--text-base)', background: 'var(--bg-input)',
+    transition: 'border-color .2s', outline: 'none', boxSizing: 'border-box',
+  }
+  const labelStyle = { display: 'block', fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem' }
+
   return (
-    <div
+    <motion.div
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)',
+        position: 'fixed', inset: 0, background: 'rgba(15,12,41,.55)',
         backdropFilter: 'blur(4px)', zIndex: 9000,
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
       }}
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={e => e.target === e.currentTarget && onClose()}
     >
-      <div style={{
-        background: 'var(--bg-card)', borderRadius: '20px', padding: '2rem',
-        width: '100%', maxWidth: '460px',
-        boxShadow: '0 25px 60px rgba(0,0,0,.2)',
-        animation: 'slideUp .3s ease',
-      }}>
-        {/* Header */}
+      <motion.div
+        style={{
+          background: 'var(--bg-card)', borderRadius: '20px', padding: '2rem',
+          width: '100%', maxWidth: '460px', maxHeight: '90vh', overflowY: 'auto',
+          boxShadow: '0 25px 60px rgba(0,0,0,.3)',
+        }}
+        initial={{ opacity: 0, y: 24, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 24, scale: 0.97 }}
+        transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-base)' }}>Edit Profile</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', fontSize: '1.1rem' }}>
+          <h2 style={{ margin: 0, fontFamily: 'Montserrat, sans-serif', fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-base)' }}>Edit profile</h2>
+          <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', fontSize: '1.1rem' }}>
             <i className="fas fa-times" />
           </button>
         </div>
 
-        {/* Inline error */}
         {formError && (
           <div style={{
-            background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px',
+            background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '10px',
             padding: '0.65rem 1rem', marginBottom: '1rem', color: '#dc2626',
             fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem',
           }}>
@@ -138,25 +194,15 @@ function EditProfileModal({ user, onClose, onSave }) {
           </div>
         )}
 
-        {/* Username field (handle used to find you in the community) */}
         <div style={{ marginBottom: '1rem' }}>
-          <label style={{ display: 'block', fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Username</label>
+          <label style={labelStyle}>Username</label>
           <div style={{ position: 'relative' }}>
             <span style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-faint)', fontWeight: 700, fontSize: '0.92rem' }}>@</span>
             <input
-              type="text"
-              placeholder="john_doe"
-              value={form.username}
-              maxLength={30}
+              type="text" placeholder="john_doe" value={form.username} maxLength={30}
               onChange={e => setForm(p => ({ ...p, username: e.target.value }))}
-              style={{
-                width: '100%', padding: '0.75rem 1rem 0.75rem 2rem',
-                border: '2px solid var(--border)', borderRadius: '10px',
-                fontSize: '0.92rem', fontFamily: 'inherit',
-                color: 'var(--text-base)', background: 'var(--bg-card)',
-                transition: 'border-color .2s', outline: 'none', boxSizing: 'border-box',
-              }}
-              onFocus={e => e.target.style.borderColor = '#6366f1'}
+              style={{ ...inputStyle, paddingLeft: '2rem' }}
+              onFocus={e => e.target.style.borderColor = 'var(--primary)'}
               onBlur={e => e.target.style.borderColor = 'var(--border)'}
             />
           </div>
@@ -165,46 +211,30 @@ function EditProfileModal({ user, onClose, onSave }) {
           </span>
         </div>
 
-        {/* Text fields */}
         {[
-          { label: 'Full Name', key: 'full_name', type: 'text',   placeholder: 'Your name'        },
+          { label: 'Full name', key: 'full_name', type: 'text',   placeholder: 'Your name'        },
           { label: 'Email',     key: 'email',     type: 'email',  placeholder: 'you@example.com'  },
           { label: 'Age',       key: 'age',       type: 'number', placeholder: '25'               },
         ].map(f => (
           <div key={f.key} style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>{f.label}</label>
+            <label style={labelStyle}>{f.label}</label>
             <input
-              type={f.type}
-              placeholder={f.placeholder}
-              value={form[f.key]}
+              type={f.type} placeholder={f.placeholder} value={form[f.key]}
               onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
-              style={{
-                width: '100%', padding: '0.75rem 1rem',
-                border: '2px solid var(--border)', borderRadius: '10px',
-                fontSize: '0.92rem', fontFamily: 'inherit',
-                color: 'var(--text-base)', background: 'var(--bg-card)', // FIX #8
-                transition: 'border-color .2s', outline: 'none',
-              }}
-              onFocus={e => e.target.style.borderColor = '#6366f1'}
+              style={inputStyle}
+              onFocus={e => e.target.style.borderColor = 'var(--primary)'}
               onBlur={e => e.target.style.borderColor = 'var(--border)'}
             />
           </div>
         ))}
 
-        {/* Language select */}
         <div style={{ marginBottom: '1rem' }}>
-          <label style={{ display: 'block', fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Learning Language</label>
+          <label style={labelStyle}>Learning language</label>
           <select
             value={form.preferred_language}
             onChange={e => setForm(p => ({ ...p, preferred_language: e.target.value }))}
-            style={{
-              width: '100%', padding: '0.75rem 1rem',
-              border: '2px solid var(--border)', borderRadius: '10px',
-              fontSize: '0.92rem', fontFamily: 'inherit',
-              color: 'var(--text-base)', background: 'var(--bg-card)',
-              cursor: 'pointer', outline: 'none',
-            }}
-            onFocus={e => e.target.style.borderColor = '#6366f1'}
+            style={{ ...inputStyle, cursor: 'pointer' }}
+            onFocus={e => e.target.style.borderColor = 'var(--primary)'}
             onBlur={e => e.target.style.borderColor = 'var(--border)'}
           >
             <option value="">Select language…</option>
@@ -212,20 +242,13 @@ function EditProfileModal({ user, onClose, onSave }) {
           </select>
         </div>
 
-        {/* CEFR Level select */}
         <div style={{ marginBottom: '1.5rem' }}>
-          <label style={{ display: 'block', fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Proficiency Level</label>
+          <label style={labelStyle}>Proficiency level</label>
           <select
             value={form.selected_level}
             onChange={e => setForm(p => ({ ...p, selected_level: e.target.value }))}
-            style={{
-              width: '100%', padding: '0.75rem 1rem',
-              border: '2px solid var(--border)', borderRadius: '10px',
-              fontSize: '0.92rem', fontFamily: 'inherit',
-              color: 'var(--text-base)', background: 'var(--bg-card)',
-              cursor: 'pointer', outline: 'none',
-            }}
-            onFocus={e => e.target.style.borderColor = '#6366f1'}
+            style={{ ...inputStyle, cursor: 'pointer' }}
+            onFocus={e => e.target.style.borderColor = 'var(--primary)'}
             onBlur={e => e.target.style.borderColor = 'var(--border)'}
           >
             <option value="">Select level…</option>
@@ -233,49 +256,59 @@ function EditProfileModal({ user, onClose, onSave }) {
           </select>
         </div>
 
-        {/* Actions */}
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <button onClick={onClose} style={{
             flex: 1, padding: '0.75rem',
             border: '2px solid var(--border)', borderRadius: '10px',
-            background: 'var(--bg-card)',       // FIX #8: was 'white'
-            cursor: 'pointer', fontFamily: 'inherit',
+            background: 'var(--bg-card)', cursor: 'pointer', fontFamily: 'inherit',
             fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.92rem',
           }}>Cancel</button>
-          <button onClick={handleSave} style={{
-            flex: 2, padding: '0.75rem',
-            background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-            border: 'none', borderRadius: '10px', cursor: 'pointer',
-            fontFamily: 'inherit', fontWeight: 700, color: '#fff', fontSize: '0.92rem',
-          }}>Save Changes</button>
+          <motion.button
+            onClick={handleSave}
+            whileHover={{ filter: 'brightness(1.08)' }}
+            whileTap={{ scale: 0.97 }}
+            style={{
+              flex: 2, padding: '0.75rem',
+              background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+              border: 'none', borderRadius: '10px', cursor: 'pointer',
+              fontFamily: 'inherit', fontWeight: 700, color: '#fff', fontSize: '0.92rem',
+            }}>Save changes</motion.button>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }
 
-// ─── Score progress bar (used in Assessment Results section) ──────────────────
-function ScoreBar({ label, value, color }) {
-  // FIX #2 + #3: safe fallback to 0 if value is undefined; clamp to [0,10]
-  const safeVal = Math.min(10, Math.max(0, value ?? 0))
+// ── Section card with scroll-reveal ──
+function Section({ label, title, action, children, delay = 0 }) {
+  const reduce = useReducedMotion()
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-        <span style={{ color: 'var(--text-muted)' }}>{label}</span>
-        <span style={{ color }}>{safeVal}/10</span>
+    <motion.section
+      className="pp-card"
+      initial={reduce ? false : { opacity: 0, y: 22 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.2 }}
+      transition={{ duration: 0.5, delay, ease: 'easeOut' }}
+    >
+      <div className="pp-card__head">
+        <div>
+          <div className="pp-eyebrow pp-card__label">{label}</div>
+          <h3 className="pp-card__title">{title}</h3>
+        </div>
+        {action}
       </div>
-      <div style={{ height: '8px', background: 'var(--bg-subtle)', borderRadius: '99px', overflow: 'hidden' }}>
-        <div style={{ width: `${(safeVal / 10) * 100}%`, height: '100%', background: color, borderRadius: '99px', transition: 'width .8s ease' }} />
-      </div>
-    </div>
+      {children}
+    </motion.section>
   )
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════
+//  MAIN PAGE
+// ════════════════════════════════════════════════════════════════
 export default function ProfilePage() {
   const { user, updateUser } = useAuth()
+  const reduce = useReducedMotion()
 
-  // Real stats loaded from backend — streak, totalMinutes, achievements
   const [profileStats, setProfileStats] = useState({ streak: 0, totalMinutes: 0, achievementCount: 0 })
   const [earnedAchievements, setEarnedAchievements] = useState(null) // null = loading
 
@@ -283,20 +316,15 @@ export default function ProfilePage() {
     let mounted = true
     async function loadStats() {
       try {
-        // Streak + today from PracticeStats endpoint
         const stats = await fetchPracticeStats()
-        // Total minutes: sum all speaking + practice minutes from progress
         const progress = await fetchPracticeProgress(
           user?.preferred_language || user?.preferredLanguage || 'English'
         )
-
         const streak = stats?.streak ?? 0
 
-        // Compute total practice minutes from all tracked activity
         let totalMinutes = 0
         if (progress) {
           totalMinutes += (progress.speaking?.minutes || 0)
-          // Each grammar/reading/listening correct answer ≈ 1 min, writing submission ≈ 5 min
           totalMinutes += Math.round((progress.grammar?.totalCorrect  || 0) * 1)
           totalMinutes += Math.round((progress.reading?.totalCorrect  || 0) * 1)
           totalMinutes += Math.round((progress.listening?.totalCorrect || 0) * 1)
@@ -304,7 +332,6 @@ export default function ProfilePage() {
           totalMinutes += (progress.flashcards?.sessions || 0) * 3
         }
 
-        // Fetch earned achievements (list + count)
         let achievementCount = 0
         let achievementList = []
         try {
@@ -334,7 +361,6 @@ export default function ProfilePage() {
     try {
       const saved = localStorage.getItem('polylingo_settings')
       const base = saved ? JSON.parse(saved) : { email: true, reminders: true, dark: false }
-      // Merge server prefs if available on the user object
       const serverPrefs = user?.notification_preferences
       if (serverPrefs) {
         base.email     = serverPrefs.email     ?? base.email
@@ -349,8 +375,7 @@ export default function ProfilePage() {
   const [saved,    setSaved]    = useState(false)
   const [saveErr,  setSaveErr]  = useState('')
 
-  // ── Change password form ────────────────────────────────────────────────────
-  const [pwOpen,        setPwOpen]        = useState(false)
+  // Change-password form
   const [pwCurrent,     setPwCurrent]     = useState('')
   const [pwNew,         setPwNew]         = useState('')
   const [pwConfirm,     setPwConfirm]     = useState('')
@@ -370,7 +395,7 @@ export default function ProfilePage() {
       await changePassword(pwCurrent, pwNew)
       setPwSuccess(true)
       setPwCurrent(''); setPwNew(''); setPwConfirm('')
-      setTimeout(() => { setPwSuccess(false); setPwOpen(false); setShowPwFields(false) }, 2500)
+      setTimeout(() => { setPwSuccess(false); setShowPwFields(false) }, 2500)
     } catch (err) {
       setPwError(err?.message || 'Could not change password. Check your current password.')
     } finally {
@@ -378,53 +403,37 @@ export default function ProfilePage() {
     }
   }
 
-  // ── Derived display values ──────────────────────────────────────────────
+  // Derived display values
   const displayName  = user?.full_name         || 'Learner'
   const displayEmail = user?.email             || ''
   const displayLang  = user?.preferred_language || 'Not set'
-  const level        = user?.estimated_level || user?.selected_level || user?.assessmentResults?.level || 'A1'
+  const level        = user?.estimated_level || user?.selected_level || user?.assessmentResults?.cefrLevel || 'A1'
   const overall      = user?.assessmentResults?.overall ?? 0
 
   const initials = displayName
-    .split(' ')
-    .map(n => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2) || '?'
+    .split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
 
-  // Real stats from backend (streak, totalMinutes, achievementCount)
   const totalMinutes = profileStats.totalMinutes
-  const practiceLabel = totalMinutes >= 60
-    ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60 > 0 ? `${totalMinutes % 60}m` : ''}`.trim()
-    : `${totalMinutes}m`
-
-  // Progress derived from assessment overall (0-10 scale → percent)
+  const practiceHours = totalMinutes >= 60 ? Math.floor(totalMinutes / 60) : 0
+  const practiceMins  = totalMinutes % 60
   const progressPct = Math.min(100, Math.round((overall / 10) * 100))
 
-  const stats = [
-    { value: practiceLabel,                    label: 'Total Practice', icon: 'fa-clock',          color: '#6366f1' },
-    { value: profileStats.streak,              label: 'Day Streak',     icon: 'fa-fire',            color: '#10b981' },
-    { value: profileStats.achievementCount,    label: 'Achievements',   icon: 'fa-star',            color: '#f59e0b' },
-    { value: level,                            label: 'Current Level',  icon: 'fa-graduation-cap',  color: '#3b82f6' },
-  ]
-
-  // Map achievement titles/descriptions to icons and colours
+  // Map achievement titles to a stamp icon + colour
   const ACH_ICON_MAP = {
-    'First Step':          { icon: 'fa-rocket',      color: '#6366f1', bg: 'rgba(99,102,241,0.12)' },
-    'Practice Makes Perfect': { icon: 'fa-dumbbell', color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
-    '3-Day Streak':        { icon: 'fa-fire',        color: '#f97316', bg: 'rgba(249,115,22,0.12)' },
-    'Week Warrior':        { icon: 'fa-fire',        color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
-    'Monthly Master':      { icon: 'fa-crown',       color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
-    'Intermediate':        { icon: 'fa-graduation-cap', color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)' },
-    'Upper Intermediate':  { icon: 'fa-graduation-cap', color: '#6366f1', bg: 'rgba(99,102,241,0.12)' },
-    'Advanced':            { icon: 'fa-star',        color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
-    'Vocabulary Builder':  { icon: 'fa-book',        color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
-    'Writer':              { icon: 'fa-pencil-alt',  color: '#ec4899', bg: 'rgba(236,72,153,0.12)' },
-    'Conversationalist':   { icon: 'fa-comments',    color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
+    'First Step':             { icon: 'fa-rocket',        color: '#6366f1' },
+    'Practice Makes Perfect': { icon: 'fa-dumbbell',      color: '#10b981' },
+    '3-Day Streak':           { icon: 'fa-fire',          color: '#f97316' },
+    'Week Warrior':           { icon: 'fa-fire',          color: '#ef4444' },
+    'Monthly Master':         { icon: 'fa-crown',         color: '#f59e0b' },
+    'Intermediate':           { icon: 'fa-graduation-cap', color: '#8b5cf6' },
+    'Upper Intermediate':     { icon: 'fa-graduation-cap', color: '#6366f1' },
+    'Advanced':               { icon: 'fa-star',          color: '#f59e0b' },
+    'Vocabulary Builder':     { icon: 'fa-book',          color: '#3b82f6' },
+    'Writer':                 { icon: 'fa-pencil-alt',    color: '#ec4899' },
+    'Conversationalist':      { icon: 'fa-comments',      color: '#10b981' },
   }
-  const DEFAULT_ACH_STYLE = { icon: 'fa-trophy', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' }
+  const DEFAULT_ACH_STYLE = { icon: 'fa-trophy', color: '#f59e0b' }
 
-  // ── Save profile ────────────────────────────────────────────────────────
   const handleSaveProfile = async (form) => {
     setSaveErr('')
     try {
@@ -445,275 +454,260 @@ export default function ProfilePage() {
     }
   }
 
-  // ── Settings toggle ─────────────────────────────────────────────────────
   const toggleSetting = (key) => {
     setSettings(s => {
       const next = { ...s, [key]: !s[key] }
       localStorage.setItem('polylingo_settings', JSON.stringify(next))
-      // Persist email/reminders prefs to backend
       if (key === 'email' || key === 'reminders') {
-        saveNotificationPreferences({ email: next.email, reminders: next.reminders })
-          .catch(() => {}) // silent — localStorage already updated
+        saveNotificationPreferences({ email: next.email, reminders: next.reminders }).catch(() => {})
       }
       return next
     })
   }
 
-  // FIX #1: was React.useEffect — React was never imported
-  // FIX #9 PERF: run only when settings.dark changes, not on every render
   useEffect(() => {
     document.documentElement.setAttribute('data-dark', settings.dark ? 'true' : 'false')
   }, [settings.dark])
 
-  // ── Render ──────────────────────────────────────────────────────────────
+  // Orchestrated entrance for the passport band + its data fields
+  const bandVariants = {
+    hidden: {},
+    show: { transition: { staggerChildren: 0.08, delayChildren: 0.15 } },
+  }
+  const fieldVariants = {
+    hidden: reduce ? false : { opacity: 0, y: 12 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
+  }
+
+  const fields = [
+    { label: 'Level',   value: level },
+    { label: 'Streak',  value: <><CountUp value={profileStats.streak} /></>, unit: 'days' },
+    { label: 'Practice', value: practiceHours > 0
+        ? <><CountUp value={practiceHours} /></>
+        : <><CountUp value={practiceMins} /></>,
+      unit: practiceHours > 0 ? 'hrs' : 'min' },
+    { label: 'Stamps',  value: <><CountUp value={profileStats.achievementCount} /></> },
+  ]
+
   return (
-    <div className="pg-wrapper" style={{ minHeight: '100vh', paddingTop: '80px', paddingBottom: '3rem' }}>
-      <div className="container">
+    <div className="pp-page">
+      <div className="pp-shell">
 
-        {/* ── Success toast ── */}
-        {saved && (
-          <div style={{
-            position: 'fixed', top: '90px', right: '1.5rem', zIndex: 9999,
-            background: '#10b981', color: '#fff', padding: '0.75rem 1.25rem',
-            borderRadius: '12px', fontWeight: 600, fontSize: '0.9rem',
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            boxShadow: '0 8px 24px rgba(16,185,129,.35)',
-            animation: 'slideUp .3s ease',
-          }}>
-            <i className="fas fa-check-circle" /> Profile saved!
-          </div>
-        )}
-
-        {/* ── Error toast ── */}
-        {saveErr && (
-          <div style={{
-            position: 'fixed', top: '90px', right: '1.5rem', zIndex: 9999,
-            background: '#ef4444', color: '#fff', padding: '0.75rem 1.25rem',
-            borderRadius: '12px', fontWeight: 600, fontSize: '0.9rem',
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            boxShadow: '0 8px 24px rgba(239,68,68,.35)',
-            animation: 'slideUp .3s ease',
-          }}>
-            <i className="fas fa-exclamation-circle" /> {saveErr}
-            <button onClick={() => setSaveErr('')} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', marginLeft: '0.5rem', fontSize: '1rem' }}>×</button>
-          </div>
-        )}
+        {/* ── Toasts ── */}
+        <AnimatePresence>
+          {saved && (
+            <motion.div
+              className="pp-toast"
+              style={{ background: '#10b981', boxShadow: '0 8px 24px rgba(16,185,129,.35)' }}
+              initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }}
+            >
+              <i className="fas fa-check-circle" /> Profile saved
+            </motion.div>
+          )}
+          {saveErr && (
+            <motion.div
+              className="pp-toast"
+              style={{ background: '#ef4444', boxShadow: '0 8px 24px rgba(239,68,68,.35)' }}
+              initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }}
+            >
+              <i className="fas fa-exclamation-circle" /> {saveErr}
+              <button onClick={() => setSaveErr('')} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', marginLeft: '0.5rem', fontSize: '1rem' }}>×</button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ── Edit modal ── */}
-        {editOpen && (
-          <EditProfileModal
-            user={user}
-            onClose={() => setEditOpen(false)}
-            onSave={handleSaveProfile}
-          />
-        )}
+        <AnimatePresence>
+          {editOpen && (
+            <EditProfileModal user={user} onClose={() => setEditOpen(false)} onSave={handleSaveProfile} />
+          )}
+        </AnimatePresence>
 
-        {/* ── Page title ── */}
-        <div style={{ padding: '1.5rem 0' , marginTop: '-4.5rem', textAlign: 'center' }}>
-          <h1 style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-base)', marginBottom: '0.25rem' }}>Your Profile</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Manage your account and track your learning journey</p>
-        </div>
-
-        {/* ── Two-column layout ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '1.5rem', alignItems: 'start' }} className="profile-grid">
-
-          {/* ── Sidebar ── */}
-          <div style={{
-            background: 'var(--bg-card)', borderRadius: '20px', padding: '2rem',
-            boxShadow: '0 2px 12px rgba(0,0,0,.06)', textAlign: 'center',
-          }}>
-            {/* Avatar */}
-            <div style={{
-              width: '90px', height: '90px', borderRadius: '50%',
-              background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              margin: '0 auto 1.25rem', color: '#fff',
-              fontSize: '1.75rem', fontWeight: 800, letterSpacing: '1px',
-            }}>
-              {initials}
-            </div>
-
-            <h2 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-base)', marginBottom: '0.2rem' }}>{displayName}</h2>
-            {user?.username && (
-              <p style={{ color: '#6366f1', fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.15rem' }}>@{user.username}</p>
-            )}
-            <p style={{ color: 'var(--text-faint)', fontSize: '0.85rem', marginBottom: '0.4rem' }}>{displayEmail}</p>
-
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
-              background: '#ede9fe', color: '#7c3aed',
-              padding: '0.25rem 0.75rem', borderRadius: '99px',
-              fontSize: '0.78rem', fontWeight: 700, marginBottom: '1.25rem',
-            }}>
-              <i className="fas fa-language" /> {displayLang}
-            </span>
-
-            {/* Quick stats — FIX #4 #5: real values */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem', marginBottom: '1.5rem' }}>
-              <div style={{ background: 'var(--bg-subtle)', borderRadius: '12px', padding: '0.75rem', textAlign: 'center' }}>
-                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#6366f1' }}>{progressPct}%</div>
-                <div style={{ fontSize: '0.73rem', color: 'var(--text-faint)', fontWeight: 500 }}>Progress</div>
-              </div>
-              <div style={{ background: 'var(--bg-subtle)', borderRadius: '12px', padding: '0.75rem', textAlign: 'center' }}>
-                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#10b981' }}>{profileStats.streak ?? user?.streak ?? 0}</div>
-                <div style={{ fontSize: '0.73rem', color: 'var(--text-faint)', fontWeight: 500 }}>Streak</div>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setEditOpen(true)}
-              style={{
-                width: '100%', padding: '0.7rem',
-                background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-                color: '#fff', border: 'none', borderRadius: '10px',
-                fontFamily: 'inherit', fontWeight: 700, fontSize: '0.88rem',
-                cursor: 'pointer', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', gap: '0.5rem',
-                transition: 'opacity .2s',
-              }}
-              onMouseOver={e => e.currentTarget.style.opacity = '0.88'}
-              onMouseOut={e => e.currentTarget.style.opacity = '1'}
-            >
-              <i className="fas fa-edit" /> Edit Profile
-            </button>
+        {/* ════════ PASSPORT IDENTITY BAND ════════ */}
+        <motion.div
+          className="pp-passport"
+          initial={reduce ? false : { opacity: 0, y: -18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55, ease: 'easeOut' }}
+        >
+          <div className="pp-passport__top">
+            <span className="pp-eyebrow pp-passport__doc">PolyLingo · Language Passport</span>
+            <span className="pp-passport__seal">ID {String(user?.id ?? '0000').toString().padStart(4, '0')}</span>
           </div>
 
-          {/* ── Main column ── */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div className="pp-identity">
+            <FluencyRing pct={progressPct} initials={initials} />
 
-            {/* Stats */}
-            <div style={{
-              background: 'var(--bg-card)', borderRadius: '20px', padding: '1.75rem',
-              boxShadow: '0 2px 12px rgba(0,0,0,.06)',
-            }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-base)', marginBottom: '1.25rem' }}>Learning Statistics</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '1rem' }}>
-                {stats.map(s => (
-                  <div key={s.label} style={{
-                    textAlign: 'center', padding: '1rem 0.75rem',
-                    background: 'var(--bg-subtle)', borderRadius: '14px',
-                    border: `2px solid ${s.color}18`,
-                  }}>
-                    <div style={{ fontSize: '0.85rem', marginBottom: '0.4rem', color: s.color }}>
-                      <i className={`fas ${s.icon}`} />
-                    </div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-base)' }}>{s.value}</div>
-                    <div style={{ fontSize: '0.73rem', color: 'var(--text-faint)', marginTop: '2px' }}>{s.label}</div>
+            <div>
+              <h1 className="pp-id__name">{displayName}</h1>
+              <div className="pp-id__meta">
+                {user?.username && <span className="pp-id__handle">@{user.username}</span>}
+                {displayEmail && <span>{displayEmail}</span>}
+              </div>
+              <span className="pp-id__lang">
+                <i className="fas fa-language" /> Learning {displayLang}
+              </span>
+            </div>
+
+            <motion.button
+              className="pp-edit"
+              onClick={() => setEditOpen(true)}
+              whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }}
+            >
+              <i className="fas fa-pen" /> Edit profile
+            </motion.button>
+          </div>
+
+          {/* ── Monospaced passport data band ── */}
+          <motion.div className="pp-fields" variants={bandVariants} initial="hidden" animate="show">
+            {fields.map((f) => (
+              <motion.div key={f.label} className="pp-field" variants={fieldVariants}>
+                <div className="pp-eyebrow pp-field__label">{f.label}</div>
+                <div className="pp-field__value">
+                  {f.value}{f.unit && <span className="pp-field__unit">{f.unit}</span>}
+                </div>
+              </motion.div>
+            ))}
+          </motion.div>
+        </motion.div>
+
+        {/* ════════ CONTENT ════════ */}
+        <div className="pp-stack">
+
+          {/* Achievements / Stamps */}
+          <Section
+            label="Collected on your journey"
+            title="Stamps"
+            action={earnedAchievements && earnedAchievements.length > 0
+              ? <span className="pp-count">{earnedAchievements.length} earned</span>
+              : null}
+          >
+            {earnedAchievements === null && (
+              <div className="pp-stamps">
+                {[1,2,3,4,5].map(i => (
+                  <div key={i} className="pp-stamp">
+                    <div className="pp-skel" style={{ width: 60, height: 60, margin: '0 auto 0.5rem' }} />
+                    <div className="pp-skel" style={{ height: 9, borderRadius: 4 }} />
                   </div>
                 ))}
               </div>
-            </div>
+            )}
 
-            {/* Achievements */}
-            <div style={{
-              background: 'var(--bg-card)', borderRadius: '20px', padding: '1.75rem',
-              boxShadow: '0 2px 12px rgba(0,0,0,.06)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-base)', margin: 0 }}>Achievements</h3>
-                {earnedAchievements && earnedAchievements.length > 0 && (
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '0.2rem 0.7rem', borderRadius: 99 }}>
-                    {earnedAchievements.length} earned
-                  </span>
-                )}
-              </div>
-
-              {/* Loading */}
-              {earnedAchievements === null && (
-                <div style={{ display: 'flex', gap: '0.875rem', flexWrap: 'wrap' }}>
-                  {[1,2,3].map(i => (
-                    <div key={i} style={{ width: 80, textAlign: 'center' }}>
-                      <div style={{ width: 54, height: 54, borderRadius: 14, background: 'var(--bg-subtle)', margin: '0 auto 0.4rem', animation: 'pulse 1.5s ease-in-out infinite' }} />
-                      <div style={{ height: 10, borderRadius: 4, background: 'var(--bg-subtle)', animation: 'pulse 1.5s ease-in-out infinite' }} />
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Empty state */}
-              {earnedAchievements !== null && earnedAchievements.length === 0 && (
-                <div style={{ textAlign: 'center', padding: '1.5rem 0' }}>
-                  <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🏆</div>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', margin: 0 }}>
-                    Complete your assessment and practice sessions to earn achievements!
-                  </p>
-                </div>
-              )}
-
-              {/* Real achievements */}
-              {earnedAchievements !== null && earnedAchievements.length > 0 && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '0.875rem' }}>
-                  {earnedAchievements.map(a => {
-                    const style = ACH_ICON_MAP[a.title] || DEFAULT_ACH_STYLE
-                    return (
-                      <div key={a.id} title={a.description || a.title} style={{ textAlign: 'center', cursor: 'default' }}>
-                        <div style={{
-                          width: 54, height: 54, borderRadius: 14,
-                          background: style.bg, color: style.color,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: '1.3rem', margin: '0 auto 0.4rem',
-                          boxShadow: `0 4px 12px ${style.bg}`,
-                          transition: 'transform 0.15s',
-                        }}
-                          onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
-                          onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-                        >
-                          <i className={`fas ${style.icon}`} />
-                        </div>
-                        <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.3 }}>{a.title}</div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Assessment Results — only shown if user has completed the assessment */}
-            {user?.assessmentResults && (
-              <div style={{
-                background: 'var(--bg-card)', borderRadius: '20px', padding: '1.75rem',
-                boxShadow: '0 2px 12px rgba(0,0,0,.06)',
-              }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-base)', marginBottom: '1.25rem' }}>Assessment Results</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.875rem' }}>
-                  {/* FIX #2 + #3: extracted to ScoreBar which safely handles undefined values */}
-                  <ScoreBar label="Pronunciation" value={user.assessmentResults.pronunciationScore} color="#8b5cf6" />
-                  <ScoreBar label="Speaking"      value={user.assessmentResults.fluencyScore}       color="#10b981" />
-                  <ScoreBar label="Grammar"       value={user.assessmentResults.grammarScore}       color="#f59e0b" />
-                  <ScoreBar label="Reading"       value={user.assessmentResults.readingScore}       color="#3b82f6" />
-                </div>
+            {earnedAchievements !== null && earnedAchievements.length === 0 && (
+              <div className="pp-empty">
+                <div className="pp-empty__mark">🛂</div>
+                <p style={{ margin: 0, fontSize: '0.9rem' }}>
+                  No stamps yet. Finish your assessment and practice to start collecting them.
+                </p>
               </div>
             )}
 
-            {/* Account Settings */}
-            <div style={{
-              background: 'var(--bg-card)', borderRadius: '20px', padding: '1.75rem',
-              boxShadow: '0 2px 12px rgba(0,0,0,.06)',
-            }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-base)', marginBottom: '1.25rem' }}>Account Settings</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
-                <Toggle checked={settings.email}     onChange={() => toggleSetting('email')}     label="📧 Email Notifications" />
-                <Toggle checked={settings.reminders} onChange={() => toggleSetting('reminders')} label="⏰ Practice Reminders"  />
-                <Toggle checked={settings.dark}      onChange={() => toggleSetting('dark')}      label="🌙 Dark Mode"           />
+            {earnedAchievements !== null && earnedAchievements.length > 0 && (
+              <div className="pp-stamps">
+                {earnedAchievements.map((a, i) => {
+                  const style = ACH_ICON_MAP[a.title] || DEFAULT_ACH_STYLE
+                  return (
+                    <motion.div
+                      key={a.id} className="pp-stamp" title={a.description || a.title}
+                      initial={reduce ? false : { opacity: 0, scale: 1.4, rotate: -8 }}
+                      whileInView={{ opacity: 1, scale: 1, rotate: 0 }}
+                      viewport={{ once: true, amount: 0.5 }}
+                      transition={{ type: 'spring', stiffness: 420, damping: 18, delay: i * 0.05 }}
+                      whileHover={{ y: -4, rotate: -3 }}
+                    >
+                      <div className="pp-stamp__seal" style={{ color: style.color, background: `${style.color}14` }}>
+                        <i className={`fas ${style.icon}`} />
+                      </div>
+                      <div className="pp-stamp__name">{a.title}</div>
+                    </motion.div>
+                  )
+                })}
+              </div>
+            )}
+          </Section>
 
-                {/* ── Change Password ── */}
-                <div style={{ marginTop: '0.5rem' }}>
-                  <button
-                    onClick={() => { setShowPwFields((v) => !v); setPwError(''); setPwSuccess(false) }}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      width: '100%', padding: '0.95rem 1.1rem',
-                      background: 'var(--bg-subtle)', borderRadius: '12px',
-                      border: 'none', cursor: 'pointer', fontWeight: 700,
-                      fontSize: '0.9rem', color: 'var(--text-base)',
-                    }}
-                  >
-                    <span>🔑 Change Password</span>
-                    <i className={`fas fa-chevron-${showPwFields ? 'up' : 'down'}`} style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }} />
-                  </button>
+          {/* Assessment Results — the placement test scores Speaking, Writing,
+              Listening, and Reading (stored as 0–100 in skillScores). */}
+          {user?.assessmentResults?.skillScores && (
+            <Section label="Your last placement" title="Assessment breakdown">
+              <div className="pp-bars">
+                {[
+                  { label: 'Speaking',  key: 'speaking',  color: '#10b981' },
+                  { label: 'Writing',   key: 'writing',   color: '#8b5cf6' },
+                  { label: 'Listening', key: 'listening', color: '#f59e0b' },
+                  { label: 'Reading',   key: 'reading',   color: '#3b82f6' },
+                ].map(({ label, key, color }) => {
+                  const raw = user.assessmentResults.skillScores[key]
+                  // skillScores are 0–100; ScoreBar expects 0–10. null = skipped.
+                  const value = raw == null ? null : raw / 10
+                  return <ScoreBar key={key} label={label} value={value} color={color} />
+                })}
+              </div>
+            </Section>
+          )}
 
+          {/* Account settings */}
+          <Section label="Yours to control" title="Account settings">
+
+            <div className="pp-group">
+              <div className="pp-eyebrow pp-group__title">Notifications</div>
+              <div className="pp-prefs">
+                <PrefToggle
+                  icon="fa-envelope" tint="#6366f1"
+                  label="Email updates" desc="A weekly summary of your progress"
+                  checked={settings.email} onChange={() => toggleSetting('email')}
+                />
+                <PrefToggle
+                  icon="fa-clock" tint="#f59e0b"
+                  label="Practice reminders" desc="A daily nudge when it's time to study"
+                  checked={settings.reminders} onChange={() => toggleSetting('reminders')}
+                />
+              </div>
+            </div>
+
+            <div className="pp-group">
+              <div className="pp-eyebrow pp-group__title">Appearance</div>
+              <div className="pp-prefs">
+                <PrefToggle
+                  icon="fa-moon" tint="#8b5cf6"
+                  label="Dark mode" desc="Easier on the eyes in low light"
+                  checked={settings.dark} onChange={() => toggleSetting('dark')}
+                />
+              </div>
+            </div>
+
+            <div className="pp-group">
+              <div className="pp-eyebrow pp-group__title">Security</div>
+              <div className="pp-prefs">
+                <button
+                  type="button"
+                  className="pp-pref"
+                  onClick={() => { setShowPwFields(v => !v); setPwError(''); setPwSuccess(false) }}
+                  aria-expanded={showPwFields}
+                >
+                  <span className="pp-pref__icon" style={{ background: '#64748b1a', color: '#64748b' }}>
+                    <i className="fas fa-key" />
+                  </span>
+                  <span className="pp-pref__text">
+                    <span className="pp-pref__label">Password</span>
+                    <span className="pp-pref__desc">Update your account password</span>
+                  </span>
+                  <span className="pp-pref__action">
+                    {showPwFields ? 'Close' : 'Change'}
+                    <i className={`fas fa-chevron-${showPwFields ? 'up' : 'down'}`} style={{ fontSize: '0.7rem' }} />
+                  </span>
+                </button>
+
+                <AnimatePresence initial={false}>
                   {showPwFields && (
-                    <form onSubmit={handleChangePassword} style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+                    <motion.form
+                      onSubmit={handleChangePassword}
+                      initial={reduce ? false : { height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.3, ease: 'easeInOut' }}
+                      style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: '0.625rem', padding: '0 1rem 1rem' }}
+                    >
                       {pwError && (
                         <div style={{
                           padding: '0.7rem 1rem', borderRadius: '10px',
@@ -721,8 +715,7 @@ export default function ProfilePage() {
                           color: '#b91c1c', fontSize: '0.85rem', fontWeight: 600,
                           display: 'flex', alignItems: 'center', gap: '0.5rem',
                         }}>
-                          <i className="fas fa-exclamation-circle" />
-                          {pwError}
+                          <i className="fas fa-exclamation-circle" /> {pwError}
                         </div>
                       )}
                       {pwSuccess && (
@@ -732,12 +725,11 @@ export default function ProfilePage() {
                           color: '#065f46', fontSize: '0.85rem', fontWeight: 600,
                           display: 'flex', alignItems: 'center', gap: '0.5rem',
                         }}>
-                          <i className="fas fa-check-circle" />
-                          Password changed successfully!
+                          <i className="fas fa-check-circle" /> Password changed
                         </div>
                       )}
                       {['Current password', 'New password', 'Confirm new password'].map((placeholder, idx) => {
-                        const val   = [pwCurrent, pwNew, pwConfirm][idx]
+                        const val    = [pwCurrent, pwNew, pwConfirm][idx]
                         const setVal = [setPwCurrent, setPwNew, setPwConfirm][idx]
                         return (
                           <div key={placeholder} style={{ position: 'relative' }}>
@@ -746,27 +738,18 @@ export default function ProfilePage() {
                               color: 'var(--text-faint)', fontSize: '0.8rem',
                             }} />
                             <input
-                              type="password"
-                              placeholder={placeholder}
-                              value={val}
+                              type="password" placeholder={placeholder} value={val}
                               onChange={(e) => { setVal(e.target.value); setPwError('') }}
-                              disabled={pwLoading}
-                              style={{
-                                width: '100%', boxSizing: 'border-box',
-                                padding: '0.75rem 0.875rem 0.75rem 2.25rem',
-                                borderRadius: '10px', border: '1.5px solid var(--border)',
-                                background: 'var(--bg-input, var(--bg-subtle))',
-                                color: 'var(--text-base)', fontSize: '0.9rem',
-                              }}
+                              disabled={pwLoading} className="pp-field-input"
                             />
                           </div>
                         )
                       })}
-                      <button
-                        type="submit"
-                        disabled={pwLoading}
+                      <motion.button
+                        type="submit" disabled={pwLoading}
+                        whileTap={{ scale: 0.98 }}
                         style={{
-                          padding: '0.75rem', borderRadius: '10px', border: 'none',
+                          padding: '0.75rem', borderRadius: '11px', border: 'none',
                           background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
                           color: 'white', fontWeight: 700, fontSize: '0.9rem',
                           cursor: pwLoading ? 'default' : 'pointer',
@@ -775,16 +758,15 @@ export default function ProfilePage() {
                       >
                         {pwLoading
                           ? <><span className="auth-spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Saving…</>
-                          : <><i className="fas fa-key" /> Update Password</>
-                        }
-                      </button>
-                    </form>
+                          : <><i className="fas fa-key" /> Update password</>}
+                      </motion.button>
+                    </motion.form>
                   )}
-                </div>
+                </AnimatePresence>
               </div>
             </div>
+          </Section>
 
-          </div>
         </div>
       </div>
     </div>
