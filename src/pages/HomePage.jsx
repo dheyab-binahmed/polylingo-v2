@@ -238,24 +238,57 @@ export default function HomePage() {
             <h2>Why Choose FluentPeak?</h2>
             <p>Our unique approach combines cutting-edge technology with proven learning methods</p>
           </div>
-          <div className="dashboard-sections">
-            <div className="dashboard-section">
-              <div className="section-header">
-                <h2><i className="fas fa-robot" style={{ color: '#6d5ff7' }} /> AI-Powered Learning</h2>
+          <div className="feature-grid">
+            {/* AI — previews a live conversation */}
+            <div className="feat" style={{ '--accent': '#6d5ff7' }}>
+              <div className="feat__head">
+                <span className="feat__icon"><i className="fas fa-robot" /></span>
+                <h3 className="feat__title">AI-Powered Learning</h3>
               </div>
-              <p>Our advanced AI adapts to your learning style and provides personalized feedback in real-time.</p>
+              <p className="feat__desc">Our AI adapts to your style and gives personalized feedback the moment you speak.</p>
+              <div className="feat__preview mini-chat" aria-hidden="true">
+                <span className="bubble bubble--ai">¿Cómo estás hoy?</span>
+                <span className="bubble bubble--me">¡Muy bien, gracias!</span>
+                <span className="typing"><i /><i /><i /></span>
+              </div>
             </div>
-            <div className="dashboard-section">
-              <div className="section-header">
-                <h2><i className="fas fa-chart-line" style={{ color: '#3ea883' }} /> Progress Tracking</h2>
+
+            {/* Progress — previews an analytics chart */}
+            <div className="feat" style={{ '--accent': '#3ea883' }}>
+              <div className="feat__head">
+                <span className="feat__icon"><i className="fas fa-chart-line" /></span>
+                <h3 className="feat__title">Progress Tracking</h3>
               </div>
-              <p>Track your improvement with detailed analytics and visual progress reports.</p>
+              <p className="feat__desc">Watch your fluency climb with detailed analytics and visual progress reports.</p>
+              <div className="feat__preview mini-chart" aria-hidden="true">
+                <span className="bars">
+                  <i style={{ '--h': '42%' }} />
+                  <i style={{ '--h': '60%' }} />
+                  <i style={{ '--h': '48%' }} />
+                  <i style={{ '--h': '74%' }} />
+                  <i style={{ '--h': '64%' }} />
+                  <i style={{ '--h': '92%' }} />
+                </span>
+                <span className="trend"><i className="fas fa-arrow-trend-up" /> +24%</span>
+              </div>
             </div>
-            <div className="dashboard-section">
-              <div className="section-header">
-                <h2><i className="fas fa-users" style={{ color: '#eba046' }} /> Community Features</h2>
+
+            {/* Community — previews who's learning with you */}
+            <div className="feat" style={{ '--accent': '#eba046' }}>
+              <div className="feat__head">
+                <span className="feat__icon"><i className="fas fa-users" /></span>
+                <h3 className="feat__title">Community Features</h3>
               </div>
-              <p>Connect with other learners, join groups, and participate in challenges.</p>
+              <p className="feat__desc">Connect with learners worldwide, join groups, and take on weekly challenges.</p>
+              <div className="feat__preview mini-people" aria-hidden="true">
+                <span className="stack">
+                  <span className="ava" style={{ background: '#6d5ff7' }}>D</span>
+                  <span className="ava" style={{ background: '#3ea883' }}>M</span>
+                  <span className="ava" style={{ background: '#eba046' }}>A</span>
+                  <span className="ava ava--more">+892</span>
+                </span>
+                <span className="online"><i className="dot" /> online now</span>
+              </div>
             </div>
           </div>
         </div>
