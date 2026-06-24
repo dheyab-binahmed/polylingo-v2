@@ -786,7 +786,7 @@ export default function PracticePage() {
       return;
     }
     setGrammarCheckLoading(true);
-    setGrammarInline("⏳ Checking grammar with AI…");
+    setGrammarInline("Checking grammar with AI…");
     setVocabInline("");
     try {
       const result = await checkWritingGrammar({ text: writingText, language: lang });
@@ -816,7 +816,7 @@ export default function PracticePage() {
     const suggestions =
       content.writingVocab?.join('", "') ||
       "additionally, furthermore, however";
-    setVocabInline(`💡 Suggestions: try "${suggestions}" for variety.`);
+    setVocabInline(`Suggestions: try "${suggestions}" for variety.`);
     setGrammarInline("");
   };
   const submitWriting = async () => {
@@ -1365,7 +1365,7 @@ export default function PracticePage() {
                 fontWeight: 700,
               }}
             >
-              📚 Practicing: {lang}
+              <i className="fas fa-book" style={{ marginRight: 6 }} />Practicing: {lang}
             </span>
             <select
               value={practiceLevel}
@@ -1413,12 +1413,12 @@ export default function PracticePage() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "1.5rem", marginTop: "0.9rem", flexWrap: "wrap" }}>
             {/* Streak */}
             <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.88rem", fontWeight: 600, color: practiceStats.streak > 0 ? "#f59e0b" : "var(--gray)" }}>
-              🔥 {practiceStats.streak} day streak
+              <i className="fas fa-fire" /> {practiceStats.streak} day streak
             </div>
             {/* Daily goal progress */}
             <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
               <span style={{ fontSize: "0.82rem", color: "var(--gray)", fontWeight: 600 }}>
-                🎯 Today: {practiceStats.todayMinutes}/{practiceStats.dailyGoalMinutes} min
+                <i className="fas fa-bullseye" style={{ marginRight: 5 }} />Today: {practiceStats.todayMinutes}/{practiceStats.dailyGoalMinutes} min
               </span>
               <div style={{ width: 80, height: 6, background: "var(--border)", borderRadius: 99, overflow: "hidden" }}>
                 <div style={{
@@ -1440,14 +1440,14 @@ export default function PracticePage() {
               return nextLevel ? (
                 <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                   <span style={{ fontSize: "0.82rem", color: "var(--gray)", fontWeight: 600 }}>
-                    📈 {practiceLevel}→{nextLevel}: {pct}%
+                    <i className="fas fa-arrow-trend-up" style={{ marginRight: 5 }} />{practiceLevel}→{nextLevel}: {pct}%
                   </span>
                   <div style={{ width: 80, height: 6, background: "var(--border)", borderRadius: 99, overflow: "hidden" }}>
                     <div style={{ height: "100%", width: `${pct}%`, background: "linear-gradient(90deg,#6366f1,#8b5cf6)", borderRadius: 99, transition: "width 0.4s ease" }} />
                   </div>
                 </div>
               ) : (
-                <span style={{ fontSize: "0.82rem", color: "#f59e0b", fontWeight: 700 }}>🏆 Max Level!</span>
+                <span style={{ fontSize: "0.82rem", color: "#f59e0b", fontWeight: 700 }}><i className="fas fa-trophy" style={{ marginRight: 5 }} />Max Level!</span>
               );
             })()}
           </div>
@@ -1637,7 +1637,7 @@ export default function PracticePage() {
                   borderRadius: "var(--border-radius)",
                   marginBottom: "1rem",
                 }}>
-                  <div style={{ fontSize: "2.5rem", marginBottom: "0.5rem" }}>🎉</div>
+                  <div style={{ fontSize: "2.2rem", marginBottom: "0.5rem", color: "var(--secondary)" }}><i className="fas fa-circle-check" /></div>
                   <h3 style={{ color: "var(--secondary)", marginBottom: "0.5rem" }}>You know all {FLASHCARDS.length} words!</h3>
                   <p style={{ color: "var(--gray)", marginBottom: "1rem" }}>Great session — your vocabulary is growing!</p>
                   <button className="btn btn-primary" onClick={() => {
@@ -2285,7 +2285,7 @@ export default function PracticePage() {
                       color: "#ef4444",
                     }}
                   >
-                    ⚠️ {uploadError}
+                    <i className="fas fa-triangle-exclamation" style={{ marginRight: 5 }} />{uploadError}
                   </div>
                 )}
 
@@ -2620,8 +2620,8 @@ export default function PracticePage() {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                <span style={{ fontSize: "1.75rem" }}>
-                  {sessionSummary.score / sessionSummary.total >= 0.8 ? "🏆" : sessionSummary.score / sessionSummary.total >= 0.5 ? "👍" : "💪"}
+                <span style={{ fontSize: "1.5rem", color: "var(--accent)" }}>
+                  <i className={`fas ${sessionSummary.score / sessionSummary.total >= 0.8 ? "fa-trophy" : sessionSummary.score / sessionSummary.total >= 0.5 ? "fa-thumbs-up" : "fa-dumbbell"}`} />
                 </span>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>
@@ -2886,7 +2886,7 @@ export default function PracticePage() {
                 <div style={{ display: "flex", gap: "0.6rem", alignItems: "flex-end" }}>
                   <textarea
                     rows={2}
-                    placeholder={tutorListening ? "🎤 Listening… tap mic to send" : tutorTranscribing ? "⏳ Transcribing…" : "Type your message or use the mic…"}
+                    placeholder={tutorListening ? "Listening… tap mic to send" : tutorTranscribing ? "Transcribing…" : "Type your message or use the mic…"}
                     value={tutorListening || tutorTranscribing ? "" : tutorInput}
                     onChange={(e) => setTutorInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -2962,7 +2962,7 @@ export default function PracticePage() {
                 </div>
 
                 <p style={{ marginTop: "0.75rem", fontSize: "0.78rem", color: "var(--gray)", textAlign: "center" }}>
-                  Press <kbd style={{ background: "var(--light)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 5px", fontSize: "0.78rem" }}>Enter</kbd> to send · <kbd style={{ background: "var(--light)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 5px", fontSize: "0.78rem" }}>Shift+Enter</kbd> for new line · or use the 🎤 mic
+                  Press <kbd style={{ background: "var(--light)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 5px", fontSize: "0.78rem" }}>Enter</kbd> to send · <kbd style={{ background: "var(--light)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 5px", fontSize: "0.78rem" }}>Shift+Enter</kbd> for new line · or use the <i className="fas fa-microphone" /> mic
                 </p>
               </div>
             </div>

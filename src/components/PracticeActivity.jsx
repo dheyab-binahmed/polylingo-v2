@@ -57,7 +57,7 @@ export default function PracticeActivity({ userId, today = 0, goal = 10, streak 
           ))}
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 6, fontSize: "0.72rem", color: "var(--text-muted)" }}>
-          <span>🔥 {streak} day streak</span>
+          <span><i className="fas fa-fire" style={{ color: "#f59e0b", marginRight: 4 }} />{streak} day streak</span>
           <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
             Less
             {[0, 4, 9, 19, 25].map((m) => (
