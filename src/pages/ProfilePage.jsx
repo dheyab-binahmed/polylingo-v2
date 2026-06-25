@@ -155,7 +155,6 @@ function EditProfileModal({ user, onClose, onSave }) {
   const [form, setForm] = useState({
     full_name: user?.full_name || "",
     username: user?.username || "",
-    email: user?.email || "",
     age: user?.age || "",
     preferred_language: user?.preferred_language || "",
     selected_level: user?.estimated_level || user?.selected_level || "",
@@ -201,14 +200,6 @@ function EditProfileModal({ user, onClose, onSave }) {
         setFormError("Username can only contain letters, numbers, '.' and '_'");
         return;
       }
-    }
-    if (!form.email.trim()) {
-      setFormError("Email is required");
-      return;
-    }
-    if (!form.email.includes("@")) {
-      setFormError("Please enter a valid email address");
-      return;
     }
     onSave({ ...form, username });
   };
@@ -377,12 +368,6 @@ function EditProfileModal({ user, onClose, onSave }) {
             key: "full_name",
             type: "text",
             placeholder: "Your name",
-          },
-          {
-            label: "Email",
-            key: "email",
-            type: "email",
-            placeholder: "you@example.com",
           },
           { label: "Age", key: "age", type: "number", placeholder: "25" },
         ].map((f) => (
@@ -682,7 +667,6 @@ export default function ProfilePage() {
       await updateUser({
         full_name: form.full_name,
         username: form.username || undefined,
-        email: form.email,
         age: form.age,
         preferred_language: form.preferred_language,
         selected_level: form.selected_level || undefined,
@@ -763,7 +747,14 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div className="pp-page">
+    <div className="pp-page pg-wrapper">
+      {/* ── Animated background + floating glyphs (shared with Dashboard) ── */}
+      <div className="dash-bg" aria-hidden="true" />
+      <div className="dash-glyphs" aria-hidden="true">
+        {["あ", "Ñ", "文", "ß", "한"].map((g, i) => (
+          <span key={i} className="dash-glyph">{g}</span>
+        ))}
+      </div>
       <div className="pp-shell">
         {/* ── Toasts ── */}
         <AnimatePresence>
