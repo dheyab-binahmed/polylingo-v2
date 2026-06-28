@@ -100,6 +100,13 @@ export default function AssessmentPage() {
   return (
     <AssessmentContext.Provider value={{ data, update, reset, goNext, goPrev }}>
       <div id="testing-page">
+        {/* Futuristic animated background + floating glyphs */}
+        <div className="dash-bg" aria-hidden="true" />
+        <div className="dash-glyphs" aria-hidden="true">
+          {["あ", "Ñ", "文", "ß", "한"].map((g, i) => (
+            <span key={i} className="dash-glyph">{g}</span>
+          ))}
+        </div>
         {resumeStep && (
           <div style={{ maxWidth: 700, margin: "1rem auto 0", background: "rgba(99,102,241,0.08)", border: "1.5px solid rgba(99,102,241,0.3)", borderRadius: 12, padding: "0.9rem 1.15rem", display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
             <i className="fas fa-rotate-left" style={{ color: "#6366f1", fontSize: "1.1rem" }} />

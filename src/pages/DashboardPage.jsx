@@ -14,6 +14,83 @@ function buildEmptyWeekData() {
   return days.map((day) => ({ day, minutes: 0 }));
 }
 
+// Small word bank per language for the cycling word generator in the hero.
+const WORD_BANK = {
+  english:    ["Hello", "Thanks", "Friend", "Water", "Morning", "Happy", "Travel", "Book", "Family", "Dream"],
+  german:     ["Hallo", "Danke", "Freund", "Wasser", "Morgen", "Glücklich", "Reisen", "Buch", "Familie", "Traum"],
+  french:     ["Bonjour", "Merci", "Ami", "Eau", "Matin", "Heureux", "Voyage", "Livre", "Famille", "Rêve"],
+  spanish:    ["Hola", "Gracias", "Amigo", "Agua", "Mañana", "Feliz", "Viaje", "Libro", "Familia", "Sueño"],
+  italian:    ["Ciao", "Grazie", "Amico", "Acqua", "Mattino", "Felice", "Viaggio", "Libro", "Famiglia", "Sogno"],
+  portuguese: ["Olá", "Obrigado", "Amigo", "Água", "Manhã", "Feliz", "Viagem", "Livro", "Família", "Sonho"],
+  dutch:      ["Hallo", "Dank", "Vriend", "Water", "Ochtend", "Blij", "Reizen", "Boek", "Familie", "Droom"],
+  japanese:   ["こんにちは", "ありがとう", "友達", "水", "朝", "幸せ", "旅行", "本", "家族", "夢"],
+  korean:     ["안녕하세요", "감사합니다", "친구", "물", "아침", "행복", "여행", "책", "가족", "꿈"],
+  chinese:    ["你好", "谢谢", "朋友", "水", "早上", "快乐", "旅行", "书", "家庭", "梦"],
+  arabic:     ["مرحبا", "شكرا", "صديق", "ماء", "صباح", "سعيد", "سفر", "كتاب", "عائلة", "حلم"],
+  russian:    ["Привет", "Спасибо", "Друг", "Вода", "Утро", "Счастливый", "Путешествие", "Книга", "Семья", "Мечта"],
+  turkish:    ["Merhaba", "Teşekkür", "Arkadaş", "Su", "Sabah", "Mutlu", "Seyahat", "Kitap", "Aile", "Rüya"],
+};
+
+// A small pill that cycles through words in the chosen language every 10s with a
+// smooth vertical "push" transition (current word slides up, next rises in).
+function WordTicker({ language }) {
+  const key = (language || "english").trim().toLowerCase();
+  const words = WORD_BANK[key] || WORD_BANK.english;
+  const LH = 1.5; // line height in em
+  const [idx, setIdx] = useState(0);
+  const [anim, setAnim] = useState(true);
+
+  useEffect(() => { setIdx(0); setAnim(true); }, [key]);
+  useEffect(() => {
+    const t = setInterval(() => setIdx((i) => i + 1), 10000);
+    return () => clearInterval(t);
+  }, [key]);
+  useEffect(() => {
+    if (idx === words.length) {
+      // reached the duplicated first word — after the slide, snap back instantly
+      const t = setTimeout(() => { setAnim(false); setIdx(0); }, 640);
+      return () => clearTimeout(t);
+    }
+    setAnim(true);
+  }, [idx, words.length]);
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.5rem",
+        background: "color-mix(in srgb, var(--primary) 14%, transparent)",
+        border: "1px solid color-mix(in srgb, var(--primary) 32%, transparent)",
+        color: "var(--primary)",
+        padding: "0.4rem 0.95rem",
+        borderRadius: "99px",
+        fontSize: "0.82rem",
+        fontWeight: 700,
+        backdropFilter: "blur(10px)",
+        WebkitBackdropFilter: "blur(10px)",
+        boxShadow: "0 8px 24px rgba(99,102,241,0.16)",
+      }}
+    >
+      <i className="fas fa-language" style={{ fontSize: "0.85rem" }} />
+      <span style={{ display: "inline-block", overflow: "hidden", height: `${LH}em` }}>
+        <span
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            transform: `translateY(-${idx * LH}em)`,
+            transition: anim ? "transform 0.6s cubic-bezier(0.22, 1, 0.36, 1)" : "none",
+          }}
+        >
+          {[...words, words[0]].map((w, i) => (
+            <span key={i} style={{ height: `${LH}em`, lineHeight: `${LH}em`, whiteSpace: "nowrap" }}>{w}</span>
+          ))}
+        </span>
+      </span>
+    </span>
+  );
+}
+
 // Map a 0–100 score to a CEFR band (mirrors the Assessment ResultsStep bands)
 function scoreToCEFR(s) {
   const v = Math.max(0, Math.min(100, Number(s) || 0));
@@ -422,26 +499,8 @@ export default function DashboardPage() {
           }}
         >
           <div>
-            {/* glass eyebrow pill */}
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.45rem",
-                background: "color-mix(in srgb, var(--bg-card) 70%, transparent)",
-                border: "1px solid color-mix(in srgb, var(--primary) 30%, transparent)",
-                color: "var(--primary)",
-                padding: "0.35rem 0.9rem",
-                borderRadius: "99px",
-                fontSize: "0.78rem",
-                fontWeight: 700,
-                backdropFilter: "blur(8px)",
-                WebkitBackdropFilter: "blur(8px)",
-                boxShadow: "0 8px 24px rgba(109,95,247,0.12)",
-              }}
-            >
-              {streak > 0 ? <><i className="fas fa-fire" style={{ color: "#f59e0b" }} /> {streak}-day streak</> : <><i className="fas fa-bolt" /> Your dashboard</>}
-            </span>
+            {/* cycling word-of-the-moment in the chosen language */}
+            <WordTicker language={language} />
             <h1
               className="dash-grad-title"
               style={{
@@ -458,29 +517,27 @@ export default function DashboardPage() {
               Studying <strong style={{ color: "var(--text-base)" }}>{language}</strong> · level <strong style={{ color: "var(--text-base)" }}>{level}</strong>
             </p>
           </div>
-          <button
-            onClick={() => setShowRetakeConfirm(true)}
-            title="Retake assessment to update your level"
+          <span
+            title="Your current practice streak"
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "0.5rem",
-              background: "color-mix(in srgb, var(--bg-card) 70%, transparent)",
+              background: "color-mix(in srgb, var(--primary) 14%, transparent)",
               color: "var(--primary)",
               padding: "0.65rem 1.3rem",
               borderRadius: "99px",
-              fontSize: "0.88rem",
-              fontWeight: 700,
-              boxShadow: "0 8px 24px rgba(109,95,247,0.14)",
-              backdropFilter: "blur(8px)",
-              WebkitBackdropFilter: "blur(8px)",
+              fontSize: "0.9rem",
+              fontWeight: 800,
+              boxShadow: "0 8px 24px rgba(99,102,241,0.16)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
               flexShrink: 0,
-              border: "1px solid color-mix(in srgb, var(--primary) 35%, transparent)",
-              cursor: "pointer",
+              border: "1px solid color-mix(in srgb, var(--primary) 32%, transparent)",
             }}
           >
-            <i className="fas fa-graduation-cap" /> Level: {level}
-          </button>
+            <i className="fas fa-fire" style={{ color: "#f59e0b" }} /> {streak}-day streak
+          </span>
         </div>
 
         {/* ── Stat Cards ── */}

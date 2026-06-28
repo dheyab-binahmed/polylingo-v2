@@ -30,7 +30,6 @@ import { formatErrorForDisplay, logError } from "../utils/errorHandler";
 import { getContent } from "../data/practiceContent";
 import { logActivityMinutes } from "../utils/activityLog";
 import PracticeActivity from "../components/PracticeActivity";
-import { createTTSPlayer } from "../utils/ttsPlayer";
 
 // ─────────────────────────────────────────────────────────────────
 // HELPERS
@@ -41,6 +40,25 @@ const fmt = (s) =>
     .padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const TTS_FETCH_TIMEOUT_MS = 8000; // wait for ElevenLabs instead of the browser robot fallback
+const TUTOR_TTS_RATE = "+25%";
+
+function audioFromBase64(audioBase64, contentType = "audio/mpeg") {
+  const raw = String(audioBase64 || "");
+  const base64 = raw.includes(",") ? raw.split(",").pop() : raw;
+  const binary = window.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([bytes], { type: contentType }));
+  const audio = new Audio(url);
+  audio.dataset.objectUrl = url;
+  return audio;
+}
+
+function releaseAudioUrl(audio) {
+  const url = audio?.dataset?.objectUrl;
+  if (url) URL.revokeObjectURL(url);
+}
 
 async function speakTTS(text, lang, onStart, onEnd) {
   // Try neural TTS via backend first, fall back to browser TTS.
@@ -55,67 +73,79 @@ async function speakTTS(text, lang, onStart, onEnd) {
       const data = await res.json();
       if (data.audioBase64) {
         await new Promise((resolve) => {
-          const audio = new Audio(`data:audio/mpeg;base64,${data.audioBase64}`);
+          const audio = audioFromBase64(data.audioBase64);
           // Retain a reference so the element isn't garbage-collected mid-play.
           _currentTTSAudio = audio;
           let settled = false;
-          const done = () => { if (!settled) { settled = true; onEnd?.(); resolve(); } };
+          const done = () => {
+            if (!settled) {
+              settled = true;
+              releaseAudioUrl(audio);
+              onEnd?.();
+              resolve();
+            }
+          };
+          const fallback = () => {
+            if (settled) return;
+            settled = true;
+            releaseAudioUrl(audio);
+            _browserSpeak(text, lang, onStart, onEnd).finally(resolve);
+          };
           onStart?.();
           audio.onended = done;
-          audio.onerror = () => {
-            if (settled) return;
-            settled = true;
-            _browserSpeak(text, lang, onStart, onEnd);
-            resolve();
-          };
+          audio.onerror = fallback;
           // play() rejects when the browser blocks autoplay — fall back to browser TTS
-          audio.play().catch(() => {
-            if (settled) return;
-            settled = true;
-            _browserSpeak(text, lang, onStart, onEnd);
-            resolve();
-          });
+          audio.play().catch(fallback);
         });
         return;
       }
     }
   } catch (_) {}
   // Browser TTS fallback
-  _browserSpeak(text, lang, onStart, onEnd);
+  await _browserSpeak(text, lang, onStart, onEnd);
 }
 
 // Holds the currently-playing TTS <audio> so the browser can't GC it mid-play.
 let _currentTTSAudio = null;
 
 function _browserSpeak(text, lang, onStart, onEnd) {
-  if (!("speechSynthesis" in window)) { onEnd?.(); return; }
-  window.speechSynthesis.cancel();
-  const doSpeak = () => {
-    const utt = new SpeechSynthesisUtterance(text.replace(/"/g, ""));
-    utt.lang = lang || "en-US";
-    utt.rate = 0.88;
-    utt.pitch = 1;
-    utt.volume = 0.9;
-    const voices = window.speechSynthesis.getVoices();
-    const v = voices.find((v) => v.lang === lang)
-           || voices.find((v) => v.lang.startsWith((lang || "en").split("-")[0]))
-           || voices[0];
-    if (v) utt.voice = v;
-    utt.onstart = () => onStart?.();
-    utt.onend   = () => onEnd?.();
-    utt.onerror = () => onEnd?.();
-    window.speechSynthesis.speak(utt);
-  };
-  const voices = window.speechSynthesis.getVoices();
-  if (voices.length > 0) {
-    doSpeak();
-  } else {
-    const handler = () => {
-      window.speechSynthesis.removeEventListener("voiceschanged", handler);
-      doSpeak();
+  return new Promise((resolve) => {
+    if (!("speechSynthesis" in window)) { onEnd?.(); resolve(); return; }
+    window.speechSynthesis.cancel();
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      onEnd?.();
+      resolve();
     };
-    window.speechSynthesis.addEventListener("voiceschanged", handler);
-  }
+    const doSpeak = () => {
+      const utt = new SpeechSynthesisUtterance(text.replace(/"/g, ""));
+      utt.lang = lang || "en-US";
+    utt.rate = 1.0;
+      utt.pitch = 1;
+      utt.volume = 0.9;
+      const voices = window.speechSynthesis.getVoices();
+      const v = voices.find((v) => v.lang === lang)
+             || voices.find((v) => v.lang.startsWith((lang || "en").split("-")[0]))
+             || voices[0];
+      if (v) utt.voice = v;
+      utt.onstart = () => onStart?.();
+      utt.onend = finish;
+      utt.onerror = finish;
+      window.speechSynthesis.speak(utt);
+    };
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      doSpeak();
+    } else {
+      const handler = () => {
+        window.speechSynthesis.removeEventListener("voiceschanged", handler);
+        doSpeak();
+      };
+      window.speechSynthesis.addEventListener("voiceschanged", handler);
+    }
+  });
 }
 
 // Static metadata — order here = display order ("Talk with AI" first)
@@ -507,10 +537,15 @@ export default function PracticePage() {
   const chatEndRef = useRef(null);
   const chatContainerRef = useRef(null);
   const tutorStreamRef = useRef(null);  // AbortController for active SSE stream
-  const tutorPlayerRef = useRef(null);   // Active shared TTS player (one voice/reply)
+  const tutorReplyBufferRef = useRef(""); // Full assistant text from the active stream
+  const ttsQueueRef = useRef([]);        // Sentences waiting for TTS playback
+  const ttsBusyRef = useRef(false);      // Whether TTS is currently speaking
+  const tutorSpeakingRef = useRef(false);
   const tutorVoiceLoopRef = useRef(false); // Auto voice loop on/off
   const tutorMicRecRef = useRef(null);   // Active MediaRecorder for voice loop
   const tutorMicChunksRef = useRef([]);  // Audio chunks for voice loop
+  const vadRef = useRef(null);           // Silero VAD instance (hands-free auto loop)
+  const vadActiveRef = useRef(false);    // true when the VAD-driven loop is in use
   const [tutorVoiceLoop, setTutorVoiceLoop] = useState(false);
   const [tutorTranscribing, setTutorTranscribing] = useState(false);
 
@@ -596,8 +631,11 @@ export default function PracticePage() {
     // Stop anything in flight from the previous level/language
     tutorStreamRef.current?.abort();
     tutorStreamRef.current = null;
-    _cancelTutorTTS();
+    window.speechSynthesis?.cancel();
     try { _currentTTSAudio?.pause(); _currentTTSAudio = null; } catch (_) {}
+    ttsQueueRef.current = [];
+    ttsBusyRef.current = false;
+    setTutorSpeaking(false);
     setTutorLoading(false);
 
     setTutorMessages([
@@ -1110,37 +1148,69 @@ export default function PracticePage() {
 
   // ── Tutor TTS pipeline ────────────────────────────────────────────────────
   // Synthesis for each sentence starts the MOMENT it arrives (parallel with
-  // playback + ongoing streaming), so playback is gapless. The shared player
-  // guarantees ONE voice per reply (neural OR a single pinned browser voice,
-  // never interleaved) and one audio channel — see src/utils/ttsPlayer.js.
-  const _cancelTutorTTS = () => {
-    try { tutorPlayerRef.current?.cancel(); } catch (_) {}
-    tutorPlayerRef.current = null;
-    setTutorSpeaking(false);
-  };
-
-  const _newTutorPlayer = () => {
-    _cancelTutorTTS();
-    const player = createTTSPlayer({
-      lang: ttsLang,
-      fetchAudio: (sentence) => fetchTTS(sentence, ttsLang),
-      onStart: () => setTutorSpeaking(true),
-      onEnd: () => {
-        setTutorSpeaking(false);
-        // Auto-restart mic if the voice loop is on and not already recording.
-        if (tutorVoiceLoopRef.current && !tutorMicRecRef.current) {
-          setTimeout(() => _startTutorMic(), 450);
+  // playback + ongoing streaming), so playback is gapless instead of pausing to
+  // fetch audio before every sentence. ttsQueueRef holds in-flight promises.
+  const _playTTSAudio = (sentence, audioBase64) =>
+    new Promise((resolve) => {
+      if (!audioBase64) { speakTTS(sentence, ttsLang, () => {}, resolve); return; }
+      const audio = audioFromBase64(audioBase64);
+      _currentTTSAudio = audio; // retain so it isn't GC'd mid-play
+      let done = false;
+      const finish = () => {
+        if (!done) {
+          done = true;
+          releaseAudioUrl(audio);
+          resolve();
         }
-      },
+      };
+      const fallback = () => {
+        if (!done) {
+          done = true;
+          releaseAudioUrl(audio);
+          speakTTS(sentence, ttsLang, () => {}, resolve);
+        }
+      };
+      audio.onended = finish;
+      audio.onerror = fallback;
+      audio.play().catch(fallback);
     });
-    tutorPlayerRef.current = player;
-    return player;
+
+  const _drainTTSQueue = async () => {
+    if (ttsBusyRef.current) return;
+    ttsBusyRef.current = true;
+    tutorSpeakingRef.current = true;
+    setTutorSpeaking(true);
+    while (ttsQueueRef.current.length > 0) {
+      const { sentence, audioBase64 } = await ttsQueueRef.current.shift();
+      await _playTTSAudio(sentence, audioBase64);
+    }
+    ttsBusyRef.current = false;
+    // A sentence may have been enqueued in the gap — keep draining if so.
+    if (ttsQueueRef.current.length > 0) { _drainTTSQueue(); return; }
+    tutorSpeakingRef.current = false;
+    setTutorSpeaking(false);
+    // Hand the turn back to the learner when the loop is on.
+    if (tutorVoiceLoopRef.current) {
+      if (vadActiveRef.current && vadRef.current) {
+        setTimeout(() => { try { vadRef.current.start(); setTutorListening(true); } catch (_) {} }, 900);
+      } else if (!tutorMicRecRef.current) {
+        setTimeout(() => _startVadLoop(), 900);
+      }
+    }
   };
 
   const _enqueueSentence = (sentence) => {
     if (!sentence) return;
-    if (!tutorPlayerRef.current) _newTutorPlayer();
-    tutorPlayerRef.current.enqueue(sentence);
+    // Start synthesis right away; store the promise so playback stays in order.
+    const neuralJob = fetchTTS(sentence, ttsLang, { rate: TUTOR_TTS_RATE })
+      .then((r) => ({ sentence, audioBase64: r?.audioBase64 }))
+      .catch(() => ({ sentence, audioBase64: null }));
+    const timeoutJob = new Promise((resolve) =>
+      setTimeout(() => resolve({ sentence, audioBase64: null }), TTS_FETCH_TIMEOUT_MS)
+    );
+    const job = Promise.race([neuralJob, timeoutJob]);
+    ttsQueueRef.current.push(job);
+    _drainTTSQueue();
   };
 
   const sendTutorChat = (overrideText, speechAnalytics = null) => {
@@ -1150,8 +1220,15 @@ export default function PracticePage() {
     // Cancel any in-flight stream + TTS
     tutorStreamRef.current?.abort();
     tutorStreamRef.current = null;
-    _cancelTutorTTS();
+    window.speechSynthesis?.cancel();
     try { _currentTTSAudio?.pause(); _currentTTSAudio = null; } catch (_) {}
+    try { vadRef.current?.pause(); } catch (_) {}
+    ttsQueueRef.current = [];
+    ttsBusyRef.current = false;
+    tutorSpeakingRef.current = false;
+    tutorReplyBufferRef.current = "";
+    setTutorSpeaking(false);
+    setTutorListening(false);
     setTutorInput("");
     setTutorError("");
     setTutorSuggestions([]); // clear old reply chips while the tutor responds
@@ -1171,6 +1248,7 @@ export default function PracticePage() {
       { message: msg, history: historyForApi, language: lang, level: practiceLevel, speech_analytics: speechAnalytics },
       {
         onToken: (token) => {
+          tutorReplyBufferRef.current += token || "";
           setTutorMessages((prev) => {
             const msgs = [...prev];
             const last = msgs[msgs.length - 1];
@@ -1180,16 +1258,15 @@ export default function PracticePage() {
             return msgs;
           });
         },
-        onSentence: (sentence) => {
-          _enqueueSentence(sentence);
-        },
+        // Per-sentence TTS caused pauses at every full stop. We now speak the
+        // whole reply as ONE continuous clip in onDone instead (no gaps).
+        onSentence: () => {},
         onDone: ({ correction, vocab_tip }) => {
-          let replyText = "";
+          const replyText = tutorReplyBufferRef.current.trim();
           setTutorMessages((prev) => {
             const msgs = [...prev];
             const last = msgs[msgs.length - 1];
             if (last?.streaming) {
-              replyText = last.content || "";
               msgs[msgs.length - 1] = {
                 ...last,
                 correction: correction || null,
@@ -1200,6 +1277,8 @@ export default function PracticePage() {
             return msgs;
           });
           setTutorLoading(false);
+          // Speak the full reply as a single, gapless clip.
+          if (replyText) _enqueueSentence(replyText);
           // Beginners freeze on an open chat — offer 2–3 tappable replies.
           if (["A1", "A2"].includes(practiceLevel) && replyText) {
             fetchTutorSuggestions({ message: replyText, language: lang, level: practiceLevel })
@@ -1209,6 +1288,7 @@ export default function PracticePage() {
         },
         onError: () => {
           setTutorError("Couldn't reach the tutor. Please check your connection and try again.");
+          tutorReplyBufferRef.current = "";
           setTutorMessages((prev) => {
             const msgs = [...prev];
             const last = msgs[msgs.length - 1];
@@ -1232,6 +1312,38 @@ export default function PracticePage() {
   };
 
   // ── Start mic recording for tutor (Whisper-based) ──────────────────────────
+  // Shared: transcribe one captured utterance (from MediaRecorder or VAD) and send it.
+  const _handleUtterance = async (blob) => {
+    setTutorTranscribing(true);
+    try {
+      const result = await transcribeAudio(blob, (ttsLang || "en").slice(0, 2));
+      const { transcript, speech_analytics } = result;
+      setTutorTranscribing(false);
+      if (transcript?.trim()) {
+        setTutorInput(transcript.trim());
+        sendTutorChat(transcript.trim(), speech_analytics);
+      } else if (tutorVoiceLoopRef.current) {
+        // nothing intelligible — keep listening
+        if (vadActiveRef.current && vadRef.current) {
+          try { vadRef.current.start(); setTutorListening(true); } catch (_) {}
+        } else {
+          setTimeout(() => _startTutorMic(), 400);
+        }
+      }
+    } catch {
+      setTutorTranscribing(false);
+      // Fallback: browser speech recognition
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SR) {
+        const r = new SR();
+        r.lang = ttsLang;
+        r.interimResults = false;
+        r.onresult = (e) => { setTutorInput(e.results[0][0].transcript); sendTutorChat(e.results[0][0].transcript); };
+        r.start();
+      }
+    }
+  };
+
   const _startTutorMic = async () => {
     if (tutorMicRecRef.current) return; // already recording
     try {
@@ -1254,32 +1366,8 @@ export default function PracticePage() {
         stream.getTracks().forEach((t) => t.stop());
         tutorMicRecRef.current = null;
         setTutorListening(false);
-        setTutorTranscribing(true);
-
         const blob = new Blob(tutorMicChunksRef.current, { type: mimeType || "audio/mp4" });
-        try {
-          const result = await transcribeAudio(blob, (ttsLang || "en").slice(0, 2));
-          const { transcript, speech_analytics } = result;
-          setTutorTranscribing(false);
-          if (transcript?.trim()) {
-            setTutorInput(transcript.trim());
-            sendTutorChat(transcript.trim(), speech_analytics);
-          } else if (tutorVoiceLoopRef.current) {
-            // empty — restart mic
-            setTimeout(() => _startTutorMic(), 400);
-          }
-        } catch {
-          setTutorTranscribing(false);
-          // Fallback: browser STT
-          const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-          if (SR) {
-            const r = new SR();
-            r.lang = ttsLang;
-            r.interimResults = false;
-            r.onresult = (e) => { setTutorInput(e.results[0][0].transcript); sendTutorChat(e.results[0][0].transcript); };
-            r.start();
-          }
-        }
+        _handleUtterance(blob);
       };
 
       recorder.start();
@@ -1295,6 +1383,78 @@ export default function PracticePage() {
       tutorMicRecRef.current.stop();
     }
   };
+
+  // ── Hands-free auto loop powered by Silero VAD (@ricky0123/vad-web) ──────────
+  // Detects when the learner stops speaking and auto-submits the turn, so the
+  // conversation flows without tapping the mic.
+  const _startVadLoop = async () => {
+    if (vadRef.current) {
+      try { vadRef.current.start(); setTutorListening(true); return; } catch (_) {}
+    }
+    try {
+      // Local package; its worklet/model are served from our own origin
+      // (copied to the web root by scripts/copy-vad-assets.mjs).
+      const { MicVAD, utils } = await import("@ricky0123/vad-web");
+      const vad = await MicVAD.new({
+        model: "legacy",
+        baseAssetPath: "/",
+        onnxWASMBasePath: "/",
+        ortConfig: (ort) => {
+          ort.env.wasm.numThreads = 1;
+        },
+        minSpeechFrames: 3,        // ignore tiny blips
+        redemptionFrames: 5,       // shorter end-of-speech silence before submitting
+        positiveSpeechThreshold: 0.5,
+        negativeSpeechThreshold: 0.4,
+        onVADMisfire: () => console.log("[VAD] misfire"),
+        onSpeechStart: () => {
+          if (tutorSpeakingRef.current || ttsBusyRef.current) {
+            try { vadRef.current?.pause(); } catch (_) {}
+            setTutorListening(false);
+            return;
+          }
+          console.log("[VAD] speech start");
+          setTutorListening(true);
+        },
+        onSpeechEnd: (audio) => {
+          if (!tutorVoiceLoopRef.current || tutorSpeakingRef.current || ttsBusyRef.current) {
+            try { vadRef.current?.pause(); } catch (_) {}
+            setTutorListening(false);
+            return;
+          }
+          console.log("[VAD] speech end → submitting");
+          // user stopped talking → pause VAD (so it ignores the tutor's voice) and submit
+          try { vadRef.current?.pause(); } catch (_) {}
+          setTutorListening(false);
+          const wav = utils.encodeWAV(audio);
+          _handleUtterance(new Blob([wav], { type: "audio/wav" }));
+        },
+      });
+      vadRef.current = vad;
+      vadActiveRef.current = true;
+      vad.start();
+      setTutorListening(true);
+      setTutorError("");
+      console.log("[VAD] Silero VAD active — hands-free auto loop on");
+    } catch (e) {
+      // Do not fake auto-loop with the plain recorder: it cannot auto-stop on silence.
+      console.warn("[VAD] failed to start:", e);
+      const detail = e?.message ? ` (${e.message})` : "";
+      vadActiveRef.current = false;
+      tutorVoiceLoopRef.current = false;
+      setTutorVoiceLoop(false);
+      setTutorListening(false);
+      setTutorError(`Auto voice loop could not start Silero VAD${detail}. Refresh the page and allow microphone access, then try again.`);
+    }
+  };
+
+  const _stopVadLoop = () => {
+    try { vadRef.current?.pause(); } catch (_) {}
+    setTutorListening(false);
+  };
+
+  // Release the VAD audio graph when leaving the page
+  useEffect(() => () => { try { vadRef.current?.destroy(); } catch (_) {} }, []);
 
   // While the mic is recording the textarea is disabled, so Enter never reaches
   // it. Listen at the window level so Enter stops recording (which then
@@ -1313,7 +1473,10 @@ export default function PracticePage() {
 
   const startVoiceInput = () => {
     if (tutorListening) { _stopTutorMic(); return; }
-    _cancelTutorTTS();
+    window.speechSynthesis?.cancel();
+    setTutorSpeaking(false);
+    ttsQueueRef.current = [];
+    ttsBusyRef.current = false;
     _startTutorMic();
   };
 
@@ -1321,10 +1484,13 @@ export default function PracticePage() {
     const next = !tutorVoiceLoop;
     tutorVoiceLoopRef.current = next;
     setTutorVoiceLoop(next);
-    if (next && !tutorListening && !tutorSpeaking) {
-      setTimeout(() => _startTutorMic(), 300);
+    if (next) {
+      // hands-free: Silero VAD listens and auto-submits when you stop talking
+      if (!tutorListening && !tutorSpeaking) setTimeout(() => _startVadLoop(), 300);
+    } else {
+      _stopVadLoop();
+      if (tutorListening) _stopTutorMic();
     }
-    if (!next && tutorListening) _stopTutorMic();
   };
 
   // ─────────────────────────────────────────────────────────────────
@@ -1332,6 +1498,13 @@ export default function PracticePage() {
   // ─────────────────────────────────────────────────────────────────
   return (
     <div id="practice-page">
+      {/* Futuristic animated background + floating glyphs */}
+      <div className="dash-bg" aria-hidden="true" />
+      <div className="dash-glyphs" aria-hidden="true">
+        {["あ", "Ñ", "文", "ß", "한"].map((g, i) => (
+          <span key={i} className="dash-glyph">{g}</span>
+        ))}
+      </div>
       <div className="container">
         {/* ── Page header: language badge + level selector + streak + daily goal ── */}
         <div style={{ paddingTop: "2rem", marginBottom: "1.5rem" }}>
@@ -1339,13 +1512,14 @@ export default function PracticePage() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.75rem", flexWrap: "wrap" }}>
             <span
               style={{
-                background: "rgba(99,102,241,0.1)",
-                border: "1px solid rgba(99,102,241,0.25)",
-                color: "#6366f1",
-                padding: "0.45rem 1.2rem",
+                background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                color: "#fff",
+                padding: "0.55rem 1.3rem",
                 borderRadius: "99px",
                 fontSize: "0.88rem",
                 fontWeight: 700,
+                border: "none",
+                boxShadow: "0 8px 22px rgba(99,102,241,0.35)",
               }}
             >
               <i className="fas fa-book" style={{ marginRight: 6 }} />Practicing: {lang}
@@ -1366,15 +1540,16 @@ export default function PracticePage() {
                 updateUserProfile({ selected_level: newLevel }).catch(() => {});
               }}
               style={{
-                background: "rgba(99,102,241,0.08)",
-                border: "1px solid rgba(99,102,241,0.25)",
+                background: "var(--bg-card)",
+                border: "1.5px solid var(--primary)",
                 color: "var(--primary)",
-                padding: "0.4rem 0.9rem",
+                padding: "0.5rem 1rem",
                 borderRadius: "99px",
                 fontSize: "0.88rem",
                 fontWeight: 700,
                 cursor: "pointer",
                 outline: "none",
+                boxShadow: "0 4px 12px rgba(99,102,241,0.12)",
               }}
             >
               {["A1","A2","B1","B2","C1","C2"].map((lvl) => (
@@ -1386,19 +1561,19 @@ export default function PracticePage() {
           {/* Row 2: streak + daily goal */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "1.5rem", marginTop: "0.9rem", flexWrap: "wrap" }}>
             {/* Streak */}
-            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.88rem", fontWeight: 600, color: practiceStats.streak > 0 ? "#f59e0b" : "var(--gray)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", fontSize: "0.84rem", fontWeight: 700, color: practiceStats.streak > 0 ? "#f59e0b" : "var(--text-muted)", padding: "0.5rem 0.95rem", borderRadius: "99px", background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 4px 14px rgba(17,24,39,0.05)" }}>
               <i className="fas fa-fire" /> {practiceStats.streak} day streak
             </div>
             {/* Daily goal progress */}
-            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-              <span style={{ fontSize: "0.82rem", color: "var(--gray)", fontWeight: 600 }}>
-                <i className="fas fa-bullseye" style={{ marginRight: 5 }} />Today: {practiceStats.todayMinutes}/{practiceStats.dailyGoalMinutes} min
+            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", padding: "0.5rem 0.95rem", borderRadius: "99px", background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 4px 14px rgba(17,24,39,0.05)" }}>
+              <span style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 600, whiteSpace: "nowrap" }}>
+                <i className="fas fa-bullseye" style={{ marginRight: 5, color: "var(--primary)" }} />Today: {practiceStats.todayMinutes}/{practiceStats.dailyGoalMinutes} min
               </span>
-              <div style={{ width: 80, height: 6, background: "var(--border)", borderRadius: 99, overflow: "hidden" }}>
+              <div style={{ width: 70, height: 6, background: "var(--border)", borderRadius: 99, overflow: "hidden" }}>
                 <div style={{
                   height: "100%",
                   width: `${Math.min(100, (practiceStats.todayMinutes / (practiceStats.dailyGoalMinutes || 10)) * 100)}%`,
-                  background: practiceStats.todayMinutes >= practiceStats.dailyGoalMinutes ? "var(--secondary)" : "var(--primary)",
+                  background: practiceStats.todayMinutes >= practiceStats.dailyGoalMinutes ? "linear-gradient(90deg,#10b981,#34d399)" : "linear-gradient(90deg,#6366f1,#8b5cf6)",
                   borderRadius: 99,
                   transition: "width 0.4s ease",
                 }} />
@@ -1411,17 +1586,18 @@ export default function PracticePage() {
               const totalEx = (practiceStats.grammar.totalAttempted || 0) + (practiceStats.reading.totalAttempted || 0) + (practiceStats.listening.totalAttempted || 0);
               const pct = Math.min(100, Math.round((totalEx / Math.max(1, (idx + 1) * 20)) * 100));
               const nextLevel = idx < 5 ? levels[idx + 1] : null;
+              const chip = { display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0.95rem", borderRadius: "99px", background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 4px 14px rgba(17,24,39,0.05)" };
               return nextLevel ? (
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <span style={{ fontSize: "0.82rem", color: "var(--gray)", fontWeight: 600 }}>
-                    <i className="fas fa-arrow-trend-up" style={{ marginRight: 5 }} />{practiceLevel}→{nextLevel}: {pct}%
+                <div style={chip}>
+                  <span style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 600, whiteSpace: "nowrap" }}>
+                    <i className="fas fa-arrow-trend-up" style={{ marginRight: 5, color: "var(--primary)" }} />{practiceLevel}→{nextLevel}: {pct}%
                   </span>
-                  <div style={{ width: 80, height: 6, background: "var(--border)", borderRadius: 99, overflow: "hidden" }}>
+                  <div style={{ width: 70, height: 6, background: "var(--border)", borderRadius: 99, overflow: "hidden" }}>
                     <div style={{ height: "100%", width: `${pct}%`, background: "linear-gradient(90deg,#6366f1,#8b5cf6)", borderRadius: 99, transition: "width 0.4s ease" }} />
                   </div>
                 </div>
               ) : (
-                <span style={{ fontSize: "0.82rem", color: "#f59e0b", fontWeight: 700 }}><i className="fas fa-trophy" style={{ marginRight: 5 }} />Max Level!</span>
+                <span style={{ fontSize: "0.82rem", color: "#f59e0b", fontWeight: 700, padding: "0.5rem 0.95rem", borderRadius: "99px", background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 4px 14px rgba(17,24,39,0.05)" }}><i className="fas fa-trophy" style={{ marginRight: 5 }} />Max Level!</span>
               );
             })()}
           </div>
@@ -1434,28 +1610,8 @@ export default function PracticePage() {
               key={cat.id}
               className={`practice-category${activeTab === cat.id ? " active-cat" : ""}`}
               onClick={() => setActiveTab(cat.id)}
-              style={{
-                borderRadius: 22,
-                border: activeTab === cat.id ? "2px solid transparent" : "1.5px solid var(--border)",
-                background: activeTab === cat.id
-                  ? "linear-gradient(135deg, rgba(99,102,241,0.18), var(--bg-card) 72%)"
-                  : "var(--bg-card)",
-                boxShadow: activeTab === cat.id
-                  ? "0 16px 36px rgba(99,102,241,0.24)"
-                  : "0 6px 20px rgba(17,24,39,0.05)",
-                transform: activeTab === cat.id ? "translateY(-2px)" : "none",
-                transition: "transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease",
-              }}
-              onMouseOver={(e) => { e.currentTarget.style.transform = "translateY(-6px)"; e.currentTarget.style.boxShadow = "0 20px 40px rgba(17,24,39,0.14)"; }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = activeTab === cat.id ? "translateY(-2px)" : "none";
-                e.currentTarget.style.boxShadow = activeTab === cat.id ? "0 16px 36px rgba(99,102,241,0.24)" : "0 6px 20px rgba(17,24,39,0.05)";
-              }}
             >
-              <div
-                className="practice-icon"
-                style={{ borderRadius: 16, boxShadow: "0 8px 18px rgba(99,102,241,0.32)" }}
-              >
+              <div className="practice-icon">
                 <i className={`fas ${cat.icon}`} />
               </div>
               <h3>{cat.title}</h3>

@@ -313,13 +313,22 @@
    ===================================================================== */
 #practice-page .practice-category {
   border-radius: 22px;
-  border: 1.5px solid var(--border);
-  box-shadow: 0 6px 20px rgba(17, 24, 39, 0.05);
+  position: relative;
+  overflow: hidden;
 }
+/* Gradient-border ring that lights up on hover (futuristic) */
+#practice-page .practice-category::before {
+  content: "";
+  position: absolute; inset: 0; border-radius: inherit; padding: 1.5px;
+  pointer-events: none; opacity: 0.45; transition: opacity 0.3s var(--pl-ease);
+  background: linear-gradient(135deg, rgba(124,111,247,0.85), rgba(94,201,167,0.55), rgba(240,184,108,0.55));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+}
+#practice-page .practice-category:hover::before { opacity: 1; }
 #practice-page .practice-category:hover {
   transform: translateY(-6px);
-  box-shadow: 0 18px 38px rgba(17, 24, 39, 0.13);
-  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  box-shadow: 0 22px 46px rgba(124, 111, 247, 0.20);
 }
 #practice-page .practice-category.active-cat {
   border-color: transparent;
@@ -342,55 +351,15 @@
 .pg-wrapper { position: relative; overflow: hidden; }
 .pg-wrapper > * { position: relative; z-index: 1; }
 
-/* Animated breathing gradient + dot grid behind everything */
-.pg-wrapper .dash-bg,
-.pg-wrapper .dash-glyphs { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
-.pg-wrapper .dash-bg {
-  background:
-    radial-gradient(ellipse 55% 42% at 22% 16%, rgba(124,111,247,0.22) 0%, transparent 60%),
-    radial-gradient(ellipse 50% 40% at 82% 50%, rgba(94,201,167,0.14) 0%, transparent 55%),
-    radial-gradient(ellipse 42% 34% at 60% 88%, rgba(240,184,108,0.13) 0%, transparent 55%),
-    linear-gradient(175deg, var(--bg-page) 0%, color-mix(in srgb, var(--primary) 7%, var(--bg-page)) 50%, var(--bg-page) 100%);
-  animation: dashBgBreathe 18s ease-in-out infinite alternate;
-}
-.pg-wrapper .dash-bg::after {
-  content: ''; position: absolute; inset: 0;
-  background-image: radial-gradient(circle, rgba(124,111,247,0.08) 1px, transparent 1px);
-  background-size: 44px 44px;
-  -webkit-mask-image: radial-gradient(ellipse 85% 70% at 50% 28%, black 10%, transparent 100%);
-  mask-image: radial-gradient(ellipse 85% 70% at 50% 28%, black 10%, transparent 100%);
-}
+/* Background + glyph layers are defined once, globally, in section 12 so every
+   page (Dashboard included) renders them identically. Keyframes live here. */
 @keyframes dashBgBreathe {
   0%   { opacity: 0.85; transform: scale(1); }
   100% { opacity: 1;    transform: scale(1.04); }
 }
-
-/* Floating glass glyph tiles */
-.pg-wrapper .dash-glyph {
-  position: absolute;
-  display: flex; align-items: center; justify-content: center;
-  width: 64px; height: 64px; border-radius: 18px;
-  font-size: 1.7rem; font-weight: 800;
-  color: rgba(109,95,247,0.5);
-  background: rgba(255,255,255,0.5);
-  border: 1px solid rgba(155,138,251,0.4);
-  box-shadow: 0 14px 34px rgba(109,95,247,0.14), inset 0 0 14px rgba(255,255,255,0.7);
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-  animation: dashGlyphFloat 8s ease-in-out infinite;
-}
-.pg-wrapper .dash-glyph:nth-child(1) { top: 11%; left: 4%;  animation-delay: 0s; }
-.pg-wrapper .dash-glyph:nth-child(2) { top: 22%; left: 92%; animation-delay: -1.5s; }
-.pg-wrapper .dash-glyph:nth-child(3) { top: 60%; left: 2%;  animation-delay: -3s; }
-.pg-wrapper .dash-glyph:nth-child(4) { top: 80%; left: 94%; animation-delay: -4.2s; }
-.pg-wrapper .dash-glyph:nth-child(5) { top: 45%; left: 96%; animation-delay: -2.4s; }
 @keyframes dashGlyphFloat {
   0%, 100% { transform: translateY(0) rotate(-2deg); }
   50%      { transform: translateY(-20px) rotate(3deg); }
-}
-[data-dark="true"] .pg-wrapper .dash-glyph {
-  background: rgba(30,41,59,0.55); color: rgba(155,138,251,0.8);
-  border-color: rgba(129,140,248,0.3);
-  box-shadow: 0 14px 34px rgba(0,0,0,0.4), inset 0 0 14px rgba(129,140,248,0.12);
 }
 
 /* Glassmorphic cards (theme-safe translucency) */
@@ -419,6 +388,201 @@
   .pg-wrapper .dash-glyph,
   .pg-wrapper .dash-grad-title { animation: none; }
 }
+
+/* =====================================================================
+   12. FUTURISTIC look on Practice / Assessment / Community
+   (reuses the .dash-bg / .dash-glyph layers + keyframes above)
+   ===================================================================== */
+#practice-page, #testing-page, .plg-root, .pp-page { position: relative; overflow: hidden; }
+#practice-page > *, #testing-page > *, .plg-root > *, .pp-page > * { position: relative; z-index: 1; }
+
+/* Keep the background/glyph layers OUT of flow (the id-scoped `> *` rule above
+   would otherwise force them to position:relative and the 100vh glyph layer
+   would push the page down, leaving a big empty gap at the top). */
+.pg-wrapper > .dash-bg, .pg-wrapper > .dash-glyphs,
+#practice-page > .dash-bg, #practice-page > .dash-glyphs,
+#testing-page > .dash-bg, #testing-page > .dash-glyphs,
+.plg-root > .dash-bg, .plg-root > .dash-glyphs,
+.pp-page > .dash-bg, .pp-page > .dash-glyphs {
+  position: absolute !important;
+  z-index: 0 !important;
+}
+
+/* Global versions of the bg layers so they work under any page root */
+.dash-bg {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 55% 42% at 22% 16%, rgba(124,111,247,0.22) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 82% 50%, rgba(94,201,167,0.14) 0%, transparent 55%),
+    radial-gradient(ellipse 42% 34% at 60% 88%, rgba(240,184,108,0.13) 0%, transparent 55%),
+    linear-gradient(175deg, var(--bg-page) 0%, color-mix(in srgb, var(--primary) 7%, var(--bg-page)) 50%, var(--bg-page) 100%);
+  animation: dashBgBreathe 11s ease-in-out infinite alternate;
+}
+.dash-bg::after {
+  content: ''; position: absolute; inset: 0;
+  background-image: radial-gradient(circle, rgba(124,111,247,0.08) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse 85% 70% at 50% 28%, black 10%, transparent 100%);
+  mask-image: radial-gradient(ellipse 85% 70% at 50% 28%, black 10%, transparent 100%);
+}
+.dash-glyphs {
+  position: absolute; top: 0; left: 0; right: 0; height: 100vh;
+  overflow: hidden; z-index: 0; pointer-events: none;
+}
+.dash-glyph {
+  position: absolute;
+  display: flex; align-items: center; justify-content: center;
+  width: 60px; height: 60px; border-radius: 18px;
+  font-size: 1.6rem; font-weight: 800;
+  color: rgba(109,95,247,0.5);
+  background: rgba(255,255,255,0.45);
+  border: 1px solid rgba(155,138,251,0.35);
+  box-shadow: 0 14px 34px rgba(109,95,247,0.12), inset 0 0 14px rgba(255,255,255,0.6);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  opacity: 0.5;
+  animation: dashGlyphFloat 8s ease-in-out infinite;
+}
+.dash-glyph:nth-child(1) { top: 17%; left: 7%;  width: 54px; height: 54px; font-size: 1.4rem; animation-delay: 0s; }
+.dash-glyph:nth-child(2) { top: 33%; left: 88%; width: 72px; height: 72px; font-size: 1.95rem; animation-delay: -1.8s; }
+.dash-glyph:nth-child(3) { top: 70%; left: 6%;  width: 66px; height: 66px; font-size: 1.75rem; animation-delay: -3.4s; }
+.dash-glyph:nth-child(4) { top: 86%; left: 89%; width: 50px; height: 50px; font-size: 1.3rem; animation-delay: -4.6s; }
+.dash-glyph:nth-child(5) { top: 55%; left: 93%; width: 58px; height: 58px; font-size: 1.55rem; animation-delay: -2.6s; }
+[data-dark="true"] .dash-glyph {
+  background: rgba(30,41,59,0.55); color: rgba(155,138,251,0.8);
+  border-color: rgba(129,140,248,0.3);
+  box-shadow: 0 14px 34px rgba(0,0,0,0.4), inset 0 0 14px rgba(129,140,248,0.12);
+}
+
+/* Glass cards on each page (translucent + blur) */
+#practice-page .practice-exercises,
+#practice-page .practice-category:not(.active-cat),
+#testing-page .test-container,
+.plg-root .partner-grid > *,
+.pp-page .pp-group,
+.pp-page .pp-prefs {
+  background: color-mix(in srgb, var(--bg-card) 64%, transparent) !important;
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid color-mix(in srgb, var(--text-base) 8%, transparent);
+  box-shadow: 0 12px 40px rgba(31, 38, 135, 0.10);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-bg, .dash-glyph { animation: none; }
+}
+
+/* =====================================================================
+   13. PRACTICE ribbon (exercise-tabs) — glass pill bar
+   ===================================================================== */
+#practice-page .exercise-tabs {
+  border-bottom: none;
+  padding: 0.5rem;
+  gap: 0.4rem;
+  background: color-mix(in srgb, var(--bg-card) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-base) 8%, transparent);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(31, 38, 135, 0.08);
+}
+#practice-page .exercise-tab {
+  border-radius: 12px;
+  padding: 0.55rem 1rem;
+  transition: transform 0.18s var(--pl-ease), background-color 0.18s var(--pl-ease), color 0.18s var(--pl-ease), box-shadow 0.18s var(--pl-ease);
+}
+#practice-page .exercise-tab:hover {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  transform: translateY(-1px);
+}
+#practice-page .exercise-tab.active {
+  background: linear-gradient(135deg, var(--primary), #8b5cf6);
+  color: #fff;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+
+/* =====================================================================
+   14. PRACTICE cards — stronger, visible-at-rest futuristic look
+   ===================================================================== */
+#practice-page .practice-category:not(.active-cat) {
+  background: linear-gradient(160deg,
+      color-mix(in srgb, var(--primary) 9%, var(--bg-card)) 0%,
+      color-mix(in srgb, var(--bg-card) 56%, transparent) 70%) !important;
+}
+#practice-page .practice-category.active-cat {
+  background: linear-gradient(150deg,
+      color-mix(in srgb, var(--primary) 26%, var(--bg-card)) 0%,
+      color-mix(in srgb, #8b5cf6 16%, var(--bg-card)) 100%) !important;
+  box-shadow: 0 18px 40px color-mix(in srgb, var(--primary) 28%, transparent) !important;
+}
+#practice-page .practice-category.active-cat::before { opacity: 1; }
+#practice-page .practice-category .practice-icon {
+  width: 64px; height: 64px; font-size: 1.5rem; border-radius: 18px;
+  box-shadow: 0 10px 24px rgba(99, 102, 241, 0.42);
+}
+#practice-page .practice-category h3 { font-size: 1.25rem; letter-spacing: -0.01em; }
+
+/* Depth, glass sheen, and a lively hover lift */
+#practice-page .practice-category {
+  padding: 1.6rem;
+  box-shadow: 0 12px 34px rgba(31, 38, 135, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.45) !important;
+  transition: transform 0.3s var(--pl-ease), box-shadow 0.3s var(--pl-ease) !important;
+}
+#practice-page .practice-category:hover {
+  transform: translateY(-8px) scale(1.015);
+  box-shadow: 0 32px 60px rgba(124, 111, 247, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+}
+[data-dark="true"] #practice-page .practice-category {
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Diagonal shine that sweeps across the card on hover */
+#practice-page .practice-category::after {
+  content: "";
+  position: absolute; top: 0; left: -130%;
+  width: 55%; height: 100%;
+  background: linear-gradient(100deg, transparent 0%, rgba(255,255,255,0.45) 50%, transparent 100%);
+  transform: skewX(-18deg);
+  pointer-events: none;
+  z-index: 2;
+  transition: left 0.75s var(--pl-ease);
+}
+#practice-page .practice-category:hover::after { left: 135%; }
+
+/* Icon springs to life on hover */
+#practice-page .practice-category .practice-icon {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+#practice-page .practice-category:hover .practice-icon {
+  transform: translateY(-2px) scale(1.08) rotate(-4deg);
+}
+
+/* =====================================================================
+   15. ASSESSMENT answer options — glass + gradient ring + gradient selected
+   ===================================================================== */
+#testing-page .test-option {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg-card) 60%, transparent) !important;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
+#testing-page .test-option::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px;
+  pointer-events: none; opacity: 0; transition: opacity 0.25s var(--pl-ease);
+  background: linear-gradient(135deg, rgba(124,111,247,0.85), rgba(94,201,167,0.55));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+}
+#testing-page .test-option:hover::before { opacity: 1; }
+#testing-page .test-option.selected {
+  border-color: transparent;
+  background: linear-gradient(135deg,
+      color-mix(in srgb, var(--primary) 18%, var(--bg-card)),
+      color-mix(in srgb, #8b5cf6 12%, var(--bg-card))) !important;
+}
+#testing-page .test-option.selected::before { opacity: 1; }
+#testing-page .test-option.selected .option-letter {
+  background: linear-gradient(135deg, var(--primary), #8b5cf6);
+  color: #fff;
+}
 #practice-page .practice-category h3 { letter-spacing: -0.01em; }
 #practice-page .practice-stats-row { border-top-color: var(--border); }
 
@@ -426,7 +590,36 @@
 #practice-page .practice-exercises {
   border: 1px solid var(--border);
   border-radius: 24px;
+  padding: clamp(1.5rem, 3vw, 2.4rem);
   box-shadow: 0 10px 30px rgba(17, 24, 39, 0.06);
+}
+
+#practice-page .practice-exercises > .fade-in {
+  padding-inline: clamp(0.35rem, 1.2vw, 0.9rem);
+}
+
+#practice-page .practice-exercises .listening-exercise {
+  padding: clamp(1.5rem, 3vw, 2.35rem);
+}
+
+#practice-page .practice-exercises > .fade-in > h3:first-child,
+#practice-page .practice-exercises .listening-exercise > h3:first-child {
+  margin-top: 0;
+}
+
+@media (max-width: 640px) {
+  #practice-page .practice-exercises {
+    padding: 1.15rem;
+    border-radius: 18px;
+  }
+
+  #practice-page .practice-exercises > .fade-in {
+    padding-inline: 0.15rem;
+  }
+
+  #practice-page .practice-exercises .listening-exercise {
+    padding: 1.15rem;
+  }
 }
 
 /* =====================================================================

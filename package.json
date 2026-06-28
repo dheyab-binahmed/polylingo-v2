@@ -4,6 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "copy-vad-assets": "node scripts/copy-vad-assets.mjs",
+    "predev": "node scripts/copy-vad-assets.mjs",
+    "prebuild": "node scripts/copy-vad-assets.mjs",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
@@ -11,6 +14,8 @@
     "test": "react-scripts test"
   },
   "dependencies": {
+    "@ricky0123/vad-web": "^0.0.22",
+    "onnxruntime-web": "^1.18.0",
     "firebase": "^12.14.0",
     "motion": "^12.41.0",
     "react": "^19.2.0",

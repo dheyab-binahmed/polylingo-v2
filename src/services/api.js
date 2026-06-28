@@ -431,14 +431,14 @@ export async function saveAssessmentResults(results) {
 
 /**
  * Create a new session for recording.
- * POST /api/v1/sessions
+ * POST /api/v1/assessments/start
  * Response: { session_id }
  */
 export async function createSession() {
   try {
-    const data = await apiFetch("/sessions", {
+    const data = await apiFetch("/assessments/start", {
       method: "POST",
-      body: JSON.stringify({}),
+      body: JSON.stringify({ test_type: "pronunciation_drill" }),
     });
     return data.session_id || data.id;
   } catch (err) {
@@ -641,7 +641,7 @@ export async function getSpeakingReply({ message, history, language }) {
  * POST /api/v1/assessment/tts
  * Expected response: { audio: base64_string, content_type: "audio/mpeg" }
  */
-export const generateSpeech = async (text, lang) => {
+export const generateSpeech = async (text, lang, options = {}) => {
   // Use apiFetch so the access token is auto-refreshed on a 401. Assessments can
   // run long enough for the token to expire mid-session; a raw fetch would 401,
   // throw, and the caller would fall back to the robotic browser voice instead
@@ -649,7 +649,7 @@ export const generateSpeech = async (text, lang) => {
   // { audio, content_type } shape.
   return await apiFetch("/assessment/tts", {
     method: "POST",
-    body: JSON.stringify({ text, lang }),
+    body: JSON.stringify({ text, lang, rate: options.rate }),
   });
 };
 
@@ -1156,11 +1156,11 @@ export async function scorePracticeWriting({ writingText, prompt, language }) {
  * POST /api/v1/practice/tts
  * Returns: { audioBase64: "..." } — null if ElevenLabs is not configured.
  */
-export async function fetchTTS(text, lang) {
+export async function fetchTTS(text, lang, options = {}) {
   try {
     return await apiFetch("/practice/tts", {
       method: "POST",
-      body: JSON.stringify({ text, lang }),
+      body: JSON.stringify({ text, lang, rate: options.rate }),
     });
   } catch (_) {
     return { audioBase64: null };
@@ -1229,7 +1229,7 @@ export async function chatWithTutor({ message, history, language, level }) {
  * @returns {AbortController} – call .abort() to cancel mid-stream
  */
 export function streamTutorChat(
-  { message, history, language, level },
+  { message, history, language, level, speech_analytics },
   callbacks = {},
 ) {
   const token = localStorage.getItem("polylingo_token");
@@ -1245,7 +1245,7 @@ export function streamTutorChat(
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ message, history, language, level }),
+          body: JSON.stringify({ message, history, language, level, speech_analytics }),
           signal: controller.signal,
         },
       );

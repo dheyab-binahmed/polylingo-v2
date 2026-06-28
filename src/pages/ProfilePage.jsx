@@ -162,6 +162,7 @@ function EditProfileModal({ user, onClose, onSave }) {
   const [formError, setFormError] = useState("");
 
   const LANGUAGES = [
+    "English",
     "Spanish",
     "French",
     "German",
@@ -663,6 +664,7 @@ export default function ProfilePage() {
 
   const handleSaveProfile = async (form) => {
     setSaveErr("");
+    setEditOpen(false);
     try {
       await updateUser({
         full_name: form.full_name,
@@ -671,7 +673,6 @@ export default function ProfilePage() {
         preferred_language: form.preferred_language,
         selected_level: form.selected_level || undefined,
       });
-      setEditOpen(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
@@ -748,6 +749,13 @@ export default function ProfilePage() {
 
   return (
     <div className="pp-page">
+      {/* Futuristic animated background + floating glyphs */}
+      <div className="dash-bg" aria-hidden="true" />
+      <div className="dash-glyphs" aria-hidden="true">
+        {["あ", "Ñ", "文", "ß", "한"].map((g, i) => (
+          <span key={i} className="dash-glyph">{g}</span>
+        ))}
+      </div>
       <div className="pp-shell">
         {/* ── Toasts ── */}
         <AnimatePresence>
