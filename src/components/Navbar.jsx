@@ -33,6 +33,8 @@ export default function Navbar({ friendRequestCount = 0, onResetFriendCount }) {
   const [notifs,     setNotifs]     = useState([]);
   const [unread,     setUnread]     = useState(0);
   const bellRef = useRef(null);
+  const [avatarOpen, setAvatarOpen] = useState(false);
+  const avatarRef = useRef(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);
@@ -63,6 +65,7 @@ export default function Navbar({ friendRequestCount = 0, onResetFriendCount }) {
   useEffect(() => {
     const handler = (e) => {
       if (bellRef.current && !bellRef.current.contains(e.target)) setBellOpen(false);
+      if (avatarRef.current && !avatarRef.current.contains(e.target)) setAvatarOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -199,10 +202,68 @@ export default function Navbar({ friendRequestCount = 0, onResetFriendCount }) {
                     )}
                   </div>
 
-                  <div className="navbar-avatar" title={displayName || user?.email}>{initials}</div>
-                  <button className="btn btn-outline navbar-logout-btn" onClick={handleLogout}>
-                    <i className="fas fa-sign-out-alt" /> Logout
-                  </button>
+                  <div ref={avatarRef} style={{ position: "relative" }}>
+                    <button
+                      className="navbar-avatar"
+                      title={displayName || user?.email}
+                      onClick={() => setAvatarOpen(o => !o)}
+                      aria-haspopup="true"
+                      aria-expanded={avatarOpen}
+                      style={{ cursor: "pointer", border: "none", padding: 0 }}
+                    >
+                      {initials}
+                    </button>
+                    {avatarOpen && (
+                      <div
+                        style={{
+                          position: "absolute", top: "calc(100% + 12px)", right: 0,
+                          minWidth: 234,
+                          background: "color-mix(in srgb, var(--bg-card) 70%, transparent)",
+                          backdropFilter: "blur(18px)", WebkitBackdropFilter: "blur(18px)",
+                          border: "1px solid color-mix(in srgb, var(--primary) 24%, transparent)",
+                          borderRadius: 18,
+                          boxShadow: "0 20px 48px rgba(31,38,135,0.22), inset 0 1px 0 rgba(255,255,255,0.4)",
+                          padding: "0.5rem", zIndex: 2000, overflow: "hidden",
+                        }}
+                      >
+                        {/* header */}
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.7rem", padding: "0.6rem 0.65rem 0.7rem" }}>
+                          <div style={{ width: 42, height: 42, borderRadius: "50%", flexShrink: 0, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.95rem" }}>
+                            {initials}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text-base)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{displayName || "Learner"}</div>
+                            <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user?.email}</div>
+                          </div>
+                        </div>
+                        <div style={{ height: 1, background: "var(--border)", margin: "0.25rem 0.4rem 0.4rem" }} />
+                        {[
+                          { icon: "fa-gauge-high", label: "Dashboard", to: "/dashboard" },
+                          { icon: "fa-user", label: "Profile", to: "/profile" },
+                          { icon: "fa-clipboard-check", label: "Assessment", to: "/assessment" },
+                        ].map((it) => (
+                          <button
+                            key={it.to}
+                            onClick={() => { setAvatarOpen(false); navigate(it.to); }}
+                            style={{ display: "flex", alignItems: "center", gap: "0.7rem", width: "100%", textAlign: "left", padding: "0.6rem 0.65rem", borderRadius: 10, border: "none", background: "none", cursor: "pointer", color: "var(--text-base)", fontWeight: 600, fontSize: "0.88rem", fontFamily: "inherit" }}
+                            onMouseOver={(e) => { e.currentTarget.style.background = "color-mix(in srgb, var(--primary) 12%, transparent)"; }}
+                            onMouseOut={(e) => { e.currentTarget.style.background = "none"; }}
+                          >
+                            <i className={`fas ${it.icon}`} style={{ width: 18, color: "var(--primary)" }} /> {it.label}
+                          </button>
+                        ))}
+                        <div style={{ height: 1, background: "var(--border)", margin: "0.4rem 0.4rem" }} />
+                        <button
+                          onClick={() => { setAvatarOpen(false); handleLogout(); }}
+                          style={{ display: "flex", alignItems: "center", gap: "0.7rem", width: "100%", textAlign: "left", padding: "0.6rem 0.65rem", borderRadius: 10, border: "none", background: "none", cursor: "pointer", color: "#ef4444", fontWeight: 700, fontSize: "0.88rem", fontFamily: "inherit" }}
+                          onMouseOver={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
+                          onMouseOut={(e) => { e.currentTarget.style.background = "none"; }}
+                        >
+                          <i className="fas fa-sign-out-alt" style={{ width: 18 }} /> Logout
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="navbar-auth-btns">

@@ -36,6 +36,11 @@ Thumbs.db
 out
 build
 
+# Generated browser VAD assets (created by npm run copy-vad-assets / predev)
+public/ort-wasm*.wasm
+public/silero_vad_*.onnx
+public/vad.worklet.bundle.min.js
+
 # IDE
 .eslintcache
 

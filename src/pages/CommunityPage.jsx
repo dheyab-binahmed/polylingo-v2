@@ -757,6 +757,13 @@ export default function CommunityPage() {
   return (
     <div className="plg-root">
       <CommunityStyles />
+      {/* Futuristic animated background + floating glyphs */}
+      <div className="dash-bg" aria-hidden="true" />
+      <div className="dash-glyphs" aria-hidden="true">
+        {["あ", "Ñ", "文", "ß", "한"].map((g, i) => (
+          <span key={i} className="dash-glyph">{g}</span>
+        ))}
+      </div>
       <ToastContainer toasts={toasts} />
       <MessageToast
         messages={messageToasts}

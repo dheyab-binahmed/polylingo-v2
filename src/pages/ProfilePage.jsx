@@ -162,6 +162,7 @@ function EditProfileModal({ user, onClose, onSave }) {
   const [formError, setFormError] = useState("");
 
   const LANGUAGES = [
+    "English",
     "Spanish",
     "French",
     "German",
@@ -663,6 +664,7 @@ export default function ProfilePage() {
 
   const handleSaveProfile = async (form) => {
     setSaveErr("");
+    setEditOpen(false);
     try {
       await updateUser({
         full_name: form.full_name,
@@ -671,7 +673,6 @@ export default function ProfilePage() {
         preferred_language: form.preferred_language,
         selected_level: form.selected_level || undefined,
       });
-      setEditOpen(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
@@ -748,6 +749,13 @@ export default function ProfilePage() {
 
   return (
     <div className="pp-page">
+      {/* Futuristic animated background + floating glyphs */}
+      <div className="dash-bg" aria-hidden="true" />
+      <div className="dash-glyphs" aria-hidden="true">
+        {["あ", "Ñ", "文", "ß", "한"].map((g, i) => (
+          <span key={i} className="dash-glyph">{g}</span>
+        ))}
+      </div>
       <div className="pp-shell">
         {/* ── Toasts ── */}
         <AnimatePresence>
@@ -983,8 +991,8 @@ export default function ProfilePage() {
           {/* Account settings */}
           <Section label="Yours to control" title="Account settings">
             <div className="pp-group">
-              <div className="pp-eyebrow pp-group__title">Notifications</div>
               <div className="pp-prefs">
+                <div className="pp-prefs__head">Notifications</div>
                 <PrefToggle
                   icon="fa-envelope"
                   tint="#6366f1"
@@ -1005,8 +1013,8 @@ export default function ProfilePage() {
             </div>
 
             <div className="pp-group">
-              <div className="pp-eyebrow pp-group__title">Appearance</div>
               <div className="pp-prefs">
+                <div className="pp-prefs__head">Appearance</div>
                 <PrefToggle
                   icon="fa-moon"
                   tint="#8b5cf6"
@@ -1019,8 +1027,8 @@ export default function ProfilePage() {
             </div>
 
             <div className="pp-group">
-              <div className="pp-eyebrow pp-group__title">Security</div>
               <div className="pp-prefs">
+                <div className="pp-prefs__head">Security</div>
                 <button
                   type="button"
                   className="pp-pref"

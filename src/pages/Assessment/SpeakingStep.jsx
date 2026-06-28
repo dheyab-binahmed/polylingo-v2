@@ -20,15 +20,12 @@ const TOPICS = [
   "how you plan to use language in future work",
 ];
 
-function splitSentences(text) {
-  const parts = text.match(/[^.!?…]+[.!?…]+/g);
-  return parts ? parts.map((s) => s.trim()).filter(Boolean) : [text.trim()];
-}
-
 // ── VAD constants ─────────────────────────────────────────────────────────────
 const VAD_SILENCE_THRESHOLD = 8;   // RMS 0-100 below which we consider silence
-const VAD_SILENCE_DURATION  = 1800; // ms of silence before auto-stop
+const VAD_SILENCE_DURATION  = 1300; // ms of silence before auto-stop
 const VAD_MIN_SPEECH_MS     = 600;  // must speak for at least this long to count
+const TTS_FETCH_TIMEOUT_MS   = 8000; // wait for ElevenLabs (~1s) instead of falling back to the robot voice
+const TUTOR_TTS_RATE         = "+25%";
 
 export default function SpeakingStep() {
   const { data, update, goNext, goPrev } = useAssessment();
@@ -128,21 +125,30 @@ export default function SpeakingStep() {
       if (!("speechSynthesis" in window)) return resolve();
       window.speechSynthesis.cancel();
       const utt = new SpeechSynthesisUtterance(text);
-      utt.lang = ttsLang; utt.rate = 0.92; utt.pitch = 1.05;
+      utt.lang = ttsLang; utt.rate = 1.0; utt.pitch = 1.05;
       utt.onend = utt.onerror = resolve;
       window.speechSynthesis.speak(utt);
     });
+
+  const generateSpeechFast = (text) => {
+    const neuralJob = generateSpeech(text, ttsLang, { rate: TUTOR_TTS_RATE });
+    const timeoutJob = new Promise((resolve) =>
+      setTimeout(() => resolve(null), TTS_FETCH_TIMEOUT_MS)
+    );
+    return Promise.race([neuralJob, timeoutJob]);
+  };
 
   const speakText = useCallback(async (text, { autoRestart = false } = {}) => {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     setAiSpeaking(true);
-    for (const sentence of splitSentences(text)) {
-      if (!sentence) continue;
+    const reply = (text || "").trim();
+    if (reply) {
       try {
-        const { audio, content_type } = await generateSpeech(sentence, ttsLang);
-        await playAudioBlob(audio, content_type);
-      } catch { await browserSpeak(sentence); }
+        const speech = await generateSpeechFast(reply);
+        if (!speech?.audio) throw new Error("TTS timeout");
+        await playAudioBlob(speech.audio, speech.content_type);
+      } catch { await browserSpeak(reply); }
     }
     setAiSpeaking(false);
     if (autoRestart && voiceModeRef.current && !completingRef.current)
@@ -190,7 +196,7 @@ export default function SpeakingStep() {
         const rms = Math.sqrt(sum / buf.length) * 100;
         setVadLevel(Math.min(100, Math.round(rms * 4)));
 
-        if (rms > VAD_SILENCE_THRESHOLD / 100) {
+        if (rms > VAD_SILENCE_THRESHOLD) {
           // Speech detected
           if (!speechStartRef.current) speechStartRef.current = Date.now();
           silenceStartRef.current = null;
@@ -306,6 +312,18 @@ export default function SpeakingStep() {
     if (!next && recording) stopRecording();
   };
 
+  useEffect(() => {
+    if (!recording) return;
+    const onKey = (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        stopRecording();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [recording]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Start session ─────────────────────────────────────────────────────────
   const handleStartSession = async () => {
     setSessionStarted(true);
@@ -342,6 +360,7 @@ export default function SpeakingStep() {
     if (sessionId) {
       streamingRef.current = true;
       let accumulatedText = "";
+      let finalReplyText = "";
       let turnScores      = null;
 
       try {
@@ -365,43 +384,6 @@ export default function SpeakingStep() {
         const reader  = resp.body.getReader();
         const decoder = new TextDecoder();
         let buf = "";
-
-        // TTS queue — neural audio is fetched PER SENTENCE in parallel (one
-        // /assessment/tts request each) the moment a sentence arrives, so audio
-        // synthesis never blocks the text token stream. Each queue entry is a
-        // promise resolving to { audio, content_type } or { text } (browser-speech
-        // fallback). Playback drains the queue in order.
-        const ttsQueue    = [];
-        let   ttsPlaying  = false;
-
-        const drainTTS = async () => {
-          if (ttsPlaying || ttsQueue.length === 0) return;
-          ttsPlaying = true;
-          while (ttsQueue.length > 0) {
-            let item = null;
-            try { item = await ttsQueue.shift(); } catch { item = null; }
-            try {
-              if (item && item.audio) await playAudioBlob(item.audio, item.content_type);
-              else if (item && item.text) await browserSpeak(item.text);
-            } catch { if (item && item.text) await browserSpeak(item.text); }
-          }
-          ttsPlaying = false;
-        };
-
-        const enqueueSentence = (sentence) => {
-          const s = (sentence || "").trim();
-          if (!s) return;
-          // Kick off synthesis immediately (parallel with streaming + playback).
-          // Always carry the text so playback can fall back to browser speech if
-          // the audio errors or autoplay is blocked.
-          const job = generateSpeech(s, ttsLang)
-            .then((r) => (r && r.audio
-              ? { audio: r.audio, content_type: r.content_type || "audio/mpeg", text: s }
-              : { text: s }))
-            .catch(() => ({ text: s }));
-          ttsQueue.push(job);
-          drainTTS();
-        };
 
         setAiSpeaking(true);
 
@@ -435,19 +417,9 @@ export default function SpeakingStep() {
                 setStreamingText(accumulatedText);
               }
 
-              if (event.audio) {
-                // Back-compat: server still sent inline audio — play as-is.
-                ttsQueue.push(Promise.resolve({
-                  audio: event.audio,
-                  content_type: event.content_type || "audio/mpeg",
-                }));
-                drainTTS();
-              }
-
-              if (event.sentence) {
-                // Fetch neural audio for this sentence in parallel (non-blocking).
-                enqueueSentence(event.sentence);
-              }
+              // Practice tutor speaks the final reply as one clip. Ignore
+              // sentence/audio markers here so assessment does not pause at
+              // every full stop.
 
               if (event.scores) {
                 turnScores = event.scores;
@@ -471,6 +443,7 @@ export default function SpeakingStep() {
               if (event.done) {
                 // Commit the streamed message as a real bubble
                 const finalText = accumulatedText.trim();
+                finalReplyText = finalText;
                 setStreamingText("");
                 if (finalText) {
                   setMessages((prev) => [
@@ -490,14 +463,7 @@ export default function SpeakingStep() {
           }
         }
 
-        // Wait for TTS queue to drain
-        await new Promise((resolve) => {
-          const check = () => {
-            if (ttsQueue.length === 0 && !ttsPlaying) return resolve();
-            setTimeout(check, 200);
-          };
-          check();
-        });
+        if (finalReplyText) await speakText(finalReplyText);
 
       } catch (err) {
         console.error("[SpeakingStep] stream error:", err);
@@ -647,7 +613,8 @@ export default function SpeakingStep() {
         .sp-vad-bar { height:4px;background:var(--border);border-radius:99px;overflow:hidden;margin-top:0.25rem; }
         .sp-vad-fill { height:100%;border-radius:99px;background:linear-gradient(90deg,#10b981,#34d399);transition:width 0.05s linear; }
 
-        .sp-mic-row { display:flex;align-items:center;justify-content:center;gap:1.25rem; }
+        .sp-mic-row { width:100%;display:flex;align-items:center;justify-content:center;gap:1.25rem; }
+        .sp-mic-control { width:min(100%,260px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;margin:0 auto; }
         .sp-mic-btn { width:64px;height:64px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1.3rem;transition:all .2s;flex-shrink:0; }
         .sp-mic-btn.idle { background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;box-shadow:0 6px 18px rgba(99,102,241,.4); }
         .sp-mic-btn.idle:hover:not(:disabled) { transform:translateY(-2px);box-shadow:0 10px 26px rgba(99,102,241,.5); }
@@ -655,7 +622,7 @@ export default function SpeakingStep() {
         .sp-mic-btn.processing { background:linear-gradient(135deg,#a78bfa,#7c3aed);color:#fff;box-shadow:0 6px 18px rgba(167,139,250,.4); }
         .sp-mic-btn:disabled { opacity:.45;cursor:not-allowed;transform:none!important; }
         @keyframes sp-pulse { 0%{box-shadow:0 0 0 0 rgba(239,68,68,.5),0 6px 18px rgba(239,68,68,.4)}70%{box-shadow:0 0 0 14px rgba(239,68,68,0),0 6px 18px rgba(239,68,68,.4)}100%{box-shadow:0 0 0 0 rgba(239,68,68,0),0 6px 18px rgba(239,68,68,.4)} }
-        .sp-mic-lbl { font-size:0.77rem;font-weight:600;color:var(--text-muted);text-align:center;margin-top:0.4rem; }
+        .sp-mic-lbl { width:100%;max-width:240px;font-size:0.77rem;font-weight:600;color:var(--text-muted);text-align:center;line-height:1.25;margin:0.45rem auto 0;overflow-wrap:break-word; }
         .sp-mic-lbl.listen  { color:#ef4444; }
         .sp-mic-lbl.speak   { color:#f59e0b; }
         .sp-mic-lbl.process { color:#7c3aed; }
@@ -681,14 +648,14 @@ export default function SpeakingStep() {
         @keyframes sp-spin { to{transform:rotate(360deg)} }
         .sp-hint { display:flex;align-items:center;gap:.5rem;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:0.55rem 1rem;font-size:0.78rem;color:#b45309;font-weight:500;margin-top:.9rem; }
         [data-dark="true"] .sp-hint { background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.25);color:#fbbf24; }
-        .sp-vad-hint { font-size:0.72rem;color:var(--text-muted);text-align:center;margin-top:0.25rem; }
+        .sp-vad-hint { width:100%;max-width:240px;font-size:0.72rem;color:var(--text-muted);text-align:center;line-height:1.25;margin:0.25rem auto 0;overflow-wrap:break-word; }
       `}</style>
 
       <div className="sp-root test-container fade-in">
         {/* Header */}
         <div className="sp-header">
           <h2><i className="fas fa-comments" style={{ color:"#6366f1",marginRight:"0.5rem" }} />Speaking Assessment</h2>
-          <p>Speak naturally — the AI responds in real-time, sentence by sentence.</p>
+          <p>Speak naturally — the AI responds in real time with smoother voice playback.</p>
         </div>
 
         <div style={{ textAlign:"center" }}>
@@ -801,7 +768,7 @@ export default function SpeakingStep() {
 
                 {/* Mic button */}
                 <div className="sp-mic-row">
-                  <div style={{ textAlign:"center" }}>
+                  <div className="sp-mic-control">
                     <button
                       className={`sp-mic-btn ${processingVoice ? "processing" : recording ? "active" : "idle"}`}
                       onClick={handleMicClick}
