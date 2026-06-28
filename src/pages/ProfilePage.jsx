@@ -983,8 +983,8 @@ export default function ProfilePage() {
           {/* Account settings */}
           <Section label="Yours to control" title="Account settings">
             <div className="pp-group">
-              <div className="pp-eyebrow pp-group__title">Notifications</div>
               <div className="pp-prefs">
+                <div className="pp-prefs__head">Notifications</div>
                 <PrefToggle
                   icon="fa-envelope"
                   tint="#6366f1"
@@ -1005,8 +1005,8 @@ export default function ProfilePage() {
             </div>
 
             <div className="pp-group">
-              <div className="pp-eyebrow pp-group__title">Appearance</div>
               <div className="pp-prefs">
+                <div className="pp-prefs__head">Appearance</div>
                 <PrefToggle
                   icon="fa-moon"
                   tint="#8b5cf6"
@@ -1019,8 +1019,8 @@ export default function ProfilePage() {
             </div>
 
             <div className="pp-group">
-              <div className="pp-eyebrow pp-group__title">Security</div>
               <div className="pp-prefs">
+                <div className="pp-prefs__head">Security</div>
                 <button
                   type="button"
                   className="pp-pref"
