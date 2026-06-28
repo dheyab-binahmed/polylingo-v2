@@ -14,16 +14,12 @@
   --pp-gold:  #f59e0b;
   --pp-mono:  ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Consolas", monospace;
 
-  position: relative;
   min-height: 100vh;
   padding: 92px 0 4rem;
   background: var(--bg-page);
-  overflow: hidden;
 }
 
 .pp-shell {
-  position: relative;
-  z-index: 1;
   width: 100%;
   max-width: 920px;
   margin: 0 auto;

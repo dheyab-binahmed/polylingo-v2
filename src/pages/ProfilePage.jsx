@@ -747,14 +747,7 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div className="pp-page pg-wrapper">
-      {/* ── Animated background + floating glyphs (shared with Dashboard) ── */}
-      <div className="dash-bg" aria-hidden="true" />
-      <div className="dash-glyphs" aria-hidden="true">
-        {["あ", "Ñ", "文", "ß", "한"].map((g, i) => (
-          <span key={i} className="dash-glyph">{g}</span>
-        ))}
-      </div>
+    <div className="pp-page">
       <div className="pp-shell">
         {/* ── Toasts ── */}
         <AnimatePresence>

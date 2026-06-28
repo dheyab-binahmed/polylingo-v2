@@ -269,6 +269,11 @@
   gap: 1.25rem;
   margin-bottom: 1.5rem;
 }
+/* Let bento cells shrink below their content's intrinsic width so a long
+   word or a wide inner grid can never push a card past the screen edge
+   (the classic "clipped on the right" mobile bug). */
+.pg-wrapper .dash-bento > * { min-width: 0; }
+.pg-wrapper .dash-card { overflow-wrap: anywhere; }
 .pg-wrapper .dash-bento > .col-3  { grid-column: span 3; }
 .pg-wrapper .dash-bento > .col-4  { grid-column: span 4; }
 .pg-wrapper .dash-bento > .col-5  { grid-column: span 5; }
