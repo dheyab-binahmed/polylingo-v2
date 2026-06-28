@@ -9,6 +9,7 @@ import {
   authorizedFetch,
 } from "../../services/api";
 import { prefetchStep } from "./assessmentExtras";
+import { createTTSPlayer } from "../../utils/ttsPlayer";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -69,7 +70,6 @@ export default function SpeakingStep() {
 
   const bottomRef         = useRef(null);
   const chatRef           = useRef(null);
-  const audioRef          = useRef(null);
   const inputRef          = useRef(null);
   const mediaRecorderRef  = useRef(null);
   const recordingStartRef = useRef(null);
@@ -112,43 +112,41 @@ export default function SpeakingStep() {
   }, [sessionStarted]);
 
   // ── Audio playback ────────────────────────────────────────────────────────
-  // Rejects on playback error / blocked autoplay so the caller can fall back to
-  // browser speech (parity with the practice tutor's TTS pipeline).
-  const playAudioBlob = (base64, contentType) =>
-    new Promise((resolve, reject) => {
-      const el = new Audio(`data:${contentType};base64,${base64}`);
-      audioRef.current = el;
-      el.onended = () => { audioRef.current = null; resolve(); };
-      el.onerror = () => { audioRef.current = null; reject(new Error("audio error")); };
-      el.play().catch((e) => { audioRef.current = null; reject(e); });
-    });
+  // All speech goes through one shared TTS player that guarantees a single voice
+  // per reply (neural OR a pinned browser voice, never mixed) and one audio
+  // channel — see src/utils/ttsPlayer.js. ttsPlayerRef holds the active player
+  // so a new turn can cancel the previous one.
+  const ttsPlayerRef = useRef(null);
 
-  const browserSpeak = (text) =>
-    new Promise((resolve) => {
-      if (!("speechSynthesis" in window)) return resolve();
-      window.speechSynthesis.cancel();
-      const utt = new SpeechSynthesisUtterance(text);
-      utt.lang = ttsLang; utt.rate = 0.92; utt.pitch = 1.05;
-      utt.onend = utt.onerror = resolve;
-      window.speechSynthesis.speak(utt);
-    });
+  const cancelTTS = useCallback(() => {
+    try { ttsPlayerRef.current?.cancel(); } catch (_) {}
+    ttsPlayerRef.current = null;
+  }, []);
 
+  const newTTSPlayer = useCallback(() => {
+    cancelTTS();
+    const player = createTTSPlayer({
+      lang: ttsLang,
+      fetchAudio: (sentence) => generateSpeech(sentence, ttsLang),
+    });
+    ttsPlayerRef.current = player;
+    return player;
+  }, [ttsLang, cancelTTS]);
+
+  // Speak a full block of text (intro / non-streaming fallback) as one reply.
   const speakText = useCallback(async (text, { autoRestart = false } = {}) => {
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
-    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    const player = newTTSPlayer();
     setAiSpeaking(true);
-    for (const sentence of splitSentences(text)) {
-      if (!sentence) continue;
-      try {
-        const { audio, content_type } = await generateSpeech(sentence, ttsLang);
-        await playAudioBlob(audio, content_type);
-      } catch { await browserSpeak(sentence); }
-    }
+    for (const sentence of splitSentences(text)) player.enqueue(sentence);
+    await player.waitDone();
     setAiSpeaking(false);
     if (autoRestart && voiceModeRef.current && !completingRef.current)
       setTimeout(() => startRecording(), 600);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ttsLang]);
+  }, [ttsLang, newTTSPlayer]);
+
+  // Stop any audio when the component unmounts.
+  useEffect(() => () => cancelTTS(), [cancelTTS]);
 
   // ── VAD: Web Audio silence detection ─────────────────────────────────────
   const stopVAD = useCallback(() => {
@@ -187,10 +185,13 @@ export default function SpeakingStep() {
           const v = (buf[i] - 128) / 128;
           sum += v * v;
         }
+        // rms is on a 0-100 scale (already ×100 above), so compare directly to
+        // VAD_SILENCE_THRESHOLD — the old code divided the threshold by 100,
+        // making almost any mic noise count as speech so auto-stop never fired.
         const rms = Math.sqrt(sum / buf.length) * 100;
         setVadLevel(Math.min(100, Math.round(rms * 4)));
 
-        if (rms > VAD_SILENCE_THRESHOLD / 100) {
+        if (rms > VAD_SILENCE_THRESHOLD) {
           // Speech detected
           if (!speechStartRef.current) speechStartRef.current = Date.now();
           silenceStartRef.current = null;
@@ -332,6 +333,10 @@ export default function SpeakingStep() {
     const trimmed = text.trim();
     if (!trimmed) return;
 
+    // Stop any audio still playing from the previous reply so two turns can
+    // never speak over each other.
+    cancelTTS();
+
     const userMsgId = Date.now();
     setTranscripts((prev) => [...prev, { text: trimmed, duration: durationSeconds }]);
     setMessages((prev) => [...prev, { role: "user", text: trimmed, id: userMsgId, mode }]);
@@ -366,42 +371,11 @@ export default function SpeakingStep() {
         const decoder = new TextDecoder();
         let buf = "";
 
-        // TTS queue — neural audio is fetched PER SENTENCE in parallel (one
-        // /assessment/tts request each) the moment a sentence arrives, so audio
-        // synthesis never blocks the text token stream. Each queue entry is a
-        // promise resolving to { audio, content_type } or { text } (browser-speech
-        // fallback). Playback drains the queue in order.
-        const ttsQueue    = [];
-        let   ttsPlaying  = false;
-
-        const drainTTS = async () => {
-          if (ttsPlaying || ttsQueue.length === 0) return;
-          ttsPlaying = true;
-          while (ttsQueue.length > 0) {
-            let item = null;
-            try { item = await ttsQueue.shift(); } catch { item = null; }
-            try {
-              if (item && item.audio) await playAudioBlob(item.audio, item.content_type);
-              else if (item && item.text) await browserSpeak(item.text);
-            } catch { if (item && item.text) await browserSpeak(item.text); }
-          }
-          ttsPlaying = false;
-        };
-
-        const enqueueSentence = (sentence) => {
-          const s = (sentence || "").trim();
-          if (!s) return;
-          // Kick off synthesis immediately (parallel with streaming + playback).
-          // Always carry the text so playback can fall back to browser speech if
-          // the audio errors or autoplay is blocked.
-          const job = generateSpeech(s, ttsLang)
-            .then((r) => (r && r.audio
-              ? { audio: r.audio, content_type: r.content_type || "audio/mpeg", text: s }
-              : { text: s }))
-            .catch(() => ({ text: s }));
-          ttsQueue.push(job);
-          drainTTS();
-        };
+        // Neural audio is fetched PER SENTENCE in parallel (one /assessment/tts
+        // request each) the moment a sentence arrives, so synthesis never blocks
+        // the text token stream. The shared player guarantees a single voice for
+        // the whole reply and plays the sentences back in order.
+        const player = newTTSPlayer();
 
         setAiSpeaking(true);
 
@@ -435,18 +409,9 @@ export default function SpeakingStep() {
                 setStreamingText(accumulatedText);
               }
 
-              if (event.audio) {
-                // Back-compat: server still sent inline audio — play as-is.
-                ttsQueue.push(Promise.resolve({
-                  audio: event.audio,
-                  content_type: event.content_type || "audio/mpeg",
-                }));
-                drainTTS();
-              }
-
               if (event.sentence) {
                 // Fetch neural audio for this sentence in parallel (non-blocking).
-                enqueueSentence(event.sentence);
+                player.enqueue(event.sentence);
               }
 
               if (event.scores) {
@@ -490,14 +455,8 @@ export default function SpeakingStep() {
           }
         }
 
-        // Wait for TTS queue to drain
-        await new Promise((resolve) => {
-          const check = () => {
-            if (ttsQueue.length === 0 && !ttsPlaying) return resolve();
-            setTimeout(check, 200);
-          };
-          check();
-        });
+        // Wait for all queued sentences to finish playing (promise-based — no poll).
+        await player.waitDone();
 
       } catch (err) {
         console.error("[SpeakingStep] stream error:", err);
@@ -543,8 +502,12 @@ export default function SpeakingStep() {
       if (sessionId) {
         const completion    = await completeSpeakingAssessment(sessionId);
         const result        = completion.results || completion;
-        const raw           = result?.scores?.fluency ?? result?.scores?.overall_score ?? result?.overall_score ?? 0;
-        const speakingScore = Math.max(0, Math.min(10, Math.round(Number(raw) / 10)));
+        // Prefer the authoritative weighted overall_score; fall back to an
+        // explicit overall in scores, then fluency. (Previously fluency was read
+        // first, which silently used a single dimension as the whole grade.)
+        const raw           = result?.overall_score ?? result?.scores?.overall_score ?? result?.scores?.fluency ?? 0;
+        // Map 0-100 → 0-10 keeping one decimal so 74 and 75 don't both become 7.
+        const speakingScore = Math.max(0, Math.min(10, Math.round(Number(raw)) / 10));
         update({ speakingSessionId: sessionId, speakingResult: completion, speakingScore, fluencyScore: speakingScore, speakingTranscripts: transcripts });
         setScore(speakingScore);
       } else {

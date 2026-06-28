@@ -30,6 +30,7 @@ import { formatErrorForDisplay, logError } from "../utils/errorHandler";
 import { getContent } from "../data/practiceContent";
 import { logActivityMinutes } from "../utils/activityLog";
 import PracticeActivity from "../components/PracticeActivity";
+import { createTTSPlayer } from "../utils/ttsPlayer";
 
 // ─────────────────────────────────────────────────────────────────
 // HELPERS
@@ -506,8 +507,7 @@ export default function PracticePage() {
   const chatEndRef = useRef(null);
   const chatContainerRef = useRef(null);
   const tutorStreamRef = useRef(null);  // AbortController for active SSE stream
-  const ttsQueueRef = useRef([]);        // Sentences waiting for TTS playback
-  const ttsBusyRef = useRef(false);      // Whether TTS is currently speaking
+  const tutorPlayerRef = useRef(null);   // Active shared TTS player (one voice/reply)
   const tutorVoiceLoopRef = useRef(false); // Auto voice loop on/off
   const tutorMicRecRef = useRef(null);   // Active MediaRecorder for voice loop
   const tutorMicChunksRef = useRef([]);  // Audio chunks for voice loop
@@ -596,11 +596,8 @@ export default function PracticePage() {
     // Stop anything in flight from the previous level/language
     tutorStreamRef.current?.abort();
     tutorStreamRef.current = null;
-    window.speechSynthesis?.cancel();
+    _cancelTutorTTS();
     try { _currentTTSAudio?.pause(); _currentTTSAudio = null; } catch (_) {}
-    ttsQueueRef.current = [];
-    ttsBusyRef.current = false;
-    setTutorSpeaking(false);
     setTutorLoading(false);
 
     setTutorMessages([
@@ -1113,47 +1110,37 @@ export default function PracticePage() {
 
   // ── Tutor TTS pipeline ────────────────────────────────────────────────────
   // Synthesis for each sentence starts the MOMENT it arrives (parallel with
-  // playback + ongoing streaming), so playback is gapless instead of pausing to
-  // fetch audio before every sentence. ttsQueueRef holds in-flight promises.
-  const _playTTSAudio = (sentence, audioBase64) =>
-    new Promise((resolve) => {
-      if (!audioBase64) { speakTTS(sentence, ttsLang, () => {}, resolve); return; }
-      const audio = new Audio(`data:audio/mpeg;base64,${audioBase64}`);
-      _currentTTSAudio = audio; // retain so it isn't GC'd mid-play
-      let done = false;
-      const finish = () => { if (!done) { done = true; resolve(); } };
-      const fallback = () => { if (!done) { done = true; speakTTS(sentence, ttsLang, () => {}, resolve); } };
-      audio.onended = finish;
-      audio.onerror = fallback;
-      audio.play().catch(fallback);
-    });
-
-  const _drainTTSQueue = async () => {
-    if (ttsBusyRef.current) return;
-    ttsBusyRef.current = true;
-    setTutorSpeaking(true);
-    while (ttsQueueRef.current.length > 0) {
-      const { sentence, audioBase64 } = await ttsQueueRef.current.shift();
-      await _playTTSAudio(sentence, audioBase64);
-    }
-    ttsBusyRef.current = false;
-    // A sentence may have been enqueued in the gap — keep draining if so.
-    if (ttsQueueRef.current.length > 0) { _drainTTSQueue(); return; }
+  // playback + ongoing streaming), so playback is gapless. The shared player
+  // guarantees ONE voice per reply (neural OR a single pinned browser voice,
+  // never interleaved) and one audio channel — see src/utils/ttsPlayer.js.
+  const _cancelTutorTTS = () => {
+    try { tutorPlayerRef.current?.cancel(); } catch (_) {}
+    tutorPlayerRef.current = null;
     setTutorSpeaking(false);
-    // Auto-restart mic if voice loop is on and not already recording
-    if (tutorVoiceLoopRef.current && !tutorMicRecRef.current) {
-      setTimeout(() => _startTutorMic(), 450);
-    }
+  };
+
+  const _newTutorPlayer = () => {
+    _cancelTutorTTS();
+    const player = createTTSPlayer({
+      lang: ttsLang,
+      fetchAudio: (sentence) => fetchTTS(sentence, ttsLang),
+      onStart: () => setTutorSpeaking(true),
+      onEnd: () => {
+        setTutorSpeaking(false);
+        // Auto-restart mic if the voice loop is on and not already recording.
+        if (tutorVoiceLoopRef.current && !tutorMicRecRef.current) {
+          setTimeout(() => _startTutorMic(), 450);
+        }
+      },
+    });
+    tutorPlayerRef.current = player;
+    return player;
   };
 
   const _enqueueSentence = (sentence) => {
     if (!sentence) return;
-    // Start synthesis right away; store the promise so playback stays in order.
-    const job = fetchTTS(sentence, ttsLang)
-      .then((r) => ({ sentence, audioBase64: r?.audioBase64 }))
-      .catch(() => ({ sentence, audioBase64: null }));
-    ttsQueueRef.current.push(job);
-    _drainTTSQueue();
+    if (!tutorPlayerRef.current) _newTutorPlayer();
+    tutorPlayerRef.current.enqueue(sentence);
   };
 
   const sendTutorChat = (overrideText, speechAnalytics = null) => {
@@ -1163,11 +1150,8 @@ export default function PracticePage() {
     // Cancel any in-flight stream + TTS
     tutorStreamRef.current?.abort();
     tutorStreamRef.current = null;
-    window.speechSynthesis?.cancel();
+    _cancelTutorTTS();
     try { _currentTTSAudio?.pause(); _currentTTSAudio = null; } catch (_) {}
-    ttsQueueRef.current = [];
-    ttsBusyRef.current = false;
-    setTutorSpeaking(false);
     setTutorInput("");
     setTutorError("");
     setTutorSuggestions([]); // clear old reply chips while the tutor responds
@@ -1329,10 +1313,7 @@ export default function PracticePage() {
 
   const startVoiceInput = () => {
     if (tutorListening) { _stopTutorMic(); return; }
-    window.speechSynthesis?.cancel();
-    setTutorSpeaking(false);
-    ttsQueueRef.current = [];
-    ttsBusyRef.current = false;
+    _cancelTutorTTS();
     _startTutorMic();
   };
 

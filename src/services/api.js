@@ -1419,7 +1419,6 @@ export async function saveNotificationPreferences(prefs) {
  * Returns { transcript: string }
  */
 export async function transcribeAudio(audioBlob, language = "en") {
-  const token = localStorage.getItem("polylingo_token");
   // Pick extension that matches the actual blob type so backend accepts it
   const ext = audioBlob.type.includes("mp4")
     ? "mp4"
@@ -1431,9 +1430,11 @@ export async function transcribeAudio(audioBlob, language = "en") {
   const formData = new FormData();
   formData.append("audio", audioBlob, `recording.${ext}`);
   formData.append("language", language);
-  const res = await fetch(`${BASE_URL}/api/v1/audio/transcribe`, {
+  // authorizedFetch attaches the token AND refreshes it on a 401 — assessment /
+  // practice sessions run long enough for the access token to expire mid-session,
+  // and a raw fetch would 401 and force the robotic browser-STT fallback.
+  const res = await authorizedFetch(`${BASE_URL}/api/v1/audio/transcribe`, {
     method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: formData,
   });
   if (!res.ok) {
