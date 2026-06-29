@@ -637,7 +637,7 @@ export async function getSpeakingReply({ message, history, language }) {
 }
 
 /**
- * Convert text to speech using ElevenLabs API.
+ * Convert text to speech using the backend's ElevenLabs -> Edge neural chain.
  * POST /api/v1/assessment/tts
  * Expected response: { audio: base64_string, content_type: "audio/mpeg" }
  */
@@ -1152,9 +1152,9 @@ export async function scorePracticeWriting({ writingText, prompt, language }) {
  * Returns: { streak, today_minutes, daily_goal_minutes, level, language }
  */
 /**
- * Convert text to speech using ElevenLabs (proxied through backend).
+ * Convert text to speech using the backend's ElevenLabs -> Edge neural chain.
  * POST /api/v1/practice/tts
- * Returns: { audioBase64: "..." } — null if ElevenLabs is not configured.
+ * Returns: { audioBase64: "..." } — null only if both neural providers fail.
  */
 export async function fetchTTS(text, lang, options = {}) {
   try {

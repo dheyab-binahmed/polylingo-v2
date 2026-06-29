@@ -20,11 +20,6 @@ const TOPICS = [
   "how you plan to use language in future work",
 ];
 
-// ── VAD constants ─────────────────────────────────────────────────────────────
-const VAD_SILENCE_THRESHOLD = 8;   // RMS 0-100 below which we consider silence
-const VAD_SILENCE_DURATION  = 1300; // ms of silence before auto-stop
-const VAD_MIN_SPEECH_MS     = 600;  // must speak for at least this long to count
-const TTS_FETCH_TIMEOUT_MS   = 8000; // wait for ElevenLabs (~1s) instead of falling back to the robot voice
 const TUTOR_TTS_RATE         = "+25%";
 
 export default function SpeakingStep() {
@@ -63,6 +58,7 @@ export default function SpeakingStep() {
   const [processingVoice, setProcessingVoice] = useState(false);
   const [vadActive,       setVadActive]       = useState(false); // VAD monitoring
   const [vadLevel,        setVadLevel]        = useState(0);     // live audio level
+  const [vadError,        setVadError]        = useState("");
 
   const bottomRef         = useRef(null);
   const chatRef           = useRef(null);
@@ -74,12 +70,8 @@ export default function SpeakingStep() {
   const voiceModeRef      = useRef(false);
   const completingRef     = useRef(false);
   const streamingRef      = useRef(false); // true while SSE stream is open
-  // VAD refs
-  const audioContextRef   = useRef(null);
-  const analyserRef       = useRef(null);
-  const vadFrameRef       = useRef(null);   // requestAnimationFrame handle
-  const silenceStartRef   = useRef(null);
-  const speechStartRef    = useRef(null);   // when user started speaking
+  // Silero VAD shares the active MediaRecorder stream.
+  const vadRef            = useRef(null);
   const vadActiveRef      = useRef(false);
 
   useEffect(() => { voiceModeRef.current  = voiceMode;  }, [voiceMode]);
@@ -109,8 +101,8 @@ export default function SpeakingStep() {
   }, [sessionStarted]);
 
   // ── Audio playback ────────────────────────────────────────────────────────
-  // Rejects on playback error / blocked autoplay so the caller can fall back to
-  // browser speech (parity with the practice tutor's TTS pipeline).
+  // Reject playback errors so the tutor can report/skip them without invoking
+  // the browser's robotic speech synthesis.
   const playAudioBlob = (base64, contentType) =>
     new Promise((resolve, reject) => {
       const el = new Audio(`data:${contentType};base64,${base64}`);
@@ -120,24 +112,6 @@ export default function SpeakingStep() {
       el.play().catch((e) => { audioRef.current = null; reject(e); });
     });
 
-  const browserSpeak = (text) =>
-    new Promise((resolve) => {
-      if (!("speechSynthesis" in window)) return resolve();
-      window.speechSynthesis.cancel();
-      const utt = new SpeechSynthesisUtterance(text);
-      utt.lang = ttsLang; utt.rate = 1.0; utt.pitch = 1.05;
-      utt.onend = utt.onerror = resolve;
-      window.speechSynthesis.speak(utt);
-    });
-
-  const generateSpeechFast = (text) => {
-    const neuralJob = generateSpeech(text, ttsLang, { rate: TUTOR_TTS_RATE });
-    const timeoutJob = new Promise((resolve) =>
-      setTimeout(() => resolve(null), TTS_FETCH_TIMEOUT_MS)
-    );
-    return Promise.race([neuralJob, timeoutJob]);
-  };
-
   const speakText = useCallback(async (text, { autoRestart = false } = {}) => {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
@@ -145,10 +119,12 @@ export default function SpeakingStep() {
     const reply = (text || "").trim();
     if (reply) {
       try {
-        const speech = await generateSpeechFast(reply);
-        if (!speech?.audio) throw new Error("TTS timeout");
+        const speech = await generateSpeech(reply, ttsLang, { rate: TUTOR_TTS_RATE });
+        if (!speech?.audio) throw new Error("Neural TTS returned no audio");
         await playAudioBlob(speech.audio, speech.content_type);
-      } catch { await browserSpeak(reply); }
+      } catch (error) {
+        console.warn("[Assessment TTS] ElevenLabs and Edge failed; browser voice is disabled.", error);
+      }
     }
     setAiSpeaking(false);
     if (autoRestart && voiceModeRef.current && !completingRef.current)
@@ -156,74 +132,79 @@ export default function SpeakingStep() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ttsLang]);
 
-  // ── VAD: Web Audio silence detection ─────────────────────────────────────
-  const stopVAD = useCallback(() => {
+  // ── Silero VAD: neural speech-end detection ───────────────────────────────
+  const pauseVAD = useCallback(() => {
+    try { vadRef.current?.pause(); } catch (_) {}
     setVadActive(false);
     vadActiveRef.current = false;
-    if (vadFrameRef.current) cancelAnimationFrame(vadFrameRef.current);
-    if (audioContextRef.current) {
-      try { audioContextRef.current.close(); } catch (_) {}
-      audioContextRef.current = null;
-    }
-    analyserRef.current   = null;
-    silenceStartRef.current = null;
-    speechStartRef.current  = null;
+    setVadLevel(0);
   }, []);
 
-  const startVAD = useCallback((stream) => {
-    try {
-      const ctx      = new AudioContext();
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 512;
-      ctx.createMediaStreamSource(stream).connect(analyser);
-      audioContextRef.current = ctx;
-      analyserRef.current     = analyser;
-      const buf = new Uint8Array(analyser.frequencyBinCount);
-
-      setVadActive(true);
-      vadActiveRef.current  = true;
-      speechStartRef.current = null;
-      silenceStartRef.current = null;
-
-      const tick = () => {
-        if (!vadActiveRef.current) return;
-        analyser.getByteTimeDomainData(buf);
-        let sum = 0;
-        for (let i = 0; i < buf.length; i++) {
-          const v = (buf[i] - 128) / 128;
-          sum += v * v;
-        }
-        const rms = Math.sqrt(sum / buf.length) * 100;
-        setVadLevel(Math.min(100, Math.round(rms * 4)));
-
-        if (rms > VAD_SILENCE_THRESHOLD) {
-          // Speech detected
-          if (!speechStartRef.current) speechStartRef.current = Date.now();
-          silenceStartRef.current = null;
-        } else {
-          // Silence
-          if (!silenceStartRef.current) silenceStartRef.current = Date.now();
-          const silenceDuration = Date.now() - (silenceStartRef.current || Date.now());
-          const speechDuration  = speechStartRef.current
-            ? Date.now() - speechStartRef.current
-            : 0;
-
-          if (silenceDuration >= VAD_SILENCE_DURATION && speechDuration >= VAD_MIN_SPEECH_MS) {
-            // Auto-stop: enough speech + enough silence after
-            stopVAD();
-            if (mediaRecorderRef.current?.state === "recording") {
-              mediaRecorderRef.current.stop();
-            }
-            return;
-          }
-        }
-        vadFrameRef.current = requestAnimationFrame(tick);
-      };
-      vadFrameRef.current = requestAnimationFrame(tick);
-    } catch (e) {
-      console.warn("VAD init failed:", e);
+  const destroyVAD = useCallback(() => {
+    const vad = vadRef.current;
+    vadRef.current = null;
+    if (vad) {
+      try { vad.pause(); } catch (_) {}
+      try { vad.destroy(); } catch (_) {}
     }
-  }, [stopVAD]);
+    setVadActive(false);
+    vadActiveRef.current = false;
+    setVadLevel(0);
+  }, []);
+
+  const prepareVAD = useCallback(async (stream) => {
+    try {
+      destroyVAD();
+      const { MicVAD } = await import("@ricky0123/vad-web");
+      const vad = await MicVAD.new({
+        stream,
+        model: "legacy",
+        baseAssetPath: "/",
+        onnxWASMBasePath: "/",
+        ortConfig: (ort) => {
+          ort.env.wasm.numThreads = 1;
+        },
+        minSpeechFrames: 3,
+        redemptionFrames: 5,
+        positiveSpeechThreshold: 0.5,
+        negativeSpeechThreshold: 0.4,
+        onFrameProcessed: ({ isSpeech }) => {
+          if (vadActiveRef.current) {
+            setVadLevel(Math.min(100, Math.round((isSpeech || 0) * 100)));
+          }
+        },
+        onVADMisfire: () => {
+          setVadLevel(0);
+          console.log("[Assessment VAD] misfire");
+        },
+        onSpeechStart: () => {
+          console.log("[Assessment VAD] speech start");
+          setVadActive(true);
+        },
+        onSpeechEnd: () => {
+          if (!voiceModeRef.current || completingRef.current) return;
+          console.log("[Assessment VAD] speech end -> submitting");
+          try { vadRef.current?.pause(); } catch (_) {}
+          setVadActive(false);
+          setVadLevel(0);
+          if (mediaRecorderRef.current?.state === "recording") {
+            mediaRecorderRef.current.stop();
+          }
+        },
+      });
+      vadRef.current = vad;
+      setVadError("");
+      return vad;
+    } catch (e) {
+      console.warn("[Assessment VAD] Silero init failed:", e);
+      destroyVAD();
+      const detail = e?.message ? ` (${e.message})` : "";
+      setVadError(`Auto voice loop could not start Silero VAD${detail}. Refresh the page and allow microphone access, then try again.`);
+      return null;
+    }
+  }, [destroyVAD]);
+
+  useEffect(() => () => destroyVAD(), [destroyVAD]);
 
   // ── Recording ─────────────────────────────────────────────────────────────
   const startRecording = async () => {
@@ -246,7 +227,8 @@ export default function SpeakingStep() {
 
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        stopVAD();
+        destroyVAD();
+        mediaRecorderRef.current = null;
         setRecording(false);
         setProcessingVoice(true);
 
@@ -280,22 +262,35 @@ export default function SpeakingStep() {
         setProcessingVoice(false);
       };
 
+      const vad = voiceModeRef.current ? await prepareVAD(stream) : null;
+      if (voiceModeRef.current && !vad) {
+        voiceModeRef.current = false;
+        setVoiceMode(false);
+      }
+
       recordingStartRef.current = Date.now();
       recorder.start();
       setRecording(true);
 
-      // Start VAD to auto-stop on silence
-      if (voiceModeRef.current) startVAD(stream);
+      if (vad) {
+        vadActiveRef.current = true;
+        setVadActive(true);
+        vad.start();
+        console.log("[Assessment VAD] Silero VAD active");
+      }
 
     } catch (err) {
       console.error("Mic access denied:", err);
+      destroyVAD();
       inputRef.current?.focus();
     }
   };
 
   const stopRecording = () => {
-    stopVAD();
-    mediaRecorderRef.current?.stop();
+    pauseVAD();
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
   };
 
   const handleMicClick = () => {
@@ -604,6 +599,7 @@ export default function SpeakingStep() {
 
         .sp-voice-bar { display:flex;align-items:center;justify-content:space-between;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:12px;padding:0.55rem 1rem;gap:0.75rem; }
         .sp-voice-bar-label { font-size:0.8rem;font-weight:600;color:var(--text-base);display:flex;align-items:center;gap:0.4rem; }
+        .sp-vad-error { width:100%;padding:0.55rem 0.75rem;border:1px solid rgba(239,68,68,.25);border-radius:10px;background:rgba(239,68,68,.08);color:#dc2626;font-size:0.75rem;line-height:1.35;text-align:center;overflow-wrap:anywhere; }
         .sp-toggle { position:relative;width:42px;height:22px;background:#cbd5e1;border-radius:99px;border:none;cursor:pointer;transition:background .25s;flex-shrink:0; }
         .sp-toggle.on { background:#6366f1; }
         .sp-toggle::after { content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;background:#fff;border-radius:50%;transition:transform .25s;box-shadow:0 1px 4px rgba(0,0,0,.2); }
@@ -765,6 +761,12 @@ export default function SpeakingStep() {
                     title={voiceMode ? "Turn off auto-loop" : "Turn on auto-loop"}
                   />
                 </div>
+                {vadError && (
+                  <div className="sp-vad-error" role="alert">
+                    <i className="fas fa-circle-exclamation" style={{ marginRight:"0.35rem" }} />
+                    {vadError}
+                  </div>
+                )}
 
                 {/* Mic button */}
                 <div className="sp-mic-row">
@@ -787,7 +789,7 @@ export default function SpeakingStep() {
                       {processingVoice
                         ? "Transcribing…"
                         : recording
-                        ? vadActive ? "Auto-stop on silence" : "Listening… tap to send"
+                        ? vadActive ? "Silero is listening…" : "Listening… tap or press Enter to send"
                         : aiSpeaking
                         ? "AI is speaking…"
                         : isStreaming
@@ -795,7 +797,7 @@ export default function SpeakingStep() {
                         : "Tap mic to speak"}
                     </div>
                     {recording && vadActive && (
-                      <div className="sp-vad-hint">Will stop automatically when you pause</div>
+                      <div className="sp-vad-hint">Stops automatically when Silero detects the end of your speech</div>
                     )}
                   </div>
                 </div>

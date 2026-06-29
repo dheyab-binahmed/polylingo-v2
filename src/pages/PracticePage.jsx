@@ -40,7 +40,6 @@ const fmt = (s) =>
     .padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
-const TTS_FETCH_TIMEOUT_MS = 8000; // wait for ElevenLabs instead of the browser robot fallback
 const TUTOR_TTS_RATE = "+25%";
 
 function audioFromBase64(audioBase64, contentType = "audio/mpeg") {
@@ -1152,7 +1151,11 @@ export default function PracticePage() {
   // fetch audio before every sentence. ttsQueueRef holds in-flight promises.
   const _playTTSAudio = (sentence, audioBase64) =>
     new Promise((resolve) => {
-      if (!audioBase64) { speakTTS(sentence, ttsLang, () => {}, resolve); return; }
+      if (!audioBase64) {
+        console.warn("[Tutor TTS] ElevenLabs and Edge both failed; skipping browser voice.");
+        resolve();
+        return;
+      }
       const audio = audioFromBase64(audioBase64);
       _currentTTSAudio = audio; // retain so it isn't GC'd mid-play
       let done = false;
@@ -1167,7 +1170,8 @@ export default function PracticePage() {
         if (!done) {
           done = true;
           releaseAudioUrl(audio);
-          speakTTS(sentence, ttsLang, () => {}, resolve);
+          console.warn("[Tutor TTS] Neural audio could not play; browser voice is disabled.");
+          resolve();
         }
       };
       audio.onended = finish;
@@ -1201,14 +1205,11 @@ export default function PracticePage() {
 
   const _enqueueSentence = (sentence) => {
     if (!sentence) return;
-    // Start synthesis right away; store the promise so playback stays in order.
-    const neuralJob = fetchTTS(sentence, ttsLang, { rate: TUTOR_TTS_RATE })
+    // Start synthesis immediately and wait for the backend's ElevenLabs -> Edge
+    // chain. The tutor loop never races into browser speech.
+    const job = fetchTTS(sentence, ttsLang, { rate: TUTOR_TTS_RATE })
       .then((r) => ({ sentence, audioBase64: r?.audioBase64 }))
       .catch(() => ({ sentence, audioBase64: null }));
-    const timeoutJob = new Promise((resolve) =>
-      setTimeout(() => resolve({ sentence, audioBase64: null }), TTS_FETCH_TIMEOUT_MS)
-    );
-    const job = Promise.race([neuralJob, timeoutJob]);
     ttsQueueRef.current.push(job);
     _drainTTSQueue();
   };
